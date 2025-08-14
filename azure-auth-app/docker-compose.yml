@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  cids-auth:
+    build: .
+    container_name: cids-auth-service
+    ports:
+      - "8000:8000"
+    environment:
+      # Override with your actual values or use .env file
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID}
+      - AZURE_AUDIENCE=${AZURE_AUDIENCE}
+      - AZURE_SCOPE=${AZURE_SCOPE:-openid profile email User.Read}
+      - REDIRECT_URI=${REDIRECT_URI:-https://localhost:8000/auth/callback}
+      - SECRET_KEY=${SECRET_KEY}
+      - ADMIN_EMAILS=${ADMIN_EMAILS}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      # Persist app data
+      - ./app_data:/app/app_data
+      - ./logs:/app/logs
+      # Mount certificates for HTTPS
+      - ./certs:/app/certs:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-k", "https://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - cids-network
+
+  # Optional: Add Redis for session storage in production
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: cids-redis
+  #   command: redis-server --appendonly yes
+  #   volumes:
+  #     - redis-data:/data
+  #   networks:
+  #     - cids-network
+
+  # Optional: Add PostgreSQL for persistent storage
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: cids-postgres
+  #   environment:
+  #     - POSTGRES_DB=cids
+  #     - POSTGRES_USER=cids
+  #     - POSTGRES_PASSWORD=${DB_PASSWORD}
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   networks:
+  #     - cids-network
+
+networks:
+  cids-network:
+    driver: bridge
+
+volumes:
+  # redis-data:
+  # postgres-data:
