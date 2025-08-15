@@ -21,6 +21,11 @@ from app_registration import (
     AppResponse, AppRegistrationResponse, SetRoleMappingRequest,
     registered_apps, app_role_mappings
 )
+from jwks_handler import JWKSHandler
+from app_endpoints import AppEndpointsRegistry, EndpointsUpdate
+from roles_manager import RolesManager, RolesUpdate, RoleMappingsUpdate
+from policy_manager import PolicyManager, PolicyDocument
+from audit_logger import audit_logger, AuditAction
 
 load_dotenv()
 
@@ -65,6 +70,12 @@ azure_tokens: Dict[str, dict] = {}
 
 # Initialize JWT manager (in production, specify key_path for persistent storage)
 jwt_manager = JWTManager(key_path="./keys" if os.getenv("PERSIST_KEYS", "false").lower() == "true" else None)
+
+# Initialize IAM components
+jwks_handler = JWKSHandler(jwt_manager)
+endpoints_registry = AppEndpointsRegistry()
+roles_manager = RolesManager()
+policy_manager = PolicyManager()
 
 def get_session(session_id: str) -> dict:
     return sessions.get(session_id, {})
@@ -313,24 +324,31 @@ async def auth_callback(request: Request, response: Response):
                     )
                     if groups_response.status_code == 200:
                         groups_data = groups_response.json()
-                        user_info['groups'] = [
-                            {
-                                'id': g.get('id'),
-                                'displayName': g.get('displayName', f"Group {g.get('id', '')[:8]}...")
-                            }
-                            for g in groups_data.get('value', [])
-                        ]
+                        logger.debug(f"Groups data from Microsoft Graph: {json.dumps(groups_data, indent=2)}")
+                        
+                        # Process groups, handling both dict and other formats
+                        processed_groups = []
+                        for g in groups_data.get('value', []):
+                            if isinstance(g, dict):
+                                processed_groups.append({
+                                    'id': g.get('id', ''),
+                                    'displayName': g.get('displayName', f"Group {g.get('id', '')[:8]}...")
+                                })
+                            else:
+                                logger.warning(f"Unexpected group format: {type(g)} - {g}")
+                                
+                        user_info['groups'] = processed_groups
                 except Exception as e:
                     logger.error(f"Failed to fetch groups: {e}")
         
-        # Create our internal tokens
-        access_token = jwt_manager.create_token(user_info, token_lifetime_minutes=30, token_type='access')
+        # Create our internal tokens with IAM claims
+        access_token = generate_token_with_iam_claims(user_info)
         refresh_token = refresh_token_store.create_refresh_token(user_info, lifetime_days=30)
         
         # Store tokens in issued_tokens for admin tracking
         token_id = str(uuid.uuid4())
         now_utc = datetime.utcnow()
-        expires_utc = now_utc + timedelta(minutes=30)
+        expires_utc = now_utc + timedelta(minutes=10)  # 10 minutes for IAM tokens
         
         # Debug logging
         logger.debug(f"Token timestamp debug:")
@@ -379,7 +397,14 @@ async def auth_callback(request: Request, response: Response):
         if session_data.get('client_id'):
             # Add app-specific roles to the token
             client_id = session_data['client_id']
-            user_groups = [g['displayName'] for g in user_info.get('groups', [])]
+            # Extract group names handling both dict and string formats
+            groups_raw = user_info.get('groups', [])
+            user_groups = []
+            for g in groups_raw:
+                if isinstance(g, dict):
+                    user_groups.append(g.get('displayName', ''))
+                else:
+                    user_groups.append(str(g))
             app_roles = app_store.get_user_roles_for_app(client_id, user_groups)
             
             # Recreate token with app-specific claims
@@ -387,7 +412,7 @@ async def auth_callback(request: Request, response: Response):
             token_claims['client_id'] = client_id
             token_claims['app_roles'] = app_roles
             
-            access_token = jwt_manager.create_token(token_claims, token_lifetime_minutes=30, token_type='access')
+            access_token = generate_token_with_iam_claims(token_claims, client_id)
             
             # Update stored token
             issued_tokens[token_id]['access_token'] = access_token
@@ -414,7 +439,9 @@ async def auth_callback(request: Request, response: Response):
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
         logger.error(f"Authentication error: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}")
 
 @app.post("/auth/token")
@@ -435,13 +462,13 @@ async def token_endpoint(token_request: TokenRequest):
         if not user_info:
             raise HTTPException(status_code=401, detail="Invalid refresh token")
         
-        # Create new access token
-        access_token = jwt_manager.create_token(user_info, token_lifetime_minutes=30, token_type='access')
+        # Create new access token with IAM claims
+        access_token = generate_token_with_iam_claims(user_info)
         
         # Store tokens in issued_tokens for admin tracking
         token_id = str(uuid.uuid4())
         now_utc = datetime.utcnow()
-        expires_utc = now_utc + timedelta(minutes=30)
+        expires_utc = now_utc + timedelta(minutes=10)  # 10 minutes for IAM tokens
         
         # Debug logging
         logger.debug(f"Refresh token timestamp debug:")
@@ -475,12 +502,93 @@ async def token_endpoint(token_request: TokenRequest):
         return JSONResponse({
             'access_token': access_token,
             'token_type': 'Bearer',
-            'expires_in': 1800,  # 30 minutes
+            'expires_in': 600,  # 10 minutes
             'refresh_token': new_refresh_token
         })
     
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported grant_type: {token_request.grant_type}")
+
+# OAuth token endpoint for refresh with httpOnly cookies
+@app.post("/oauth/token")
+async def oauth_token(request: Request, response: Response):
+    """OAuth 2.0 token endpoint with httpOnly refresh token support"""
+    try:
+        form_data = await request.form()
+        grant_type = form_data.get('grant_type')
+        
+        if grant_type == 'refresh_token':
+            refresh_token = form_data.get('refresh_token')
+            if not refresh_token:
+                raise HTTPException(status_code=400, detail="refresh_token required")
+            
+            # Validate and rotate refresh token
+            user_info, new_refresh_token = refresh_token_store.validate_and_rotate(refresh_token)
+            
+            if not user_info:
+                raise HTTPException(status_code=401, detail="Invalid refresh token")
+            
+            # Generate new access token
+            client_id = form_data.get('client_id')
+            access_token = generate_token_with_iam_claims(user_info, client_id)
+            
+            # Set httpOnly cookie for refresh token
+            response.set_cookie(
+                key="refresh_token",
+                value=new_refresh_token,
+                httponly=True,
+                secure=True,
+                samesite="lax",
+                max_age=7*24*60*60  # 7 days
+            )
+            
+            return JSONResponse({
+                "access_token": access_token,
+                "token_type": "Bearer",
+                "expires_in": 600,  # 10 minutes
+                "refresh_token": new_refresh_token
+            })
+            
+        elif grant_type == 'client_credentials':
+            # For service-to-service auth
+            client_id = form_data.get('client_id')
+            client_secret = form_data.get('client_secret')
+            
+            # Validate client credentials
+            app_data = app_store.get_app(client_id)
+            if not app_data:
+                raise HTTPException(status_code=401, detail="Invalid client credentials")
+            
+            # Check if the secret matches
+            stored_secret = app_store.app_secrets.get(client_id)
+            if not stored_secret or stored_secret != client_secret:
+                raise HTTPException(status_code=401, detail="Invalid client credentials")
+            
+            # Generate service token
+            claims = {
+                'iss': 'internal-auth-service',
+                'sub': client_id,
+                'aud': ['internal-services'],
+                'client_id': client_id,
+                'app_name': app_data['name'],
+                'token_type': 'service',
+                'token_version': '2.0'
+            }
+            
+            access_token = jwt_manager.create_token(claims, token_lifetime_minutes=60, token_type='service')
+            
+            return JSONResponse({
+                "access_token": access_token,
+                "token_type": "Bearer",
+                "expires_in": 3600
+            })
+            
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported grant_type")
+            
+    except Exception as e:
+        logger.error(f"Token endpoint error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/auth/token/session")
 async def get_session_token(request: Request):
@@ -685,84 +793,6 @@ async def revoke_token_by_id(token_id: str, authorization: Optional[str] = Heade
         'revoked_at': token_data['revoked_at']
     })
 
-@app.post("/auth/admin/tokens/create-test")
-async def create_test_token(
-    request: Request,
-    authorization: Optional[str] = Header(None)
-):
-    """Create a test token for development/testing (admin only)"""
-    is_admin, claims = check_admin_access(authorization)
-    
-    if not is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
-    
-    # Get parameters from request body
-    body = await request.json() if request.headers.get('content-type') == 'application/json' else {}
-    test_user_email = body.get('test_user_email', 'test@example.com')
-    test_user_name = body.get('test_user_name', 'Test User')
-    token_lifetime_minutes = body.get('token_lifetime_minutes', 30)
-    
-    # Create test user info
-    test_user_info = {
-        'name': test_user_name,
-        'email': test_user_email,
-        'sub': f'test-{str(uuid.uuid4())}',
-        'groups': []
-    }
-    
-    # Create tokens
-    access_token = jwt_manager.create_token(test_user_info, token_lifetime_minutes=token_lifetime_minutes, token_type='access')
-    refresh_token = refresh_token_store.create_refresh_token(test_user_info, lifetime_days=30)
-    
-    # Store in issued_tokens
-    token_id = str(uuid.uuid4())
-    now_utc = datetime.utcnow()
-    expires_utc = now_utc + timedelta(minutes=token_lifetime_minutes)
-    
-    # Debug logging
-    logger.debug(f"Admin test token timestamp debug:")
-    logger.debug(f"  now_utc: {now_utc}")
-    logger.debug(f"  now_utc.isoformat(): {now_utc.isoformat()}")
-    logger.debug(f"  expires_utc: {expires_utc}")
-    logger.debug(f"  expires_utc.isoformat(): {expires_utc.isoformat()}")
-    
-    issued_tokens[token_id] = {
-        'id': token_id,
-        'access_token': access_token,
-        'refresh_token': refresh_token,
-        'user': test_user_info,
-        'issued_at': now_utc.isoformat() + 'Z',  # Explicitly add Z for UTC
-        'expires_at': expires_utc.isoformat() + 'Z',  # Explicitly add Z for UTC
-        'source': 'admin_test_token',
-        'created_by': claims.get('email')
-    }
-    
-    # Log test token creation activity
-    token_activity_logger.log_activity(
-        token_id=token_id,
-        action=TokenAction.CREATED,
-        performed_by={
-            'email': claims.get('email'),
-            'name': claims.get('name')
-        },
-        details={
-            'source': 'admin_test_token',
-            'test_user': test_user_email,
-            'lifetime_minutes': token_lifetime_minutes
-        },
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get('user-agent')
-    )
-    
-    return JSONResponse({
-        'token_id': token_id,
-        'access_token': access_token,
-        'refresh_token': refresh_token,
-        'token_type': 'Bearer',
-        'expires_in': token_lifetime_minutes * 60,
-        'user': test_user_info,
-        'created_by': claims.get('email')
-    })
 
 @app.get("/auth/admin/tokens/{token_id}/activities")
 async def get_token_activities(token_id: str, authorization: Optional[str] = Header(None)):
@@ -1325,6 +1355,253 @@ async def debug_timestamps():
         }
     })
 
+# JWKS and metadata endpoints
+@app.get("/.well-known/jwks.json")
+async def get_jwks():
+    """Get JSON Web Key Set"""
+    return JSONResponse(jwks_handler.get_jwks())
+
+@app.get("/.well-known/cids-config")
+async def get_cids_config(request: Request):
+    """Get CIDS configuration metadata"""
+    base_url = str(request.base_url).rstrip('/')
+    return JSONResponse(jwks_handler.get_metadata(base_url))
+
+# App endpoints registry
+@app.put("/apps/{client_id}/endpoints")
+async def update_app_endpoints(
+    client_id: str,
+    update: EndpointsUpdate,
+    authorization: Optional[str] = Header(None)
+):
+    """Update endpoints for an app"""
+    # Check admin access
+    is_admin, user_info = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Verify app exists
+    app_data = app_store.get_app(client_id)
+    if not app_data:
+        raise HTTPException(status_code=404, detail="App not found")
+    
+    try:
+        result = endpoints_registry.upsert_endpoints(
+            client_id, update, user_info.get('email', 'unknown')
+        )
+        
+        # Audit log
+        audit_logger.log_action(
+            AuditAction.ENDPOINTS_UPDATED,
+            user_email=user_info.get('email'),
+            resource_type="app_endpoints",
+            resource_id=client_id,
+            details={"endpoints_count": result['endpoints_count']}
+        )
+        
+        return JSONResponse(result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/apps/{client_id}/endpoints")
+async def get_app_endpoints(client_id: str):
+    """Get endpoints for an app"""
+    endpoints = endpoints_registry.get_app_endpoints(client_id)
+    if not endpoints:
+        raise HTTPException(status_code=404, detail="No endpoints found for app")
+    return JSONResponse(endpoints)
+
+# Roles and mappings
+@app.put("/apps/{client_id}/roles")
+async def update_app_roles(
+    client_id: str,
+    update: RolesUpdate,
+    authorization: Optional[str] = Header(None)
+):
+    """Update roles for an app"""
+    is_admin, user_info = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Verify app exists
+    app_data = app_store.get_app(client_id)
+    if not app_data:
+        raise HTTPException(status_code=404, detail="App not found")
+    
+    try:
+        result = roles_manager.upsert_app_roles(
+            client_id, update, user_info.get('email', 'unknown')
+        )
+        
+        # Audit log
+        audit_logger.log_action(
+            AuditAction.ROLES_UPDATED,
+            user_email=user_info.get('email'),
+            resource_type="app_roles",
+            resource_id=client_id,
+            details={"roles_count": result['roles_count']}
+        )
+        
+        return JSONResponse(result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/apps/{client_id}/roles")
+async def get_app_roles(client_id: str):
+    """Get roles for an app"""
+    roles = roles_manager.get_app_roles(client_id)
+    if not roles:
+        raise HTTPException(status_code=404, detail="No roles found for app")
+    return JSONResponse(roles)
+
+@app.put("/role-mappings")
+async def update_role_mappings(
+    update: RoleMappingsUpdate,
+    authorization: Optional[str] = Header(None)
+):
+    """Update Azure AD group to role mappings"""
+    is_admin, user_info = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        result = roles_manager.upsert_role_mappings(
+            update, user_info.get('email', 'unknown')
+        )
+        
+        # Audit log
+        audit_logger.log_action(
+            AuditAction.ROLE_MAPPINGS_UPDATED,
+            user_email=user_info.get('email'),
+            resource_type="role_mappings",
+            details={"mappings_count": result['mappings_count']}
+        )
+        
+        return JSONResponse(result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/role-mappings")
+async def get_role_mappings():
+    """Get all role mappings"""
+    return JSONResponse({"mappings": roles_manager.get_all_mappings()})
+
+# Policy management
+@app.put("/policy/{client_id}")
+async def update_app_policy(
+    client_id: str,
+    policy: PolicyDocument,
+    authorization: Optional[str] = Header(None)
+):
+    """Create or update policy for an app"""
+    is_admin, user_info = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Verify app exists
+    app_data = app_store.get_app(client_id)
+    if not app_data:
+        raise HTTPException(status_code=404, detail="App not found")
+    
+    try:
+        result = policy_manager.upsert_policy(
+            client_id, policy, user_info.get('email', 'unknown')
+        )
+        
+        # Audit log
+        audit_logger.log_action(
+            AuditAction.POLICY_UPDATED,
+            user_email=user_info.get('email'),
+            resource_type="policy",
+            resource_id=client_id,
+            details={
+                "version": result['version'],
+                "permissions_count": result['permissions_count']
+            }
+        )
+        
+        return JSONResponse(result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/policy/{client_id}")
+async def get_app_policy(client_id: str, version: Optional[str] = None):
+    """Get policy for an app"""
+    if version:
+        policy = policy_manager.get_policy_version(client_id, version)
+    else:
+        policy = policy_manager.get_active_policy(client_id)
+    
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    
+    return JSONResponse(policy)
+
+# Effective identity endpoint
+@app.get("/iam/me")
+async def get_effective_identity(
+    authorization: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None)
+):
+    """Get effective identity with computed permissions"""
+    if not authorization or not authorization.startswith('Bearer '):
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+    
+    token = authorization.replace('Bearer ', '')
+    is_valid, claims, error = jwt_manager.validate_token(token)
+    
+    if not is_valid:
+        raise HTTPException(status_code=401, detail=error or "Invalid token")
+    
+    # Get user's roles across all apps
+    user_groups = claims.get('groups', [])
+    user_roles = roles_manager.get_user_roles(user_groups, x_tenant_id)
+    
+    # Compute effective permissions for each app
+    effective_perms = {}
+    for app_id, roles in user_roles.items():
+        perms = set()
+        for role in roles:
+            perms.update(policy_manager.compute_effective_permissions(
+                app_id, roles, claims.get('attrs', {})
+            ))
+        effective_perms[app_id] = list(perms)
+    
+    # Build response
+    response = {
+        "sub": claims.get('sub'),
+        "email": claims.get('email'),
+        "name": claims.get('name'),
+        "aud": claims.get('aud', ['internal-services']),
+        "scope": claims.get('scope', 'openid profile email'),
+        "roles": user_roles,
+        "effective_permissions": effective_perms,
+        "attrs": {
+            "department": claims.get('attrs', {}).get('department'),
+            "tenant": x_tenant_id,
+            "groups": user_groups[:10]  # Limit for response size
+        },
+        "token_info": {
+            "iss": claims.get('iss'),
+            "iat": claims.get('iat'),
+            "exp": claims.get('exp'),
+            "ver": claims.get('token_version', '1.0')
+        }
+    }
+    
+    return JSONResponse(response)
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return JSONResponse({
+        "status": "healthy",
+        "service": "cids-auth",
+        "version": "2.0.0",
+        "timestamp": datetime.utcnow().isoformat()
+    })
+
 @app.get("/auth/whoami")
 async def whoami(authorization: Optional[str] = Header(None)):
     """Get current authenticated user's information"""
@@ -1368,6 +1645,64 @@ async def whoami(authorization: Optional[str] = Header(None)):
         } if is_admin else None
     })
 
+# Helper functions for IAM token generation
+def generate_token_with_iam_claims(user_info: dict, client_id: Optional[str] = None) -> str:
+    """Generate token with IAM claims"""
+    # Get user's roles
+    user_groups = []
+    groups_data = user_info.get('groups', [])
+    
+    # Handle both dict and string group formats
+    if isinstance(groups_data, list):
+        for group in groups_data:
+            if isinstance(group, dict):
+                # Extract displayName from dict
+                display_name = group.get('displayName', '')
+                if display_name:
+                    user_groups.append(display_name)
+            elif isinstance(group, str):
+                # Already a string, just use it
+                user_groups.append(group)
+            else:
+                # Convert whatever it is to string
+                user_groups.append(str(group))
+    else:
+        logger.warning(f"Unexpected groups data type: {type(groups_data)}")
+    
+    # Get roles from the roles manager
+    try:
+        user_roles = roles_manager.get_user_roles(user_groups)
+    except Exception as e:
+        logger.warning(f"Error getting user roles: {e}")
+        user_roles = {}
+    
+    # Build claims from scratch to avoid any dict/string confusion
+    claims = {
+        'iss': 'internal-auth-service',
+        'sub': user_info.get('sub', user_info.get('id', '')),
+        'aud': [client_id] if client_id else ['internal-services'],
+        'email': user_info.get('email', ''),
+        'name': user_info.get('name', ''),
+        'groups': user_groups,  # This is now a clean list of strings
+        'scope': 'openid profile email',
+        'roles': user_roles,
+        'attrs': {
+            'tenant': user_info.get('tenant_id')
+        },
+        'token_version': '2.0'  # New version with IAM claims
+    }
+    
+    # Add any app-specific claims if provided
+    if 'client_id' in user_info and not client_id:
+        claims['client_id'] = user_info['client_id']
+    if 'app_roles' in user_info:
+        claims['app_roles'] = user_info['app_roles']
+    
+    # Generate token with 10 minute TTL
+    access_token = jwt_manager.create_token(claims, token_lifetime_minutes=10, token_type='access')
+    return access_token
+
+
 @app.get("/", response_class=HTMLResponse)
 async def test_page(request: Request):
     """Test page to demonstrate auth service functionality"""
@@ -1380,7 +1715,8 @@ async def test_page(request: Request):
     
     if session_id:
         session_data = get_session(session_id)
-        internal_token = session_data.get('internal_token')
+        # Try both possible keys for the token
+        internal_token = session_data.get('access_token') or session_data.get('internal_token')
         azure_token = session_data.get('azure_id_token')
         azure_claims = session_data.get('azure_claims')
         
@@ -1388,7 +1724,8 @@ async def test_page(request: Request):
             try:
                 # Decode token to show claims
                 _, token_claims, _ = jwt_manager.validate_token(internal_token)
-            except:
+            except Exception as e:
+                logger.debug(f"Error decoding token for display: {e}")
                 pass
     
     return templates.TemplateResponse("auth_test.html", {

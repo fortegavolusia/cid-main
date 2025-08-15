@@ -120,12 +120,27 @@ class JWTManager:
         
         # Add custom claims based on token type
         if token_type == 'access':
-            claims.update({
-                'email': user_info.get('email'),
-                'name': user_info.get('name'),
-                'groups': [g['displayName'] for g in user_info.get('groups', [])],  # Group names
-                'token_version': '1.0',
-            })
+            # Handle groups - they might be dicts or already processed strings
+            groups = user_info.get('groups', [])
+            if groups and isinstance(groups[0], dict):
+                # Extract displayName from dict format
+                processed_groups = [g.get('displayName', '') for g in groups]
+            else:
+                # Already strings or other format
+                processed_groups = groups
+                
+            # For v2.0 tokens, most claims are already set
+            if user_info.get('token_version') == '2.0':
+                # Just update with any missing standard claims
+                claims.update(user_info)
+            else:
+                # Legacy v1.0 token format
+                claims.update({
+                    'email': user_info.get('email'),
+                    'name': user_info.get('name'),
+                    'groups': processed_groups,
+                    'token_version': '1.0',
+                })
         elif token_type == 'refresh':
             # Refresh tokens have minimal claims
             claims.update({
@@ -169,13 +184,20 @@ class JWTManager:
             if claims.get('iss') != 'internal-auth-service':
                 return False, None, "Invalid token issuer"
             
-            if claims.get('aud') != 'internal-services':
+            # Handle audience as string or list
+            aud = claims.get('aud')
+            if isinstance(aud, list):
+                if 'internal-services' not in aud:
+                    return False, None, "Invalid token audience"
+            elif aud != 'internal-services':
                 return False, None, "Invalid token audience"
             
             return True, claims, None
             
         except Exception as e:
             logger.error(f"Token validation error: {str(e)}")
+            logger.error(f"Token validation error type: {type(e).__name__}")
+            logger.error(f"Token being validated: {token[:50]}...")
             return False, None, str(e)
     
     def get_public_key_jwks(self) -> Dict:
