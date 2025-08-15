@@ -36,6 +36,11 @@ class AuditAction(Enum):
     # Access
     ACCESS_GRANTED = "access.granted"
     ACCESS_DENIED = "access.denied"
+    
+    # Discovery
+    DISCOVERY_TRIGGERED = "discovery.triggered"
+    DISCOVERY_COMPLETED = "discovery.completed"
+    DISCOVERY_FAILED = "discovery.failed"
 
 class AuditLogger:
     """Handles audit logging for IAM operations"""

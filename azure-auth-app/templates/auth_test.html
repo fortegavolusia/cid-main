@@ -654,7 +654,7 @@
                 <p class="action-description">Start the authentication flow with Azure Active Directory</p>
             {% else %}
                 <!-- My Token Information Link -->
-                <button onclick="window.location.reload()" class="button" style="background-color: var(--info-color); width: 100%;">
+                <button onclick="window.location.href = '/'" class="button" style="background-color: var(--info-color); width: 100%;">
                     Home / My Token Information
                 </button>
                 <p class="action-description">Return to home screen with token details and actions</p>
@@ -1981,8 +1981,33 @@
         // Global variable for auto-refresh interval
         let autoRefreshInterval = null;
         
+        // URL routing support
+        function updateURL(path) {
+            const newURL = window.location.origin + path;
+            window.history.pushState({ path: path }, '', newURL);
+        }
+        
+        // Handle browser back/forward buttons
+        window.addEventListener('popstate', (event) => {
+            if (event.state && event.state.path) {
+                navigateToPath(event.state.path);
+            }
+        });
+        
+        function navigateToPath(path) {
+            if (path === '/admin' || path === '/admin/tokens') {
+                viewAdministration().then(() => showTokenManagement());
+            } else if (path === '/admin/apps') {
+                viewAdministration().then(() => showAppManagement());
+            }
+            // Default is home page, no action needed
+        }
+        
         async function viewAdministration() {
             try {
+                // Update URL
+                updateURL('/admin');
+                
                 // Clear the main content first
                 const mainContent = document.getElementById('main-content');
                 mainContent.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="spinner"></div><p>Loading administration panel...</p></div>';
@@ -2953,6 +2978,9 @@
         
         // Tab switching functions
         function showTokenManagement() {
+            // Update URL
+            updateURL('/admin/tokens');
+            
             // Update tab styles
             document.getElementById('tokenTab').style.background = '#0078D4';
             document.getElementById('tokenTab').style.color = 'white';
@@ -2967,6 +2995,9 @@
         }
         
         function showAppManagement() {
+            // Update URL
+            updateURL('/admin/apps');
+            
             // Update tab styles
             document.getElementById('appTab').style.background = '#0078D4';
             document.getElementById('appTab').style.color = 'white';
@@ -3059,7 +3090,19 @@
                                 <label style="display: block; margin-bottom: 5px; font-weight: 500;">Redirect URIs (one per line)</label>
                                 <textarea name="redirect_uris" required placeholder="https://myapp.company.com/auth/callback" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-height: 80px;"></textarea>
                             </div>
-                            <button type="submit" style="padding: 10px 20px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Register App</button>
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Discovery Endpoint (Optional)</label>
+                                <input type="url" name="discovery_endpoint" placeholder="https://myapp.company.com/discovery/endpoints" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                <small style="color: #666; display: block; margin-top: 3px;">URL where your app exposes its API endpoints for discovery</small>
+                            </div>
+                            <div>
+                                <label style="display: flex; align-items: center; gap: 5px; margin-bottom: 5px;">
+                                    <input type="checkbox" name="allow_discovery">
+                                    <span style="font-weight: 500;">Allow Endpoint Discovery</span>
+                                </label>
+                                <small style="color: #666; display: block; margin-left: 25px;">Enable CIDS to automatically discover and pull endpoints from your app</small>
+                            </div>
+                            <button type="submit" style="padding: 10px 20px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px;">Register App</button>
                         </div>
                     </form>
                 </div>
@@ -3089,9 +3132,25 @@
                                     <ul style="margin: 5px 0; padding-left: 20px;">
                                         ${app.redirect_uris.map(uri => `<li><code style="font-size: 12px;">${uri}</code></li>`).join('')}
                                     </ul>
+                                    ${app.allow_discovery ? `
+                                        <div style="margin-top: 10px; padding: 10px; background: #e8f5e9; border-radius: 4px;">
+                                            <p style="margin: 5px 0;"><strong>Discovery:</strong> <span style="color: #2e7d32;">✓ Enabled</span></p>
+                                            ${app.discovery_endpoint ? `<p style="margin: 5px 0; font-size: 14px;"><strong>Endpoint:</strong> <code style="font-size: 12px;">${app.discovery_endpoint}</code></p>` : ''}
+                                            ${app.last_discovery_at ? `
+                                                <p style="margin: 5px 0; font-size: 14px;">
+                                                    <strong>Last Discovery:</strong> ${new Date(app.last_discovery_at).toLocaleString()}
+                                                    <span style="color: ${app.discovery_status === 'success' ? '#2e7d32' : '#d32f2f'};">(${app.discovery_status || 'never run'})</span>
+                                                </p>
+                                            ` : '<p style="margin: 5px 0; font-size: 14px; color: #666;">Never discovered</p>'}
+                                        </div>
+                                    ` : ''}
                                 </div>
                                 <div style="display: flex; flex-direction: column; gap: 10px;">
                                     <button onclick="viewRoleMappings('${app.client_id}')" style="padding: 6px 12px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Role Mappings</button>
+                                    ${app.allow_discovery ? `
+                                        <button onclick="viewEndpoints('${app.client_id}')" style="padding: 6px 12px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">View Endpoints</button>
+                                        <button onclick="triggerDiscovery('${app.client_id}')" style="padding: 6px 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Run Discovery</button>
+                                    ` : ''}
                                     <button onclick="rotateAppSecret('${app.client_id}')" style="padding: 6px 12px; background-color: #ffc107; color: #333; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Rotate Secret</button>
                                     <button onclick="deleteApp('${app.client_id}')" style="padding: 6px 12px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Delete</button>
                                 </div>
@@ -3114,7 +3173,9 @@
                 name: formData.get('name'),
                 description: formData.get('description'),
                 owner_email: formData.get('owner_email'),
-                redirect_uris: formData.get('redirect_uris').split('\n').map(uri => uri.trim()).filter(uri => uri)
+                redirect_uris: formData.get('redirect_uris').split('\n').map(uri => uri.trim()).filter(uri => uri),
+                discovery_endpoint: formData.get('discovery_endpoint') || null,
+                allow_discovery: formData.get('allow_discovery') === 'on'
             };
             
             try {
@@ -3157,32 +3218,324 @@
         async function viewRoleMappings(clientId) {
             try {
                 const accessToken = localStorage.getItem('access_token');
+                
+                // Show loading
+                const adminContent = document.getElementById('adminContent');
+                adminContent.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="spinner"></div><p>Loading role mappings...</p></div>';
+                
+                // Fetch app details, endpoints, and current mappings in parallel
+                const [appResponse, endpointsResponse, mappingsResponse, userGroupsResponse] = await Promise.all([
+                    fetch(`/auth/admin/apps/${clientId}`, {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                    }),
+                    fetch(`/auth/admin/apps/${clientId}/endpoints`, {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                    }),
+                    fetch(`/auth/admin/apps/${clientId}/role-mappings`, {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                    }),
+                    fetch('/auth/user/groups', {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                    })
+                ]);
+                
+                if (!appResponse.ok) {
+                    showAppMessage('error', 'Failed to load app details');
+                    loadAppManagement();
+                    return;
+                }
+                
+                const appData = await appResponse.json();
+                const endpoints = endpointsResponse.ok ? await endpointsResponse.json() : { endpoints: [] };
+                const mappingsData = mappingsResponse.ok ? await mappingsResponse.json() : { mappings: [] };
+                const userGroups = userGroupsResponse.ok ? await userGroupsResponse.json() : { groups: [] };
+                
+                // Create the role mapping interface
+                // The app endpoint returns the app directly, not wrapped in an object
+                showRoleMappingInterface(clientId, appData, endpoints.endpoints || endpoints, mappingsData.mappings, userGroups.groups);
+                
+            } catch (error) {
+                showAppMessage('error', `Error loading role mappings: ${error.message}`);
+                loadAppManagement();
+            }
+        }
+        
+        function showRoleMappingInterface(clientId, app, endpoints, existingMappings, availableGroups) {
+            const adminContent = document.getElementById('adminContent');
+            
+            // Get unique roles from endpoints
+            const endpointRoles = new Set();
+            endpoints.forEach(ep => {
+                if (ep.required_roles) {
+                    ep.required_roles.forEach(role => endpointRoles.add(role));
+                }
+            });
+            
+            // Get all roles (from endpoints and existing mappings)
+            const allRoles = new Set([...endpointRoles]);
+            existingMappings.forEach(m => allRoles.add(m.app_role));
+            
+            let html = `
+                <div style="margin-bottom: 20px;">
+                    <button onclick="loadAppManagement()" class="secondary-button">← Back to Apps</button>
+                </div>
+                
+                <h2>Role Mappings for ${app.name}</h2>
+                <p style="color: #666; margin-bottom: 30px;">Configure how Azure AD groups map to application roles</p>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+                    <!-- Left column: App Roles -->
+                    <div style="background: #f5f5f5; padding: 20px; border-radius: 8px;">
+                        <h3>Application Roles</h3>
+                        <p style="font-size: 14px; color: #666; margin-bottom: 20px;">Define roles for your application and assign endpoints to them</p>
+                        
+                        <!-- Add new role -->
+                        <div style="background: white; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+                            <h4 style="margin-top: 0;">Create New Role</h4>
+                            <div style="display: flex; gap: 10px;">
+                                <input type="text" id="newRoleName" placeholder="Role name (e.g., editor, viewer)" 
+                                    style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                <button onclick="addAppRole('${clientId}')" 
+                                    style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                    Add Role
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Existing roles -->
+                        <div id="appRolesList">
+                            ${Array.from(allRoles).map(role => `
+                                <div style="background: white; padding: 15px; border-radius: 6px; margin-bottom: 10px;">
+                                    <h4 style="margin: 0 0 10px 0; color: #333;">${role}</h4>
+                                    <p style="font-size: 14px; color: #666; margin: 0 0 10px 0;">Endpoints using this role:</p>
+                                    <ul style="margin: 0; padding-left: 20px; font-size: 14px;">
+                                        ${endpoints.filter(ep => ep.required_roles && ep.required_roles.includes(role))
+                                            .map(ep => `<li>${ep.method} ${ep.path}</li>`).join('') || '<li style="color: #999;">No endpoints assigned</li>'}
+                                    </ul>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    
+                    <!-- Right column: Group Mappings -->
+                    <div style="background: #f5f5f5; padding: 20px; border-radius: 8px;">
+                        <h3>Azure AD Group Mappings</h3>
+                        <p style="font-size: 14px; color: #666; margin-bottom: 20px;">Map Azure AD groups to application roles</p>
+                        
+                        <!-- Add new mapping -->
+                        <div style="background: white; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+                            <h4 style="margin-top: 0;">Add Group Mapping</h4>
+                            <div style="margin-bottom: 10px;">
+                                <label style="display: block; margin-bottom: 5px; font-size: 14px;">Azure AD Group:</label>
+                                <select id="adGroupSelect" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option value="">Select a group...</option>
+                                    ${availableGroups.map(group => 
+                                        `<option value="${group.id || group}">${group.displayName || group}</option>`
+                                    ).join('')}
+                                </select>
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <label style="display: block; margin-bottom: 5px; font-size: 14px;">Application Role:</label>
+                                <select id="appRoleSelect" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option value="">Select a role...</option>
+                                    ${Array.from(allRoles).map(role => 
+                                        `<option value="${role}">${role}</option>`
+                                    ).join('')}
+                                </select>
+                            </div>
+                            <button onclick="addRoleMapping('${clientId}')" 
+                                style="width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                Add Mapping
+                            </button>
+                        </div>
+                        
+                        <!-- Existing mappings -->
+                        <div id="groupMappingsList">
+                            <h4 style="margin: 20px 0 10px 0;">Current Mappings</h4>
+                            ${existingMappings.length === 0 ? 
+                                '<p style="color: #999; font-size: 14px;">No mappings configured yet</p>' :
+                                existingMappings.map((mapping, idx) => `
+                                    <div style="background: white; padding: 10px 15px; border-radius: 6px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                                        <div>
+                                            <strong>${mapping.ad_group}</strong>
+                                            <span style="color: #666; margin: 0 10px;">→</span>
+                                            <span style="color: #007bff;">${mapping.app_role}</span>
+                                        </div>
+                                        <button onclick="removeRoleMapping('${clientId}', '${mapping.ad_group}', '${mapping.app_role}')" 
+                                            style="padding: 5px 10px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                                            Remove
+                                        </button>
+                                    </div>
+                                `).join('')
+                            }
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Endpoints overview -->
+                <div style="margin-top: 30px; background: #f5f5f5; padding: 20px; border-radius: 8px;">
+                    <h3>Discovered Endpoints</h3>
+                    <p style="font-size: 14px; color: #666; margin-bottom: 20px;">All endpoints discovered from the application</p>
+                    <div style="max-height: 300px; overflow-y: auto;">
+                        <table style="width: 100%; background: white; border-radius: 6px; overflow: hidden;">
+                            <thead>
+                                <tr style="background: #e9ecef;">
+                                    <th style="padding: 10px; text-align: left;">Method</th>
+                                    <th style="padding: 10px; text-align: left;">Path</th>
+                                    <th style="padding: 10px; text-align: left;">Description</th>
+                                    <th style="padding: 10px; text-align: left;">Required Roles</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${endpoints.map(ep => `
+                                    <tr style="border-top: 1px solid #dee2e6;">
+                                        <td style="padding: 10px; font-weight: bold; color: ${getMethodColor(ep.method)};">${ep.method}</td>
+                                        <td style="padding: 10px; font-family: monospace; font-size: 13px;">${ep.path}</td>
+                                        <td style="padding: 10px; font-size: 14px;">${ep.description || '-'}</td>
+                                        <td style="padding: 10px; font-size: 14px;">
+                                            ${ep.required_roles && ep.required_roles.length > 0 ? 
+                                                ep.required_roles.map(r => `<span style="background: #e7f3ff; color: #0066cc; padding: 2px 8px; border-radius: 3px; font-size: 12px;">${r}</span>`).join(' ') : 
+                                                '<span style="color: #999;">Public</span>'
+                                            }
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            
+            adminContent.innerHTML = html;
+        }
+        
+        function getMethodColor(method) {
+            const colors = {
+                'GET': '#28a745',
+                'POST': '#007bff',
+                'PUT': '#ffc107',
+                'DELETE': '#dc3545',
+                'PATCH': '#17a2b8'
+            };
+            return colors[method] || '#6c757d';
+        }
+        
+        async function addAppRole(clientId) {
+            const roleName = document.getElementById('newRoleName').value.trim();
+            if (!roleName) {
+                showAppMessage('error', 'Please enter a role name');
+                return;
+            }
+            
+            // For now, just refresh the interface - in a real implementation,
+            // you might want to store custom roles separately
+            showAppMessage('info', `Role "${roleName}" created. You can now map it to AD groups.`);
+            document.getElementById('newRoleName').value = '';
+            
+            // Refresh the interface
+            viewRoleMappings(clientId);
+        }
+        
+        async function addRoleMapping(clientId) {
+            const adGroup = document.getElementById('adGroupSelect').value;
+            const appRole = document.getElementById('appRoleSelect').value;
+            
+            if (!adGroup || !appRole) {
+                showAppMessage('error', 'Please select both an AD group and an application role');
+                return;
+            }
+            
+            try {
+                const accessToken = localStorage.getItem('access_token');
+                
+                // Get current mappings
                 const response = await fetch(`/auth/admin/apps/${clientId}/role-mappings`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                
+                const data = await response.json();
+                const currentMappings = data.mappings || [];
+                
+                // Check if mapping already exists
+                if (currentMappings.some(m => m.ad_group === adGroup && m.app_role === appRole)) {
+                    showAppMessage('warning', 'This mapping already exists');
+                    return;
+                }
+                
+                // Create new mappings object
+                const mappings = {};
+                currentMappings.forEach(m => {
+                    if (!mappings[m.ad_group]) mappings[m.ad_group] = [];
+                    mappings[m.ad_group].push(m.app_role);
+                });
+                
+                if (!mappings[adGroup]) mappings[adGroup] = [];
+                mappings[adGroup].push(appRole);
+                
+                // Update mappings
+                const updateResponse = await fetch(`/auth/admin/apps/${clientId}/role-mappings`, {
+                    method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${accessToken}`
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ mappings })
+                });
+                
+                if (updateResponse.ok) {
+                    showAppMessage('success', 'Role mapping added successfully');
+                    viewRoleMappings(clientId);
+                } else {
+                    showAppMessage('error', 'Failed to add role mapping');
+                }
+            } catch (error) {
+                showAppMessage('error', `Error adding role mapping: ${error.message}`);
+            }
+        }
+        
+        async function removeRoleMapping(clientId, adGroup, appRole) {
+            if (!confirm(`Remove mapping: ${adGroup} → ${appRole}?`)) {
+                return;
+            }
+            
+            try {
+                const accessToken = localStorage.getItem('access_token');
+                
+                // Get current mappings
+                const response = await fetch(`/auth/admin/apps/${clientId}/role-mappings`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                
+                const data = await response.json();
+                const currentMappings = data.mappings || [];
+                
+                // Create new mappings object without the removed mapping
+                const mappings = {};
+                currentMappings.forEach(m => {
+                    if (!(m.ad_group === adGroup && m.app_role === appRole)) {
+                        if (!mappings[m.ad_group]) mappings[m.ad_group] = [];
+                        mappings[m.ad_group].push(m.app_role);
                     }
                 });
                 
-                if (response.ok) {
-                    const data = await response.json();
-                    let message = `<h4>Role Mappings for ${data.app_name}</h4>`;
-                    
-                    if (data.mappings.length === 0) {
-                        message += '<p>No role mappings configured.</p>';
-                    } else {
-                        message += '<ul>';
-                        data.mappings.forEach(m => {
-                            message += `<li>AD Group: <strong>${m.ad_group}</strong> → Role: <strong>${m.app_role}</strong></li>`;
-                        });
-                        message += '</ul>';
-                    }
-                    
-                    showAppMessage('success', message);
+                // Update mappings
+                const updateResponse = await fetch(`/auth/admin/apps/${clientId}/role-mappings`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ mappings })
+                });
+                
+                if (updateResponse.ok) {
+                    showAppMessage('success', 'Role mapping removed successfully');
+                    viewRoleMappings(clientId);
                 } else {
-                    showAppMessage('error', 'Failed to load role mappings');
+                    showAppMessage('error', 'Failed to remove role mapping');
                 }
             } catch (error) {
-                showAppMessage('error', error.message);
+                showAppMessage('error', `Error removing role mapping: ${error.message}`);
             }
         }
         
@@ -3219,6 +3572,78 @@
             }
         }
         
+        async function viewEndpoints(clientId) {
+            try {
+                const accessToken = localStorage.getItem('access_token');
+                const response = await fetch(`/apps/${clientId}/endpoints`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    if (!data || !data.endpoints || data.endpoints.length === 0) {
+                        alert('No endpoints registered for this app.');
+                    } else {
+                        const endpointList = data.endpoints.map(e => 
+                            `• ${e.method} ${e.path} - ${e.description}${e.discovered ? ' (discovered)' : ''}`
+                        ).join('\n');
+                        
+                        const message = `Endpoints for ${clientId}:\n\n${endpointList}\n\nTotal: ${data.endpoints.length} endpoints`;
+                        alert(message);
+                    }
+                } else {
+                    alert('Failed to load endpoints');
+                }
+            } catch (error) {
+                alert('Error loading endpoints: ' + error.message);
+            }
+        }
+        
+        async function triggerDiscovery(clientId) {
+            try {
+                const accessToken = localStorage.getItem('access_token');
+                const adminContent = document.getElementById('adminContent');
+                
+                // Show loading message
+                const originalContent = adminContent.innerHTML;
+                const loadingOverlay = document.createElement('div');
+                loadingOverlay.style = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 9999;';
+                loadingOverlay.innerHTML = '<div style="background: white; padding: 20px; border-radius: 8px;"><div class="spinner"></div><p>Running discovery...</p></div>';
+                document.body.appendChild(loadingOverlay);
+                
+                const response = await fetch(`/discovery/endpoints/${clientId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                
+                document.body.removeChild(loadingOverlay);
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    
+                    if (result.status === 'success') {
+                        showAppMessage('success', `Discovery completed! Found ${result.endpoints_discovered} endpoints, stored ${result.endpoints_stored}.`);
+                        loadAppManagement(); // Reload to show updated status
+                    } else if (result.status === 'skipped') {
+                        showAppMessage('info', result.message);
+                    } else {
+                        showAppMessage('error', `Discovery failed: ${result.error}`);
+                    }
+                } else {
+                    const error = await response.json();
+                    showAppMessage('error', error.detail || 'Discovery failed');
+                }
+            } catch (error) {
+                document.body.removeChild(loadingOverlay); // Make sure to remove overlay on error
+                showAppMessage('error', 'Failed to trigger discovery: ' + error.message);
+            }
+        }
+        
         async function deleteApp(clientId) {
             if (!confirm('Are you sure you want to delete this app? It will be deactivated and cannot be used for authentication.')) {
                 return;
@@ -3234,13 +3659,13 @@
                 });
                 
                 if (response.ok) {
-                    showResponse('Success', { message: 'App has been deactivated' });
+                    showAppMessage('success', 'App has been deactivated');
                     loadAppManagement(); // Reload the list
                 } else {
-                    showResponse('Error', { error: 'Failed to delete app' });
+                    showAppMessage('error', 'Failed to delete app');
                 }
             } catch (error) {
-                showResponse('Error', { error: error.message });
+                showAppMessage('error', error.message);
             }
         }
     </script>

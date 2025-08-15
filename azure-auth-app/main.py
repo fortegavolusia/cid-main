@@ -26,6 +26,7 @@ from app_endpoints import AppEndpointsRegistry, EndpointsUpdate
 from roles_manager import RolesManager, RolesUpdate, RoleMappingsUpdate
 from policy_manager import PolicyManager, PolicyDocument
 from audit_logger import audit_logger, AuditAction
+from discovery_service import DiscoveryService
 
 load_dotenv()
 
@@ -76,6 +77,7 @@ jwks_handler = JWKSHandler(jwt_manager)
 endpoints_registry = AppEndpointsRegistry()
 roles_manager = RolesManager()
 policy_manager = PolicyManager()
+discovery_service = DiscoveryService(jwt_manager, endpoints_registry)
 
 def get_session(session_id: str) -> dict:
     return sessions.get(session_id, {})
@@ -1134,25 +1136,7 @@ async def get_role_mappings(client_id: str, authorization: Optional[str] = Heade
         "mappings": mappings
     })
 
-# Admin UI for app management
-@app.get("/auth/admin/apps-ui")
-async def apps_admin_ui(request: Request):
-    """Admin UI for managing registered apps"""
-    # Check if user is authenticated via session
-    session_id = request.cookies.get("session_id")
-    if not session_id:
-        return RedirectResponse(url="/auth/login?return_url=/auth/admin/apps-ui")
-    
-    session_data = get_session(session_id)
-    if not session_data or 'access_token' not in session_data:
-        return RedirectResponse(url="/auth/login?return_url=/auth/admin/apps-ui")
-    
-    # Check admin access
-    is_admin, claims = check_admin_access(f"Bearer {session_data['access_token']}")
-    if not is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
-    
-    return templates.TemplateResponse("apps_admin.html", {"request": request})
+# Admin UI is integrated into the main interface at /admin/apps
 
 @app.get("/debug/app-storage")
 async def debug_app_storage(authorization: Optional[str] = Header(None)):
@@ -1411,6 +1395,54 @@ async def get_app_endpoints(client_id: str):
         raise HTTPException(status_code=404, detail="No endpoints found for app")
     return JSONResponse(endpoints)
 
+@app.get("/auth/admin/apps/{client_id}/endpoints")
+async def get_app_endpoints_admin(client_id: str, authorization: Optional[str] = Header(None)):
+    """Get endpoints for an app (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    endpoints = endpoints_registry.get_app_endpoints(client_id)
+    if not endpoints:
+        return JSONResponse({"endpoints": []})
+    
+    return JSONResponse(endpoints)
+
+@app.get("/auth/user/groups")
+async def get_user_groups(authorization: Optional[str] = Header(None)):
+    """Get current user's Azure AD groups"""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+    
+    token = authorization.replace("Bearer ", "")
+    
+    # Validate the token
+    is_valid, claims, error = jwt_manager.validate_token(token)
+    
+    if not is_valid:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {error}")
+    
+    # Get groups from claims
+    groups = claims.get('groups', [])
+    
+    # Transform groups into a consistent format
+    formatted_groups = []
+    for group in groups:
+        if isinstance(group, dict):
+            formatted_groups.append({
+                'id': group.get('id', group.get('@odata.id', str(group))),
+                'displayName': group.get('displayName', str(group))
+            })
+        else:
+            # If it's just a string (group ID), use it as both ID and display name
+            formatted_groups.append({
+                'id': str(group),
+                'displayName': str(group)
+            })
+    
+    return JSONResponse({"groups": formatted_groups})
+
 # Roles and mappings
 @app.put("/apps/{client_id}/roles")
 async def update_app_roles(
@@ -1591,6 +1623,124 @@ async def get_effective_identity(
     
     return JSONResponse(response)
 
+# Discovery endpoints
+@app.post("/discovery/endpoints/{client_id}")
+async def trigger_discovery(
+    client_id: str,
+    authorization: Optional[str] = Header(None),
+    force: bool = False
+):
+    """Trigger endpoint discovery for a specific app (admin only)"""
+    try:
+        is_admin, claims = check_admin_access(authorization)
+        
+        if not is_admin:
+            raise HTTPException(status_code=403, detail="Admin access required")
+    except Exception as e:
+        logger.error(f"Discovery auth check error: {e}")
+        raise HTTPException(status_code=500, detail=f"Auth check failed: {str(e)}")
+    
+    # Log the discovery trigger
+    audit_logger.log_action(
+        action=AuditAction.DISCOVERY_TRIGGERED,
+        details={
+            'app_client_id': client_id,
+            'triggered_by': claims.get('email'),
+            'force': force
+        }
+    )
+    
+    # Run discovery
+    try:
+        result = await discovery_service.discover_endpoints(client_id, force)
+        return JSONResponse(result)
+    except Exception as e:
+        logger.error(f"Discovery execution error for {client_id}: {str(e)}")
+        logger.error(f"Discovery error type: {type(e).__name__}")
+        import traceback
+        logger.error(f"Discovery traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Discovery failed: {str(e)}")
+
+@app.post("/discovery/endpoints")
+async def trigger_all_discovery(
+    authorization: Optional[str] = Header(None),
+    force: bool = False
+):
+    """Trigger endpoint discovery for all apps (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Log the discovery trigger
+    audit_logger.log_action(
+        action=AuditAction.DISCOVERY_TRIGGERED,
+        details={
+            'scope': 'all_apps',
+            'triggered_by': claims.get('email'),
+            'force': force
+        }
+    )
+    
+    # Run discovery for all apps
+    result = await discovery_service.discover_all_apps(force)
+    
+    return JSONResponse(result)
+
+@app.get("/discovery/status")
+async def get_discovery_status(
+    authorization: Optional[str] = Header(None),
+    client_id: Optional[str] = None
+):
+    """Get discovery status for apps (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    status = discovery_service.get_discovery_status(client_id)
+    
+    return JSONResponse(status)
+
+@app.get("/discovery/endpoints")
+async def discover_endpoints_service(
+    authorization: Optional[str] = Header(None),
+    app_id: Optional[str] = None
+):
+    """Discover available endpoints from registered apps (for service accounts)"""
+    if not authorization or not authorization.startswith('Bearer '):
+        raise HTTPException(status_code=401, detail="Invalid authorization")
+    
+    token = authorization.replace('Bearer ', '')
+    is_valid, claims, error = jwt_manager.validate_token(token)
+    
+    if not is_valid:
+        raise HTTPException(status_code=401, detail=error or "Invalid token")
+    
+    # Check if this is a service token
+    if claims.get('token_type') != 'service':
+        raise HTTPException(status_code=403, detail="Service token required")
+    
+    requesting_app = claims.get('client_id')
+    
+    # Return discoverable endpoints
+    if app_id:
+        # Get specific app endpoints
+        endpoints = endpoints_registry.get_app_endpoints(app_id)
+        if not endpoints:
+            raise HTTPException(status_code=404, detail="App not found or no endpoints registered")
+        return JSONResponse({
+            'app_id': app_id,
+            'endpoints': endpoints
+        })
+    else:
+        # Return all accessible endpoints
+        all_endpoints = endpoints_registry.get_all_endpoints()
+        return JSONResponse({
+            'total_apps': len(all_endpoints),
+            'apps': all_endpoints
+        })
+
 # Health check endpoint
 @app.get("/health")
 async def health_check():
@@ -1669,12 +1819,38 @@ def generate_token_with_iam_claims(user_info: dict, client_id: Optional[str] = N
     else:
         logger.warning(f"Unexpected groups data type: {type(groups_data)}")
     
-    # Get roles from the roles manager
+    # Get roles from both sources
+    user_roles = {}
+    
+    # 1. Get roles from the v2 roles manager (if any)
     try:
-        user_roles = roles_manager.get_user_roles(user_groups)
+        v2_roles = roles_manager.get_user_roles(user_groups)
+        user_roles.update(v2_roles)
     except Exception as e:
-        logger.warning(f"Error getting user roles: {e}")
-        user_roles = {}
+        logger.warning(f"Error getting v2 user roles: {e}")
+    
+    # 2. Get roles from app-specific role mappings
+    if client_id:
+        try:
+            app_roles = app_store.get_user_roles_for_app(client_id, user_groups)
+            logger.info(f"App roles for {client_id}: {app_roles}")
+            if app_roles:
+                user_roles[client_id] = app_roles
+        except Exception as e:
+            logger.warning(f"Error getting app-specific roles: {e}")
+    else:
+        # If no specific client_id, get roles for all apps
+        logger.info(f"Getting roles for all apps. User groups: {user_groups}")
+        for app_id in registered_apps.keys():
+            try:
+                app_roles = app_store.get_user_roles_for_app(app_id, user_groups)
+                if app_roles:
+                    logger.info(f"App roles for {app_id}: {app_roles}")
+                    user_roles[app_id] = app_roles
+            except Exception as e:
+                logger.warning(f"Error getting roles for app {app_id}: {e}")
+    
+    logger.info(f"Final user_roles dict: {user_roles}")
     
     # Build claims from scratch to avoid any dict/string confusion
     claims = {

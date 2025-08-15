@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 from datetime import datetime
 import secrets
 import hashlib
@@ -17,12 +17,16 @@ class RegisterAppRequest(BaseModel):
     description: str
     redirect_uris: List[str]
     owner_email: str
+    discovery_endpoint: Optional[str] = None  # URL where app exposes its endpoints
+    allow_discovery: bool = False  # Whether to allow endpoint discovery
     
 class UpdateAppRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     redirect_uris: Optional[List[str]] = None
     is_active: Optional[bool] = None
+    discovery_endpoint: Optional[str] = None
+    allow_discovery: Optional[bool] = None
 
 class AppResponse(BaseModel):
     client_id: str
@@ -33,6 +37,10 @@ class AppResponse(BaseModel):
     is_active: bool
     created_at: str
     updated_at: str
+    discovery_endpoint: Optional[str] = None
+    allow_discovery: bool = False
+    last_discovery_at: Optional[str] = None
+    discovery_status: Optional[str] = None
 
 class AppRegistrationResponse(BaseModel):
     app: AppResponse
@@ -45,7 +53,7 @@ class AppRoleMapping(BaseModel):
     created_at: str
 
 class SetRoleMappingRequest(BaseModel):
-    mappings: Dict[str, str]  # AD group -> app role
+    mappings: Dict[str, Union[str, List[str]]]  # AD group -> app role(s)
 
 # Storage file paths
 DATA_DIR = Path("app_data")
@@ -62,6 +70,27 @@ def load_data():
         if APPS_FILE.exists():
             with open(APPS_FILE, 'r') as f:
                 registered_apps = json.load(f)
+                
+            # Migrate existing apps to add new fields
+            needs_save = False
+            for client_id, app in registered_apps.items():
+                if 'discovery_endpoint' not in app:
+                    app['discovery_endpoint'] = None
+                    needs_save = True
+                if 'allow_discovery' not in app:
+                    app['allow_discovery'] = False
+                    needs_save = True
+                if 'last_discovery_at' not in app:
+                    app['last_discovery_at'] = None
+                    needs_save = True
+                if 'discovery_status' not in app:
+                    app['discovery_status'] = None
+                    needs_save = True
+            
+            # Save if we migrated any apps
+            if needs_save:
+                save_data()
+                logger.info("Migrated existing apps with discovery fields")
         else:
             registered_apps = {}
     except Exception as e:
@@ -91,14 +120,38 @@ def load_data():
 # Save data to files
 def save_data():
     try:
-        with open(APPS_FILE, 'w') as f:
+        # Log what we're about to save
+        logger.debug(f"Saving {len(registered_apps)} registered apps")
+        
+        # Ensure directory exists
+        DATA_DIR.mkdir(exist_ok=True)
+        
+        # Write to temporary files first
+        temp_apps = APPS_FILE.with_suffix('.tmp')
+        temp_secrets = SECRETS_FILE.with_suffix('.tmp')
+        temp_mappings = ROLE_MAPPINGS_FILE.with_suffix('.tmp')
+        
+        with open(temp_apps, 'w') as f:
             json.dump(registered_apps, f, indent=2)
-        with open(SECRETS_FILE, 'w') as f:
+            f.write('\n')  # Add trailing newline
+        
+        with open(temp_secrets, 'w') as f:
             json.dump(app_secrets, f, indent=2)
-        with open(ROLE_MAPPINGS_FILE, 'w') as f:
+            f.write('\n')
+            
+        with open(temp_mappings, 'w') as f:
             json.dump(app_role_mappings, f, indent=2)
+            f.write('\n')
+        
+        # Atomically replace the files
+        temp_apps.replace(APPS_FILE)
+        temp_secrets.replace(SECRETS_FILE)
+        temp_mappings.replace(ROLE_MAPPINGS_FILE)
+        
+        logger.debug("Data saved successfully")
     except Exception as e:
-        logger.error(f"Error saving data: {e}")
+        logger.error(f"Error saving data: {e}", exc_info=True)
+        raise  # Re-raise to make errors visible
 
 # Initialize data
 registered_apps: Dict[str, dict] = {}
@@ -138,7 +191,11 @@ class AppRegistrationStore:
             "owner_email": request.owner_email,
             "is_active": True,
             "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat()
+            "updated_at": datetime.utcnow().isoformat(),
+            "discovery_endpoint": request.discovery_endpoint,
+            "allow_discovery": request.allow_discovery,
+            "last_discovery_at": None,
+            "discovery_status": None
         }
         
         # Store app data and hashed secret
@@ -174,6 +231,10 @@ class AppRegistrationStore:
             app["redirect_uris"] = request.redirect_uris
         if request.is_active is not None:
             app["is_active"] = request.is_active
+        if request.discovery_endpoint is not None:
+            app["discovery_endpoint"] = request.discovery_endpoint
+        if request.allow_discovery is not None:
+            app["allow_discovery"] = request.allow_discovery
         
         app["updated_at"] = datetime.utcnow().isoformat()
         
@@ -236,7 +297,7 @@ class AppRegistrationStore:
         return True
     
     # Role mapping methods
-    def set_role_mappings(self, client_id: str, mappings: Dict[str, str], created_by: str) -> bool:
+    def set_role_mappings(self, client_id: str, mappings: Dict[str, Union[str, List[str]]], created_by: str) -> bool:
         """Set AD group to app role mappings"""
         if client_id not in registered_apps:
             return False
@@ -244,19 +305,26 @@ class AppRegistrationStore:
         # Clear existing mappings and set new ones
         app_role_mappings[client_id] = []
         
-        for ad_group, app_role in mappings.items():
-            mapping = {
-                "ad_group": ad_group,
-                "app_role": app_role,
-                "created_by": created_by,
-                "created_at": datetime.utcnow().isoformat()
-            }
-            app_role_mappings[client_id].append(mapping)
+        for ad_group, app_roles in mappings.items():
+            # Handle both single role (string) and multiple roles (list)
+            if isinstance(app_roles, str):
+                app_roles = [app_roles]
+            
+            # Create a mapping for each role
+            for app_role in app_roles:
+                mapping = {
+                    "ad_group": ad_group,
+                    "app_role": app_role,
+                    "created_by": created_by,
+                    "created_at": datetime.utcnow().isoformat()
+                }
+                app_role_mappings[client_id].append(mapping)
         
         # Save to persistent storage
         save_data()
         
-        logger.info(f"Set {len(mappings)} role mappings for app: {client_id}")
+        total_mappings = sum(len(roles) if isinstance(roles, list) else 1 for roles in mappings.values())
+        logger.info(f"Set {total_mappings} role mappings for app: {client_id}")
         return True
     
     def get_role_mappings(self, client_id: str) -> List[dict]:

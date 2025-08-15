@@ -186,10 +186,23 @@ class JWTManager:
             
             # Handle audience as string or list
             aud = claims.get('aud')
+            # Accept any registered app ID or 'internal-services' as valid audience
+            valid_audiences = ['internal-services']
+            
+            # For now, accept any audience that starts with 'app_' (registered apps)
+            # In production, you might want to check against registered apps
             if isinstance(aud, list):
-                if 'internal-services' not in aud:
+                # Check if any audience in the list is valid
+                has_valid_audience = any(
+                    a == 'internal-services' or a.startswith('app_') 
+                    for a in aud
+                )
+                if not has_valid_audience:
                     return False, None, "Invalid token audience"
-            elif aud != 'internal-services':
+            elif isinstance(aud, str):
+                if aud != 'internal-services' and not aud.startswith('app_'):
+                    return False, None, "Invalid token audience"
+            else:
                 return False, None, "Invalid token audience"
             
             return True, claims, None

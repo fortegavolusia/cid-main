@@ -105,6 +105,45 @@ class AppEndpointsRegistry:
         """Get all registered endpoints"""
         return self.endpoints
     
+    def upsert_endpoints(self, app_client_id: str, endpoints: List[Dict], updated_by: str = "discovery-service") -> Dict:
+        """Upsert endpoints from discovery (merge with existing)"""
+        current = self.endpoints.get(app_client_id, {})
+        current_endpoints = current.get('endpoints', [])
+        
+        # Create a map of existing endpoints by method+path
+        existing_map = {
+            f"{e['method']}:{e['path']}": e 
+            for e in current_endpoints 
+            if not e.get('discovered', False)  # Keep manually added endpoints
+        }
+        
+        # Add discovered endpoints
+        for endpoint in endpoints:
+            key = f"{endpoint['method']}:{endpoint['path']}"
+            existing_map[key] = endpoint
+        
+        # Convert back to list
+        merged_endpoints = list(existing_map.values())
+        
+        # Update with merged data
+        version = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        self.endpoints[app_client_id] = {
+            'endpoints': merged_endpoints,
+            'version': version,
+            'updated_at': datetime.utcnow().isoformat(),
+            'updated_by': updated_by,
+            'has_discovered': any(e.get('discovered', False) for e in merged_endpoints)
+        }
+        
+        self._save_endpoints()
+        
+        return {
+            'app_client_id': app_client_id,
+            'endpoints_count': len(merged_endpoints),
+            'discovered_count': sum(1 for e in merged_endpoints if e.get('discovered', False)),
+            'version': version
+        }
+    
     def delete_app_endpoints(self, app_client_id: str) -> bool:
         """Delete endpoints for an app"""
         if app_client_id in self.endpoints:
