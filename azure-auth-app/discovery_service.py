@@ -27,7 +27,7 @@ class EndpointMetadata(BaseModel):
     tags: Optional[List[str]] = []
 
 class DiscoveryResponse(BaseModel):
-    version: str = "1.0"
+    version: str = "2.0"
     app_id: str
     endpoints: List[EndpointMetadata]
     last_updated: Optional[str] = None

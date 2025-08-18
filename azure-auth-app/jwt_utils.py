@@ -129,24 +129,28 @@ class JWTManager:
                 # Already strings or other format
                 processed_groups = groups
                 
-            # For v2.0 tokens, most claims are already set
-            if user_info.get('token_version') == '2.0':
-                # Just update with any missing standard claims
-                claims.update(user_info)
+            # Always use v2.0 or higher token format
+            token_version = user_info.get('token_version', '2.0')  # Default to v2.0
+            
+            # For v2.0 and higher tokens, preserve all claims
+            claims.update(user_info)
+            # Ensure token_version is set (minimum v2.0)
+            if token_version not in ['2.0', '3.0']:
+                logger.warning(f"Invalid token version {token_version}, defaulting to v2.0")
+                claims['token_version'] = '2.0'
             else:
-                # Legacy v1.0 token format
-                claims.update({
-                    'email': user_info.get('email'),
-                    'name': user_info.get('name'),
-                    'groups': processed_groups,
-                    'token_version': '1.0',
-                })
+                claims['token_version'] = token_version
         elif token_type == 'refresh':
             # Refresh tokens have minimal claims
             claims.update({
-                'token_version': '1.0',
+                'token_version': '2.0',
                 'token_use': 'refresh',
             })
+        elif token_type == 'service':
+            # Service tokens - preserve all claims
+            token_version = user_info.get('token_version', '2.0')
+            claims.update(user_info)
+            claims['token_version'] = token_version
         
         # Sign token
         header = {'alg': 'RS256', 'kid': self.kid}

@@ -1731,7 +1731,7 @@ async def get_effective_identity(
             "iss": claims.get('iss'),
             "iat": claims.get('iat'),
             "exp": claims.get('exp'),
-            "ver": claims.get('token_version', '1.0')
+            "ver": claims.get('token_version', '2.0')
         }
     }
     
@@ -2219,7 +2219,7 @@ def generate_token_with_iam_claims(user_info: dict, client_id: Optional[str] = N
         'attrs': {
             'tenant': user_info.get('tenant_id')
         },
-        'token_version': '3.0'  # New version with field-level permissions
+        'token_version': '2.0'  # Using v2.0 as standard
     }
     
     # Add any app-specific claims if provided
