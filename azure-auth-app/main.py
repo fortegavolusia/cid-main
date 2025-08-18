@@ -1965,7 +1965,7 @@ async def create_permission_role(
         raise HTTPException(status_code=403, detail="Admin access required")
     
     # Create role in permission registry
-    valid_perms = permission_registry.create_role(client_id, role_name, set(permissions))
+    valid_perms = permission_registry.create_role(client_id, role_name, set(permissions), description)
     
     # Log the action
     audit_logger.log_action(
@@ -2022,13 +2022,61 @@ async def list_roles(
         raise HTTPException(status_code=403, detail="Admin access required")
     
     app_roles = permission_registry.role_permissions.get(client_id, {})
+    app_metadata = permission_registry.role_metadata.get(client_id, {})
+    
+    # Combine permissions and metadata
+    roles_with_metadata = {}
+    for role_name, perms in app_roles.items():
+        roles_with_metadata[role_name] = {
+            "permissions": list(perms),
+            "metadata": app_metadata.get(role_name, {})
+        }
     
     return JSONResponse({
         "app_id": client_id,
-        "roles": {
-            role_name: list(perms) for role_name, perms in app_roles.items()
-        },
+        "roles": roles_with_metadata,
         "count": len(app_roles)
+    })
+
+@app.put("/permissions/{client_id}/roles/{role_name}")
+async def update_permission_role(
+    client_id: str,
+    role_name: str,
+    authorization: Optional[str] = Header(None),
+    permissions: List[str] = Body(...),
+    description: Optional[str] = Body(None)
+):
+    """Update an existing role's permissions (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Check if role exists
+    if client_id not in permission_registry.role_permissions or \
+       role_name not in permission_registry.role_permissions[client_id]:
+        raise HTTPException(status_code=404, detail="Role not found")
+    
+    # Update role in permission registry (create_role method handles updates)
+    valid_perms = permission_registry.create_role(client_id, role_name, set(permissions), description)
+    
+    # Log the action
+    audit_logger.log_action(
+        action=AuditAction.ROLE_UPDATED,
+        details={
+            'app_client_id': client_id,
+            'role_name': role_name,
+            'permissions_count': len(valid_perms),
+            'updated_by': claims.get('email')
+        }
+    )
+    
+    return JSONResponse({
+        "app_id": client_id,
+        "role_name": role_name,
+        "permissions": list(valid_perms),
+        "valid_count": len(valid_perms),
+        "invalid_count": len(permissions) - len(valid_perms)
     })
 
 @app.delete("/permissions/{client_id}/roles/{role_name}")

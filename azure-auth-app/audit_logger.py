@@ -23,6 +23,7 @@ class AuditAction(Enum):
     ROLES_UPDATED = "roles.updated"
     ROLE_MAPPINGS_UPDATED = "role_mappings.updated"
     ROLE_CREATED = "role.created"
+    ROLE_UPDATED = "role.updated"
     ROLE_DELETED = "role.deleted"
     
     # Policy

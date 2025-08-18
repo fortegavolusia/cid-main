@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 # Storage paths
 PERMISSIONS_DB = Path("app_data/permissions_registry.json")
 ROLE_PERMISSIONS_DB = Path("app_data/role_permissions.json")
+ROLE_METADATA_DB = Path("app_data/role_metadata.json")
 
 
 class PermissionRegistry:
@@ -26,6 +27,7 @@ class PermissionRegistry:
     def __init__(self):
         self.permissions: Dict[str, Dict[str, PermissionMetadata]] = {}  # app_id -> permission_key -> metadata
         self.role_permissions: Dict[str, Dict[str, Set[str]]] = {}  # app_id -> role_name -> permission_keys
+        self.role_metadata: Dict[str, Dict[str, Dict]] = {}  # app_id -> role_name -> metadata (description, created_at, etc.)
         self._load_registry()
     
     def _load_registry(self):
@@ -48,11 +50,19 @@ class PermissionRegistry:
                         self.role_permissions[app_id] = {
                             role: set(perms) for role, perms in roles.items()
                         }
+            
+            # Load role metadata
+            if ROLE_METADATA_DB.exists():
+                with open(ROLE_METADATA_DB, 'r') as f:
+                    self.role_metadata = json.load(f)
+            else:
+                self.role_metadata = {}
                         
         except Exception as e:
             logger.error(f"Error loading permission registry: {e}")
             self.permissions = {}
             self.role_permissions = {}
+            self.role_metadata = {}
     
     def _save_registry(self):
         """Save permissions to storage"""
@@ -79,6 +89,10 @@ class PermissionRegistry:
             
             with open(ROLE_PERMISSIONS_DB, 'w') as f:
                 json.dump(role_data, f, indent=2)
+            
+            # Save role metadata
+            with open(ROLE_METADATA_DB, 'w') as f:
+                json.dump(self.role_metadata, f, indent=2, default=str)
                 
         except Exception as e:
             logger.error(f"Error saving permission registry: {e}")
@@ -97,10 +111,13 @@ class PermissionRegistry:
         """Get all permissions for an app"""
         return self.permissions.get(app_id, {})
     
-    def create_role(self, app_id: str, role_name: str, permissions: Set[str]):
-        """Create or update a role with specific permissions"""
+    def create_role(self, app_id: str, role_name: str, permissions: Set[str], description: str = None):
+        """Create or update a role with specific permissions and metadata"""
         if app_id not in self.role_permissions:
             self.role_permissions[app_id] = {}
+        
+        if app_id not in self.role_metadata:
+            self.role_metadata[app_id] = {}
         
         # Validate permissions exist
         valid_perms = set()
@@ -119,14 +136,31 @@ class PermissionRegistry:
                 logger.warning(f"Permission {perm} not found for app {app_id}")
         
         self.role_permissions[app_id][role_name] = valid_perms
+        
+        # Store or update metadata
+        if role_name not in self.role_metadata[app_id]:
+            self.role_metadata[app_id][role_name] = {
+                'created_at': datetime.now().isoformat(),
+                'description': description
+            }
+        else:
+            # Update existing metadata
+            self.role_metadata[app_id][role_name]['updated_at'] = datetime.now().isoformat()
+            if description is not None:
+                self.role_metadata[app_id][role_name]['description'] = description
+        
         self._save_registry()
         
-        logger.info(f"Created role {role_name} with {len(valid_perms)} permissions for app {app_id}")
+        logger.info(f"Created/updated role {role_name} with {len(valid_perms)} permissions for app {app_id}")
         return valid_perms
     
     def get_role_permissions(self, app_id: str, role_name: str) -> Set[str]:
         """Get permissions for a specific role"""
         return self.role_permissions.get(app_id, {}).get(role_name, set())
+    
+    def get_role_metadata(self, app_id: str, role_name: str) -> Dict:
+        """Get metadata for a specific role"""
+        return self.role_metadata.get(app_id, {}).get(role_name, {})
     
     def get_user_permissions(self, app_id: str, user_roles: List[str]) -> Set[str]:
         """Get all permissions for a user based on their roles"""

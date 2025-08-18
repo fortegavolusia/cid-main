@@ -3486,6 +3486,37 @@
             }
         }
         
+        async function editRole(clientId, roleName, existingPermissions, existingMetadata) {
+            // First, load existing AD group mappings for this role
+            try {
+                const accessToken = localStorage.getItem('access_token');
+                const response = await fetch(`/auth/admin/apps/${clientId}/role-mappings`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                
+                let existingGroups = [];
+                if (response.ok) {
+                    const data = await response.json();
+                    // Convert list format to find groups mapped to this specific role
+                    const mappingsList = data.mappings || [];
+                    mappingsList.forEach(mapping => {
+                        if (mapping.app_role === roleName && !existingGroups.includes(mapping.ad_group)) {
+                            existingGroups.push(mapping.ad_group);
+                        }
+                    });
+                }
+                
+                // Use the role builder with existing data for editing
+                showRoleBuilder(clientId, roleName, existingPermissions, existingGroups, existingMetadata);
+            } catch (error) {
+                console.error('Error loading role mappings:', error);
+                // Continue with edit even if mappings fail to load
+                showRoleBuilder(clientId, roleName, existingPermissions, [], existingMetadata);
+            }
+        }
+        
         async function manageRoles(clientId) {
             try {
                 const accessToken = localStorage.getItem('access_token');
@@ -3551,7 +3582,10 @@
                 if (Object.keys(roles).length === 0) {
                     rolesList.innerHTML = '<p style="color: #666;">No custom roles defined yet. Create one to get started!</p>';
                 } else {
-                    for (const [roleName, permissions] of Object.entries(roles)) {
+                    for (const [roleName, roleData] of Object.entries(roles)) {
+                        // Handle both old and new format
+                        const permissions = Array.isArray(roleData) ? roleData : (roleData.permissions || []);
+                        const metadata = Array.isArray(roleData) ? {} : (roleData.metadata || {});
                         const roleCard = document.createElement('div');
                         roleCard.style.border = '1px solid #ddd';
                         roleCard.style.borderRadius = '4px';
@@ -3577,6 +3611,17 @@
                         roleHeader.appendChild(permCount);
                         
                         roleCard.appendChild(roleHeader);
+                        
+                        // Description if exists
+                        if (metadata.description) {
+                            const descDiv = document.createElement('div');
+                            descDiv.style.fontSize = '13px';
+                            descDiv.style.color = '#666';
+                            descDiv.style.fontStyle = 'italic';
+                            descDiv.style.marginBottom = '8px';
+                            descDiv.textContent = metadata.description;
+                            roleCard.appendChild(descDiv);
+                        }
                         
                         // Permission summary
                         const permSummary = document.createElement('div');
@@ -3607,13 +3652,13 @@
                         actions.style.display = 'flex';
                         actions.style.gap = '10px';
                         
-                        const viewBtn = document.createElement('button');
-                        viewBtn.textContent = 'View Details';
-                        viewBtn.className = 'btn btn-sm';
-                        viewBtn.style.backgroundColor = '#17a2b8';
-                        viewBtn.style.color = 'white';
-                        viewBtn.onclick = () => showRoleDetails(clientId, roleName, permissions);
-                        actions.appendChild(viewBtn);
+                        const editBtn = document.createElement('button');
+                        editBtn.textContent = 'Edit';
+                        editBtn.className = 'btn btn-sm';
+                        editBtn.style.backgroundColor = '#17a2b8';
+                        editBtn.style.color = 'white';
+                        editBtn.onclick = () => editRole(clientId, roleName, permissions, metadata);
+                        actions.appendChild(editBtn);
                         
                         const deleteBtn = document.createElement('button');
                         deleteBtn.textContent = 'Delete';
@@ -3646,56 +3691,6 @@
             }
         }
         
-        function showRoleDetails(clientId, roleName, permissions) {
-            // Create modal for role details
-            const modal = document.createElement('div');
-            modal.className = 'modal-overlay';
-            modal.onclick = (e) => {
-                if (e.target === modal) {
-                    document.body.removeChild(modal);
-                }
-            };
-            
-            const content = document.createElement('div');
-            content.className = 'modal-content';
-            content.style.maxWidth = '700px';
-            content.style.maxHeight = '80vh';
-            content.style.overflow = 'auto';
-            
-            const header = document.createElement('h3');
-            header.textContent = `Role: ${roleName}`;
-            header.style.marginBottom = '15px';
-            content.appendChild(header);
-            
-            const permList = document.createElement('div');
-            permList.style.maxHeight = '400px';
-            permList.style.overflowY = 'auto';
-            permList.style.border = '1px solid #ddd';
-            permList.style.borderRadius = '4px';
-            permList.style.padding = '10px';
-            
-            // Sort and display permissions
-            const sortedPerms = permissions.sort();
-            sortedPerms.forEach(perm => {
-                const permItem = document.createElement('div');
-                permItem.style.padding = '5px';
-                permItem.style.borderBottom = '1px solid #eee';
-                permItem.innerHTML = `<code style="background: #f5f5f5; padding: 2px 5px; border-radius: 3px;">${perm}</code>`;
-                permList.appendChild(permItem);
-            });
-            
-            content.appendChild(permList);
-            
-            const closeBtn = document.createElement('button');
-            closeBtn.textContent = 'Close';
-            closeBtn.className = 'btn btn-secondary';
-            closeBtn.style.marginTop = '15px';
-            closeBtn.onclick = () => document.body.removeChild(modal);
-            content.appendChild(closeBtn);
-            
-            modal.appendChild(content);
-            document.body.appendChild(modal);
-        }
         
         async function deleteRole(clientId, roleName) {
             if (!confirm(`Are you sure you want to delete the role "${roleName}"?`)) {
@@ -3842,7 +3837,7 @@
             }
         };
         
-        async function showRoleBuilder(clientId) {
+        async function showRoleBuilder(clientId, editRoleName = null, editPermissions = null, existingGroups = null, existingMetadata = null) {
             try {
                 const accessToken = localStorage.getItem('access_token');
                 
@@ -3878,7 +3873,7 @@
                 
                 // Header
                 const header = document.createElement('h2');
-                header.textContent = 'Create Custom Role';
+                header.textContent = editRoleName ? `Edit Role: ${editRoleName}` : 'Create Custom Role';
                 header.style.marginBottom = '20px';
                 content.appendChild(header);
                 
@@ -3888,7 +3883,9 @@
                 nameGroup.innerHTML = `
                     <label style="display: block; margin-bottom: 5px; font-weight: 500;">Role Name:</label>
                     <input type="text" id="roleName" placeholder="e.g., viewer, editor, analyst" 
-                           style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                           value="${editRoleName || ''}"
+                           ${editRoleName ? 'readonly' : ''}
+                           style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; ${editRoleName ? 'background-color: #f5f5f5;' : ''}">
                 `;
                 content.appendChild(nameGroup);
                 
@@ -3898,9 +3895,12 @@
                 descGroup.innerHTML = `
                     <label style="display: block; margin-bottom: 5px; font-weight: 500;">Description:</label>
                     <textarea id="roleDescription" placeholder="Describe the purpose and scope of this role" 
-                              style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-height: 60px;"></textarea>
+                              style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-height: 60px;">${existingMetadata && existingMetadata.description ? existingMetadata.description : ''}</textarea>
                 `;
                 content.appendChild(descGroup);
+                
+                // Initialize AD group mappings
+                window.adGroupMappings = {};
                 
                 // AD Groups mapping
                 const adGroupsDiv = document.createElement('div');
@@ -4031,6 +4031,19 @@
                 
                 content.appendChild(permTree);
                 
+                // If editing, pre-select existing permissions
+                if (editPermissions && editPermissions.length > 0) {
+                    setTimeout(() => {
+                        editPermissions.forEach(permKey => {
+                            const checkbox = document.querySelector(`.permission-checkbox[data-permission="${permKey}"]`);
+                            if (checkbox) {
+                                checkbox.checked = true;
+                            }
+                        });
+                        updateSelectionCounts();
+                    }, 100);
+                }
+                
                 // Selection summary
                 const summary = document.createElement('div');
                 summary.id = 'selectionSummary';
@@ -4048,7 +4061,7 @@
                 buttonContainer.style.justifyContent = 'flex-end';
                 
                 const createBtn = document.createElement('button');
-                createBtn.textContent = 'Create Role';
+                createBtn.textContent = editRoleName ? 'Update Role' : 'Create Role';
                 createBtn.className = 'btn btn-primary';
                 createBtn.style.backgroundColor = '#4CAF50';
                 createBtn.onclick = async () => {
@@ -4068,9 +4081,14 @@
                     }
                     
                     try {
-                        // Create the role first
-                        const response = await fetch(`/permissions/${clientId}/roles`, {
-                            method: 'POST',
+                        // Create or update the role
+                        const url = editRoleName 
+                            ? `/permissions/${clientId}/roles/${encodeURIComponent(editRoleName)}`
+                            : `/permissions/${clientId}/roles`;
+                        const method = editRoleName ? 'PUT' : 'POST';
+                        
+                        const response = await fetch(url, {
+                            method: method,
                             headers: {
                                 'Authorization': `Bearer ${accessToken}`,
                                 'Content-Type': 'application/json'
@@ -4083,9 +4101,10 @@
                         });
                         
                         if (response.ok) {
-                            // Now map AD groups to this role if any were specified
-                            const selectedGroups = Object.keys(window.adGroupMappings);
-                            if (selectedGroups.length > 0) {
+                            // Now map AD groups to this role
+                            const selectedGroups = Object.keys(window.adGroupMappings || {});
+                            // Always update mappings when editing (to handle removals), or when creating with groups
+                            if (editRoleName || selectedGroups.length > 0) {
                                 // First get existing mappings
                                 const existingResponse = await fetch(`/auth/admin/apps/${clientId}/role-mappings`, {
                                     headers: {
@@ -4096,10 +4115,34 @@
                                 let existingMappings = {};
                                 if (existingResponse.ok) {
                                     const data = await existingResponse.json();
-                                    existingMappings = data.mappings || {};
+                                    // Convert list format to dictionary format
+                                    const mappingsList = data.mappings || [];
+                                    mappingsList.forEach(mapping => {
+                                        if (!existingMappings[mapping.ad_group]) {
+                                            existingMappings[mapping.ad_group] = [];
+                                        }
+                                        if (!existingMappings[mapping.ad_group].includes(mapping.app_role)) {
+                                            existingMappings[mapping.ad_group].push(mapping.app_role);
+                                        }
+                                    });
                                 }
                                 
-                                // Merge with new mappings (use display names as keys)
+                                // When editing, first remove this role from all groups, then add to selected groups
+                                if (editRoleName) {
+                                    // Remove this role from all AD groups
+                                    for (const [group, roles] of Object.entries(existingMappings)) {
+                                        const roleIndex = roles.indexOf(roleName);
+                                        if (roleIndex > -1) {
+                                            roles.splice(roleIndex, 1);
+                                            // Remove the group entirely if it has no roles
+                                            if (roles.length === 0) {
+                                                delete existingMappings[group];
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Add role to selected groups
                                 selectedGroups.forEach(displayName => {
                                     if (!existingMappings[displayName]) {
                                         existingMappings[displayName] = [];
@@ -4120,20 +4163,39 @@
                                 });
                                 
                                 if (mappingResponse.ok) {
-                                    showAppMessage('success', `Role "${roleName}" created with ${selectedPerms.length} permissions and mapped to ${selectedGroups.length} Azure AD groups`);
+                                    const action = editRoleName ? 'updated' : 'created';
+                                    showAppMessage('success', `Role "${roleName}" ${action} with ${selectedPerms.length} permissions and mapped to ${selectedGroups.length} Azure AD groups`);
                                 } else {
-                                    showAppMessage('warning', `Role "${roleName}" created but AD group mapping failed. You can map groups later.`);
+                                    const action = editRoleName ? 'updated' : 'created';
+                                    showAppMessage('warning', `Role "${roleName}" ${action} but AD group mapping failed. You can map groups later.`);
                                 }
                             } else {
-                                showAppMessage('success', `Role "${roleName}" created with ${selectedPerms.length} permissions`);
+                                const message = editRoleName 
+                                    ? `Role "${roleName}" updated with ${selectedPerms.length} permissions`
+                                    : `Role "${roleName}" created with ${selectedPerms.length} permissions`;
+                                showAppMessage('success', message);
                             }
                             document.body.removeChild(modal);
+                            // If editing, close ALL modals and reopen the roles management
+                            if (editRoleName) {
+                                // Close all modal overlays
+                                const allModals = document.querySelectorAll('.modal-overlay');
+                                allModals.forEach(m => {
+                                    if (m && m.parentNode) {
+                                        m.parentNode.removeChild(m);
+                                    }
+                                });
+                                // Reopen the roles management after a brief delay
+                                setTimeout(() => manageRoles(clientId), 100);
+                            }
                         } else {
                             const error = await response.json();
-                            showAppMessage('error', error.detail || 'Failed to create role');
+                            const errorMsg = editRoleName ? 'Failed to update role' : 'Failed to create role';
+                            showAppMessage('error', error.detail || errorMsg);
                         }
                     } catch (error) {
-                        showAppMessage('error', 'Error creating role: ' + error.message);
+                        const errorAction = editRoleName ? 'updating' : 'creating';
+                        showAppMessage('error', `Error ${errorAction} role: ` + error.message);
                     }
                 };
                 buttonContainer.appendChild(createBtn);
@@ -4151,6 +4213,28 @@
                 
                 // Initialize AD groups list
                 window.adGroupMappings = {};
+                
+                // If editing, pre-populate existing AD groups (after modal is in DOM)
+                if (existingGroups && existingGroups.length > 0) {
+                    const adGroupsList = document.getElementById('adGroupsList');
+                    if (adGroupsList) {
+                        existingGroups.forEach(groupName => {
+                            window.adGroupMappings[groupName] = groupName;
+                            const groupTag = document.createElement('div');
+                            groupTag.style.display = 'inline-block';
+                            groupTag.style.margin = '2px';
+                            groupTag.style.padding = '4px 8px';
+                            groupTag.style.backgroundColor = '#e3f2fd';
+                            groupTag.style.border = '1px solid #2196f3';
+                            groupTag.style.borderRadius = '12px';
+                            groupTag.innerHTML = `
+                                ${groupName}
+                                <span onclick="removeAdGroupMapping('${groupName}')" style="margin-left: 5px; cursor: pointer; color: #666;">&times;</span>
+                            `;
+                            adGroupsList.appendChild(groupTag);
+                        });
+                    }
+                }
                 updateAdGroupsList();
                 
                 // Define helper functions in window scope
