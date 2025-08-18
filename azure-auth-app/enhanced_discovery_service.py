@@ -18,7 +18,8 @@ from discovery_models import (
     generate_permission_key, extract_resource_from_path,
     extract_action_from_method, FieldType
 )
-from app_registration import registered_apps, save_data, load_data
+import app_registration
+from app_registration import save_data, load_data
 from jwt_utils import JWTManager
 
 logger = logging.getLogger(__name__)
@@ -69,7 +70,7 @@ class EnhancedDiscoveryService:
             Discovery result with generated permissions
         """
         load_data()
-        app = registered_apps.get(client_id)
+        app = app_registration.registered_apps.get(client_id)
         
         if not app:
             return {
@@ -132,11 +133,19 @@ class EnhancedDiscoveryService:
             self.permissions_cache[client_id] = permissions
             self._save_permissions()
             
-            # Update app status
-            app["last_discovery_at"] = datetime.utcnow().isoformat()
-            app["discovery_status"] = "success"
-            app["discovery_version"] = discovery_data.version
+            # Update app status in the global registered_apps
+            logger.info(f"Updating discovery status for {client_id}")
+            logger.debug(f"Before update - discovery_status: {app_registration.registered_apps[client_id].get('discovery_status')}")
+            
+            app_registration.registered_apps[client_id]["last_discovery_at"] = datetime.utcnow().isoformat()
+            app_registration.registered_apps[client_id]["discovery_status"] = "success"
+            app_registration.registered_apps[client_id]["discovery_version"] = discovery_data.version
+            
+            logger.debug(f"After update - discovery_status: {app_registration.registered_apps[client_id].get('discovery_status')}")
+            logger.debug(f"After update - last_discovery_at: {app_registration.registered_apps[client_id].get('last_discovery_at')}")
+            
             save_data()
+            logger.info(f"Discovery status saved for {client_id}")
             
             # Store field metadata separately for UI
             await self._store_field_metadata(client_id, discovery_data)
@@ -153,7 +162,7 @@ class EnhancedDiscoveryService:
             
         except httpx.ConnectError as e:
             logger.error(f"Discovery connection error for {client_id}: {e}")
-            app["discovery_status"] = "connection_error"
+            app_registration.registered_apps[client_id]["discovery_status"] = "connection_error"
             save_data()
             error_msg = str(e)
             # Check if it's a network connectivity issue
@@ -170,7 +179,7 @@ class EnhancedDiscoveryService:
             }
         except httpx.TimeoutException:
             logger.error(f"Discovery timeout for {client_id}")
-            app["discovery_status"] = "timeout"
+            app_registration.registered_apps[client_id]["discovery_status"] = "timeout"
             save_data()
             return {
                 "status": "error",
@@ -179,7 +188,7 @@ class EnhancedDiscoveryService:
             }
         except Exception as e:
             logger.error(f"Discovery error for {client_id}: {e}", exc_info=True)
-            app["discovery_status"] = "error"
+            app_registration.registered_apps[client_id]["discovery_status"] = "error"
             save_data()
             return {
                 "status": "error",

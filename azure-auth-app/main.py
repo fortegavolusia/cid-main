@@ -1481,11 +1481,33 @@ async def update_app_endpoints(
 
 @app.get("/apps/{client_id}/endpoints")
 async def get_app_endpoints(client_id: str):
-    """Get endpoints for an app"""
+    """Get endpoints for an app including discovered field metadata"""
+    # Try to get from enhanced discovery metadata first
+    try:
+        # Load field metadata if available
+        from pathlib import Path
+        import json
+        
+        metadata_file = Path("app_data/field_metadata.json")
+        if metadata_file.exists():
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
+                if client_id in metadata:
+                    return JSONResponse({
+                        "source": "discovery",
+                        "app_name": metadata[client_id].get("app_name"),
+                        "last_updated": metadata[client_id].get("last_updated"),
+                        "endpoints": metadata[client_id].get("endpoints", []),
+                        "services": metadata[client_id].get("services", [])
+                    })
+    except Exception as e:
+        logger.warning(f"Could not load field metadata for {client_id}: {e}")
+    
+    # Fallback to registry endpoints
     endpoints = endpoints_registry.get_app_endpoints(client_id)
     if not endpoints:
         raise HTTPException(status_code=404, detail="No endpoints found for app")
-    return JSONResponse(endpoints)
+    return JSONResponse({"source": "registry", "endpoints": endpoints})
 
 @app.get("/auth/admin/apps/{client_id}/endpoints")
 async def get_app_endpoints_admin(client_id: str, authorization: Optional[str] = Header(None)):
@@ -1742,9 +1764,9 @@ async def trigger_discovery(
         }
     )
     
-    # Run discovery
+    # Run enhanced discovery with field-level metadata
     try:
-        result = await discovery_service.discover_endpoints(client_id, force)
+        result = await enhanced_discovery.discover_with_fields(client_id, force)
         return JSONResponse(result)
     except Exception as e:
         logger.error(f"Discovery execution error for {client_id}: {str(e)}")

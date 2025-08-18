@@ -123,6 +123,11 @@ def save_data():
         # Log what we're about to save
         logger.debug(f"Saving {len(registered_apps)} registered apps")
         
+        # Debug: Check specific app before saving
+        if 'app_8f777f620aac48d1' in registered_apps:
+            logger.debug(f"App app_8f777f620aac48d1 discovery_status before save: {registered_apps['app_8f777f620aac48d1'].get('discovery_status')}")
+            logger.debug(f"App app_8f777f620aac48d1 last_discovery_at before save: {registered_apps['app_8f777f620aac48d1'].get('last_discovery_at')}")
+        
         # Ensure directory exists
         DATA_DIR.mkdir(exist_ok=True)
         

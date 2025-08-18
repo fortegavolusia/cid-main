@@ -164,6 +164,7 @@ async def discover_endpoints(version: str = "2.0"):
     # Return v2 format with field-level metadata
     return {
         "version": "2.0",
+        "app_id": CLIENT_ID,  # Add the required app_id field
         "app_name": "FastAPI Test App",
         "app_description": "Test application for CIDS integration",
         "last_updated": datetime.utcnow().isoformat(),
