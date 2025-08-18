@@ -3211,21 +3211,86 @@
                 
                 if (response.ok) {
                     const result = await response.json();
+                    console.log('Registration response:', result); // Debug log
                     
-                    // Show success with credentials
-                    const message = `
-                        <div style="background: #d4edda; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                            <h4 style="color: #155724; margin-top: 0;">App Registered Successfully!</h4>
-                            <p style="color: #155724;"><strong>Important:</strong> Save these credentials now. The client secret will not be shown again.</p>
-                            <p><strong>Client ID:</strong> <code style="background: #fff; padding: 2px 5px;">${result.app.client_id}</code></p>
-                            <p><strong>Client Secret:</strong> <code style="background: #fff; padding: 2px 5px;">${result.client_secret}</code></p>
-                        </div>
+                    // Extract credentials
+                    const clientId = result.app?.client_id || result.client_id || 'Unknown';
+                    const clientSecret = result.client_secret;
+                    
+                    // Create a modal popup with the credentials
+                    const modal = document.createElement('div');
+                    modal.style.cssText = `
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        right: 0;
+                        bottom: 0;
+                        background: rgba(0, 0, 0, 0.5);
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        z-index: 10000;
                     `;
                     
-                    // Show success message inline
-                    showAppMessage('success', message);
+                    const modalContent = document.createElement('div');
+                    modalContent.style.cssText = `
+                        background: white;
+                        padding: 30px;
+                        border-radius: 10px;
+                        max-width: 600px;
+                        width: 90%;
+                        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+                    `;
+                    
+                    modalContent.innerHTML = `
+                        <h2 style="color: #28a745; margin-top: 0;">✅ App Registered Successfully!</h2>
+                        <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border: 2px solid #ffc107;">
+                            <p style="margin: 0; color: #856404; font-weight: bold;">
+                                ⚠️ IMPORTANT: Save these credentials immediately!
+                                <br>The client secret will NEVER be shown again.
+                            </p>
+                        </div>
+                        
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0;">
+                            <div style="margin-bottom: 15px;">
+                                <strong>Client ID:</strong>
+                                <div style="display: flex; align-items: center; margin-top: 5px;">
+                                    <input type="text" value="${clientId}" readonly style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace;">
+                                    <button onclick="navigator.clipboard.writeText('${clientId}'); this.textContent='Copied!'; setTimeout(() => this.textContent='Copy', 2000);" style="margin-left: 10px; padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">Copy</button>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <strong>Client Secret:</strong>
+                                <div style="display: flex; align-items: center; margin-top: 5px;">
+                                    <input type="text" value="${clientSecret}" readonly style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; background: #ffffcc;">
+                                    <button onclick="navigator.clipboard.writeText('${clientSecret}'); this.textContent='Copied!'; setTimeout(() => this.textContent='Copy', 2000);" style="margin-left: 10px; padding: 8px 15px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Copy</button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-top: 20px;">
+                            <p style="color: #666; font-size: 14px;">
+                                📝 Next steps:
+                                <ol style="color: #666; font-size: 14px;">
+                                    <li>Save these credentials in your .env file or secure storage</li>
+                                    <li>Configure your application with these credentials</li>
+                                    <li>Set up role mappings if needed</li>
+                                    <li>Run discovery to detect your app's endpoints</li>
+                                </ol>
+                            </p>
+                        </div>
+                        
+                        <button onclick="this.closest('div[style*=fixed]').remove(); loadAppManagement();" style="width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin-top: 20px;">
+                            I've Saved the Credentials - Close
+                        </button>
+                    `;
+                    
+                    modal.appendChild(modalContent);
+                    document.body.appendChild(modal);
+                    
+                    // Also reset the form
                     form.reset();
-                    loadAppManagement(); // Reload the list
                 } else {
                     const error = await response.json();
                     showAppMessage('error', error.detail || 'Failed to register app');
@@ -3690,7 +3755,14 @@
                     } else if (result.status === 'skipped') {
                         showAppMessage('info', result.message);
                     } else if (result.status === 'error') {
-                        showAppMessage('error', result.error || 'Discovery failed');
+                        let errorMsg = result.error || 'Discovery failed';
+                        if (result.details) {
+                            console.error('Discovery error details:', result.details);
+                        }
+                        if (result.discovery_endpoint) {
+                            errorMsg += `<br><small>Endpoint: ${result.discovery_endpoint}</small>`;
+                        }
+                        showAppMessage('error', errorMsg);
                     } else {
                         // Unexpected response format
                         showAppMessage('warning', 'Discovery completed but response format was unexpected');

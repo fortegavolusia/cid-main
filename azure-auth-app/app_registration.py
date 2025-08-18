@@ -214,8 +214,9 @@ class AppRegistrationStore:
         return registered_apps.get(client_id)
     
     def list_apps(self) -> List[dict]:
-        """List all registered apps"""
-        return list(registered_apps.values())
+        """List all active registered apps"""
+        # Filter out any legacy soft-deleted apps (is_active = False)
+        return [app for app in registered_apps.values() if app.get("is_active", True)]
     
     def update_app(self, client_id: str, request: UpdateAppRequest) -> Optional[dict]:
         """Update app details"""
@@ -282,18 +283,29 @@ class AppRegistrationStore:
         return new_secret
     
     def delete_app(self, client_id: str) -> bool:
-        """Delete an app (soft delete by marking inactive)"""
-        app = registered_apps.get(client_id)
-        if not app:
+        """Delete an app permanently"""
+        if client_id not in registered_apps:
             return False
         
-        app["is_active"] = False
-        app["updated_at"] = datetime.utcnow().isoformat()
+        # Store app name for logging
+        app_name = registered_apps[client_id].get("name", "Unknown")
+        
+        # Remove from registered apps
+        del registered_apps[client_id]
+        
+        # Remove associated secrets
+        if client_id in app_secrets:
+            del app_secrets[client_id]
+        
+        # Remove associated role mappings
+        if client_id in app_role_mappings:
+            del app_role_mappings[client_id]
+        
         
         # Save to persistent storage
         save_data()
         
-        logger.info(f"Deleted (deactivated) app: {client_id}")
+        logger.info(f"Permanently deleted app: {client_id} ({app_name})")
         return True
     
     # Role mapping methods

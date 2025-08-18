@@ -151,13 +151,31 @@ class EnhancedDiscoveryService:
                 "sample_permissions": list(permissions.permissions.keys())[:10]
             }
             
+        except httpx.ConnectError as e:
+            logger.error(f"Discovery connection error for {client_id}: {e}")
+            app["discovery_status"] = "connection_error"
+            save_data()
+            error_msg = str(e)
+            # Check if it's a network connectivity issue
+            if "All connection attempts failed" in error_msg:
+                return {
+                    "status": "error",
+                    "error": "Cannot connect to application. Please ensure the application is running and accessible.",
+                    "details": error_msg,
+                    "discovery_endpoint": discovery_endpoint
+                }
+            return {
+                "status": "error",
+                "error": f"Connection error: {error_msg}"
+            }
         except httpx.TimeoutException:
             logger.error(f"Discovery timeout for {client_id}")
             app["discovery_status"] = "timeout"
             save_data()
             return {
                 "status": "error",
-                "error": "Discovery endpoint timeout"
+                "error": "Discovery endpoint timeout after 30 seconds",
+                "discovery_endpoint": discovery_endpoint
             }
         except Exception as e:
             logger.error(f"Discovery error for {client_id}: {e}", exc_info=True)
@@ -165,7 +183,8 @@ class EnhancedDiscoveryService:
             save_data()
             return {
                 "status": "error",
-                "error": str(e)
+                "error": str(e),
+                "discovery_endpoint": discovery_endpoint
             }
     
     def _create_service_token(self) -> str:
@@ -199,10 +218,53 @@ class EnhancedDiscoveryService:
         
         logger.info(f"Fetching discovery from: {discovery_url}")
         
-        async with httpx.AsyncClient(timeout=self.discovery_timeout, verify=False) as client:
-            response = await client.get(discovery_url, headers=headers)
-            response.raise_for_status()
-            return response.json()
+        # Try multiple connection attempts with different settings
+        errors = []
+        
+        # Attempt 1: Standard connection with SSL verification disabled
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(self.discovery_timeout, connect=10.0),
+                verify=False,
+                follow_redirects=True
+            ) as client:
+                response = await client.get(discovery_url, headers=headers)
+                response.raise_for_status()
+                return response.json()
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            errors.append(f"Standard attempt failed: {str(e)}")
+            logger.warning(f"Discovery connection attempt 1 failed: {e}")
+        except Exception as e:
+            errors.append(f"Standard attempt error: {str(e)}")
+            logger.warning(f"Discovery attempt 1 error: {e}")
+        
+        # Attempt 2: Try without version parameter (fallback to v1)
+        try:
+            # Remove version parameter for compatibility
+            base_url = discovery_url.split('?')[0]
+            logger.info(f"Trying fallback discovery at: {base_url}")
+            
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(self.discovery_timeout, connect=10.0),
+                verify=False,
+                follow_redirects=True
+            ) as client:
+                response = await client.get(base_url, headers=headers)
+                response.raise_for_status()
+                return response.json()
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            errors.append(f"Fallback attempt failed: {str(e)}")
+            logger.warning(f"Discovery connection attempt 2 failed: {e}")
+        except Exception as e:
+            errors.append(f"Fallback attempt error: {str(e)}")
+            logger.warning(f"Discovery attempt 2 error: {e}")
+        
+        # All attempts failed
+        error_msg = "All connection attempts failed"
+        if errors:
+            error_msg += ": " + "; ".join(errors)
+        logger.error(f"Discovery failed for {discovery_url}: {error_msg}")
+        raise httpx.ConnectError(error_msg)
     
     def _generate_permissions(self, app_id: str, discovery: DiscoveryResponse) -> DiscoveredPermissions:
         """Generate granular permissions from discovery data"""
