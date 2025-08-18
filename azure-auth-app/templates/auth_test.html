@@ -3040,11 +3040,29 @@
             
             const msgDiv = document.createElement('div');
             msgDiv.id = 'app-message';
+            
+            // Set styling based on message type
+            let bgColor, textColor;
+            if (type === 'success') {
+                bgColor = '#d4edda';
+                textColor = '#155724';
+            } else if (type === 'info') {
+                bgColor = '#d1ecf1';
+                textColor = '#0c5460';
+            } else if (type === 'warning') {
+                bgColor = '#fff3cd';
+                textColor = '#856404';
+            } else {
+                bgColor = '#f8d7da';
+                textColor = '#721c24';
+            }
+            
             msgDiv.style.cssText = `
                 padding: 15px;
                 margin: 15px 0;
                 border-radius: 4px;
-                ${type === 'success' ? 'background: #d4edda; color: #155724;' : 'background: #f8d7da; color: #721c24;'}
+                background: ${bgColor};
+                color: ${textColor};
             `;
             
             if (typeof message === 'string') {
@@ -3149,6 +3167,8 @@
                                     <button onclick="viewRoleMappings('${app.client_id}')" style="padding: 6px 12px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Role Mappings</button>
                                     ${app.allow_discovery ? `
                                         <button onclick="viewEndpoints('${app.client_id}')" style="padding: 6px 12px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">View Endpoints</button>
+                                        <button onclick="viewPermissions('${app.client_id}')" style="padding: 6px 12px; background-color: #9c27b0; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">View Permissions</button>
+                                        <button onclick="manageRoles('${app.client_id}')" style="padding: 6px 12px; background-color: #ff5722; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Permission Roles</button>
                                         <button onclick="triggerDiscovery('${app.client_id}')" style="padding: 6px 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Run Discovery</button>
                                     ` : ''}
                                     <button onclick="rotateAppSecret('${app.client_id}')" style="padding: 6px 12px; background-color: #ffc107; color: #333; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Rotate Secret</button>
@@ -3282,6 +3302,13 @@
                 
                 <h2>Role Mappings for ${app.name}</h2>
                 <p style="color: #666; margin-bottom: 30px;">Configure how Azure AD groups map to application roles</p>
+                
+                ${app.allow_discovery ? `
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #2196f3;">
+                        <strong>Field-Level Permissions:</strong> This app supports field-level permissions. 
+                        After creating role mappings here, use the "Permission Roles" button to define what fields each role can access.
+                    </div>
+                ` : ''}
                 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
                     <!-- Left column: App Roles -->
@@ -3614,33 +3641,78 @@
                 loadingOverlay.innerHTML = '<div style="background: white; padding: 20px; border-radius: 8px;"><div class="spinner"></div><p>Running discovery...</p></div>';
                 document.body.appendChild(loadingOverlay);
                 
-                const response = await fetch(`/discovery/endpoints/${clientId}`, {
+                // Try v2 discovery first, fallback to v1
+                console.log(`Triggering discovery for client: ${clientId}`);
+                let response = await fetch(`/discovery/v2/endpoints/${clientId}`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${accessToken}`
                     }
                 });
                 
+                console.log(`V2 discovery response status: ${response.status}`);
+                
+                // If v2 fails, try v1
+                if (!response.ok && response.status === 404) {
+                    console.log('V2 not found, trying V1 discovery...');
+                    response = await fetch(`/discovery/endpoints/${clientId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    });
+                    console.log(`V1 discovery response status: ${response.status}`);
+                }
+                
                 document.body.removeChild(loadingOverlay);
                 
                 if (response.ok) {
                     const result = await response.json();
+                    console.log('Discovery result:', result); // Debug log
                     
                     if (result.status === 'success') {
-                        showAppMessage('success', `Discovery completed! Found ${result.endpoints_discovered} endpoints, stored ${result.endpoints_stored}.`);
-                        loadAppManagement(); // Reload to show updated status
+                        let message = `Discovery completed! `;
+                        if (result.permissions_generated) {
+                            message += `Generated ${result.permissions_generated} permissions (${result.sensitive_permissions} sensitive).`;
+                        } else if (result.endpoints_discovered !== undefined) {
+                            message += `Found ${result.endpoints_discovered} endpoints.`;
+                        }
+                        console.log('Showing success message:', message);
+                        showAppMessage('success', message);
+                        // Force refresh to show updated discovery status
+                        setTimeout(() => {
+                            console.log('Refreshing app list...');
+                            loadAppManagement();
+                        }, 500); // Give time for backend to update
+                    } else if (result.status === 'cached') {
+                        showAppMessage('info', `${result.message} (${result.permissions_count} permissions)`);
+                        loadAppManagement();
                     } else if (result.status === 'skipped') {
                         showAppMessage('info', result.message);
+                    } else if (result.status === 'error') {
+                        showAppMessage('error', result.error || 'Discovery failed');
                     } else {
-                        showAppMessage('error', `Discovery failed: ${result.error}`);
+                        // Unexpected response format
+                        showAppMessage('warning', 'Discovery completed but response format was unexpected');
+                        console.log('Unexpected discovery response:', result);
+                        loadAppManagement();
                     }
                 } else {
-                    const error = await response.json();
-                    showAppMessage('error', error.detail || 'Discovery failed');
+                    try {
+                        const error = await response.json();
+                        showAppMessage('error', error.detail || error.error || 'Discovery failed');
+                    } catch (e) {
+                        showAppMessage('error', 'Discovery failed: Unable to parse response');
+                    }
                 }
             } catch (error) {
-                document.body.removeChild(loadingOverlay); // Make sure to remove overlay on error
-                showAppMessage('error', 'Failed to trigger discovery: ' + error.message);
+                // Make sure to remove overlay on error
+                if (document.body.contains(loadingOverlay)) {
+                    document.body.removeChild(loadingOverlay);
+                }
+                console.error('Discovery error:', error);
+                const errorMsg = error.message || error.toString() || 'Unknown error';
+                showAppMessage('error', 'Failed to trigger discovery: ' + errorMsg);
             }
         }
         
@@ -3667,6 +3739,898 @@
             } catch (error) {
                 showAppMessage('error', error.message);
             }
+        }
+        
+        async function viewPermissions(clientId) {
+            try {
+                console.log(`Loading permissions for ${clientId}...`);
+                const accessToken = localStorage.getItem('access_token');
+                const response = await fetch(`/discovery/v2/permissions/${clientId}/tree`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                
+                console.log(`Permissions response status: ${response.status}`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Permission tree data:', data);
+                    showPermissionsModal(clientId, data.permission_tree || {});
+                } else if (response.status === 404) {
+                    showAppMessage('warning', 'No permissions discovered yet. Run discovery first.');
+                } else {
+                    const error = await response.text();
+                    console.error('Permission load error:', error);
+                    showAppMessage('error', 'Failed to load permissions');
+                }
+            } catch (error) {
+                console.error('Error loading permissions:', error);
+                showAppMessage('error', 'Error loading permissions: ' + error.message);
+            }
+        }
+        
+        async function manageRoles(clientId) {
+            try {
+                const accessToken = localStorage.getItem('access_token');
+                
+                // Fetch existing roles
+                const response = await fetch(`/permissions/${clientId}/roles`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    showAppMessage('error', 'Failed to load roles');
+                    return;
+                }
+                
+                const rolesData = await response.json();
+                const roles = rolesData.roles || {};
+                
+                // Create modal
+                const modal = document.createElement('div');
+                modal.className = 'modal-overlay';
+                modal.onclick = (e) => {
+                    if (e.target === modal) {
+                        document.body.removeChild(modal);
+                    }
+                };
+                
+                const content = document.createElement('div');
+                content.className = 'modal-content';
+                content.style.maxWidth = '800px';
+                content.style.maxHeight = '80vh';
+                content.style.overflow = 'auto';
+                
+                // Header
+                const header = document.createElement('h2');
+                header.textContent = `Field-Level Permission Roles for ${clientId}`;
+                header.style.marginBottom = '20px';
+                content.appendChild(header);
+                
+                // Add explanation
+                const explanation = document.createElement('p');
+                explanation.style.color = '#666';
+                explanation.style.marginBottom = '20px';
+                explanation.textContent = 'Define roles with specific field-level permissions. These roles can then be assigned to AD groups via Role Mappings.';
+                content.appendChild(explanation);
+                
+                // Create new role button
+                const newRoleBtn = document.createElement('button');
+                newRoleBtn.textContent = '+ Create New Role';
+                newRoleBtn.className = 'btn btn-primary';
+                newRoleBtn.style.backgroundColor = '#4CAF50';
+                newRoleBtn.style.marginBottom = '20px';
+                newRoleBtn.onclick = () => {
+                    document.body.removeChild(modal);
+                    showRoleBuilder(clientId);
+                };
+                content.appendChild(newRoleBtn);
+                
+                // Roles list
+                const rolesList = document.createElement('div');
+                
+                if (Object.keys(roles).length === 0) {
+                    rolesList.innerHTML = '<p style="color: #666;">No custom roles defined yet. Create one to get started!</p>';
+                } else {
+                    for (const [roleName, permissions] of Object.entries(roles)) {
+                        const roleCard = document.createElement('div');
+                        roleCard.style.border = '1px solid #ddd';
+                        roleCard.style.borderRadius = '4px';
+                        roleCard.style.padding = '15px';
+                        roleCard.style.marginBottom = '10px';
+                        roleCard.style.backgroundColor = '#f8f9fa';
+                        
+                        const roleHeader = document.createElement('div');
+                        roleHeader.style.display = 'flex';
+                        roleHeader.style.justifyContent = 'space-between';
+                        roleHeader.style.alignItems = 'center';
+                        roleHeader.style.marginBottom = '10px';
+                        
+                        const roleTitle = document.createElement('h4');
+                        roleTitle.textContent = roleName;
+                        roleTitle.style.margin = '0';
+                        roleHeader.appendChild(roleTitle);
+                        
+                        const permCount = document.createElement('span');
+                        permCount.textContent = `${permissions.length} permissions`;
+                        permCount.style.fontSize = '14px';
+                        permCount.style.color = '#666';
+                        roleHeader.appendChild(permCount);
+                        
+                        roleCard.appendChild(roleHeader);
+                        
+                        // Permission summary
+                        const permSummary = document.createElement('div');
+                        permSummary.style.fontSize = '13px';
+                        permSummary.style.color = '#444';
+                        permSummary.style.marginBottom = '10px';
+                        
+                        // Group permissions by resource
+                        const permsByResource = {};
+                        permissions.forEach(perm => {
+                            const parts = perm.split('.');
+                            const resource = parts[1];
+                            if (!permsByResource[resource]) {
+                                permsByResource[resource] = 0;
+                            }
+                            permsByResource[resource]++;
+                        });
+                        
+                        const resourceSummary = Object.entries(permsByResource)
+                            .map(([res, count]) => `${res} (${count})`)
+                            .join(', ');
+                        
+                        permSummary.textContent = `Resources: ${resourceSummary}`;
+                        roleCard.appendChild(permSummary);
+                        
+                        // Action buttons
+                        const actions = document.createElement('div');
+                        actions.style.display = 'flex';
+                        actions.style.gap = '10px';
+                        
+                        const viewBtn = document.createElement('button');
+                        viewBtn.textContent = 'View Details';
+                        viewBtn.className = 'btn btn-sm';
+                        viewBtn.style.backgroundColor = '#17a2b8';
+                        viewBtn.style.color = 'white';
+                        viewBtn.onclick = () => showRoleDetails(clientId, roleName, permissions);
+                        actions.appendChild(viewBtn);
+                        
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.textContent = 'Delete';
+                        deleteBtn.className = 'btn btn-sm';
+                        deleteBtn.style.backgroundColor = '#dc3545';
+                        deleteBtn.style.color = 'white';
+                        deleteBtn.onclick = () => deleteRole(clientId, roleName);
+                        actions.appendChild(deleteBtn);
+                        
+                        roleCard.appendChild(actions);
+                        rolesList.appendChild(roleCard);
+                    }
+                }
+                
+                content.appendChild(rolesList);
+                
+                // Close button
+                const closeBtn = document.createElement('button');
+                closeBtn.textContent = 'Close';
+                closeBtn.className = 'btn btn-secondary';
+                closeBtn.style.marginTop = '20px';
+                closeBtn.onclick = () => document.body.removeChild(modal);
+                content.appendChild(closeBtn);
+                
+                modal.appendChild(content);
+                document.body.appendChild(modal);
+                
+            } catch (error) {
+                showAppMessage('error', 'Error loading roles: ' + error.message);
+            }
+        }
+        
+        function showRoleDetails(clientId, roleName, permissions) {
+            // Create modal for role details
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay';
+            modal.onclick = (e) => {
+                if (e.target === modal) {
+                    document.body.removeChild(modal);
+                }
+            };
+            
+            const content = document.createElement('div');
+            content.className = 'modal-content';
+            content.style.maxWidth = '700px';
+            content.style.maxHeight = '80vh';
+            content.style.overflow = 'auto';
+            
+            const header = document.createElement('h3');
+            header.textContent = `Role: ${roleName}`;
+            header.style.marginBottom = '15px';
+            content.appendChild(header);
+            
+            const permList = document.createElement('div');
+            permList.style.maxHeight = '400px';
+            permList.style.overflowY = 'auto';
+            permList.style.border = '1px solid #ddd';
+            permList.style.borderRadius = '4px';
+            permList.style.padding = '10px';
+            
+            // Sort and display permissions
+            const sortedPerms = permissions.sort();
+            sortedPerms.forEach(perm => {
+                const permItem = document.createElement('div');
+                permItem.style.padding = '5px';
+                permItem.style.borderBottom = '1px solid #eee';
+                permItem.innerHTML = `<code style="background: #f5f5f5; padding: 2px 5px; border-radius: 3px;">${perm}</code>`;
+                permList.appendChild(permItem);
+            });
+            
+            content.appendChild(permList);
+            
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = 'Close';
+            closeBtn.className = 'btn btn-secondary';
+            closeBtn.style.marginTop = '15px';
+            closeBtn.onclick = () => document.body.removeChild(modal);
+            content.appendChild(closeBtn);
+            
+            modal.appendChild(content);
+            document.body.appendChild(modal);
+        }
+        
+        async function deleteRole(clientId, roleName) {
+            if (!confirm(`Are you sure you want to delete the role "${roleName}"?`)) {
+                return;
+            }
+            
+            try {
+                const accessToken = localStorage.getItem('access_token');
+                const response = await fetch(`/permissions/${clientId}/roles/${roleName}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                
+                if (response.ok) {
+                    showAppMessage('success', `Role "${roleName}" deleted successfully`);
+                    manageRoles(clientId); // Refresh the roles list
+                } else {
+                    const error = await response.json();
+                    showAppMessage('error', error.detail || 'Failed to delete role');
+                }
+            } catch (error) {
+                showAppMessage('error', 'Error deleting role: ' + error.message);
+            }
+        }
+        
+        // Define AD Group functions globally
+        window.searchAzureGroups = async function(query) {
+            // Clear previous timeout
+            if (window.azureGroupSearchTimeout) {
+                clearTimeout(window.azureGroupSearchTimeout);
+            }
+            
+            const resultsDiv = document.getElementById('adGroupSearchResults');
+            if (!resultsDiv) return;
+            
+            // Hide results if query is empty
+            if (!query || query.length < 2) {
+                resultsDiv.style.display = 'none';
+                return;
+            }
+            
+            // Debounce search
+            window.azureGroupSearchTimeout = setTimeout(async () => {
+                try {
+                    const accessToken = localStorage.getItem('access_token');
+                    console.log('Searching Azure AD groups for:', query);
+                    
+                    const response = await fetch(`/auth/admin/azure-groups?search=${encodeURIComponent(query)}&top=20`, {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    });
+                    
+                    console.log('Azure groups response status:', response.status);
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log('Azure groups found:', data);
+                        displayGroupSearchResults(data.groups);
+                    } else {
+                        const error = await response.text();
+                        console.error('Failed to search groups:', response.status, error);
+                        resultsDiv.innerHTML = '<div style="padding: 10px; color: #d32f2f;">Error searching groups</div>';
+                        resultsDiv.style.display = 'block';
+                    }
+                } catch (error) {
+                    console.error('Error searching groups:', error);
+                    resultsDiv.innerHTML = '<div style="padding: 10px; color: #d32f2f;">Network error</div>';
+                    resultsDiv.style.display = 'block';
+                }
+            }, 300); // Wait 300ms after user stops typing
+        };
+        
+        window.displayGroupSearchResults = function(groups) {
+            const resultsDiv = document.getElementById('adGroupSearchResults');
+            if (!resultsDiv) return;
+            
+            if (groups.length === 0) {
+                resultsDiv.innerHTML = '<div style="padding: 10px; color: #666;">No groups found</div>';
+            } else {
+                resultsDiv.innerHTML = groups.map(group => {
+                    const escapedDisplayName = group.displayName.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+                    const escapedId = group.id.replace(/'/g, "\\'");
+                    return `
+                        <div onclick="selectAzureGroup('${escapedDisplayName}', '${escapedId}')" 
+                             style="padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;"
+                             onmouseover="this.style.backgroundColor='#f5f5f5'" 
+                             onmouseout="this.style.backgroundColor='white'">
+                            <strong>${group.displayName}</strong>
+                            ${group.description ? `<br><small style="color: #666;">${group.description}</small>` : ''}
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            resultsDiv.style.display = 'block';
+        };
+        
+        window.selectAzureGroup = function(displayName, groupId) {
+            if (!window.adGroupMappings) window.adGroupMappings = {};
+            
+            if (window.adGroupMappings[displayName]) {
+                showAppMessage('warning', 'This group is already added');
+                return;
+            }
+            
+            window.adGroupMappings[displayName] = groupId;
+            updateAdGroupsList();
+            
+            // Clear search
+            document.getElementById('adGroupSearch').value = '';
+            document.getElementById('adGroupSearchResults').style.display = 'none';
+        };
+        
+        window.removeAdGroupMapping = function(displayName) {
+            if (window.adGroupMappings) {
+                delete window.adGroupMappings[displayName];
+                updateAdGroupsList();
+            }
+        };
+        
+        window.updateAdGroupsList = function() {
+            const list = document.getElementById('adGroupsList');
+            if (!list || !window.adGroupMappings) return;
+            
+            const groupNames = Object.keys(window.adGroupMappings);
+            if (groupNames.length === 0) {
+                list.innerHTML = '<p style="color: #666; font-style: italic;">No Azure AD groups selected</p>';
+            } else {
+                list.innerHTML = groupNames.map(displayName => {
+                    const escapedDisplayName = displayName.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+                    return `
+                        <div style="display: inline-block; margin: 2px; padding: 6px 10px; background: #e3f2fd; 
+                                    border-radius: 4px; font-size: 14px;">
+                            <strong>${displayName}</strong>
+                            <button onclick="removeAdGroupMapping('${escapedDisplayName}')" 
+                                    style="margin-left: 8px; background: none; border: none; color: #d32f2f; 
+                                           cursor: pointer; font-size: 16px;">×</button>
+                        </div>
+                    `;
+                }).join('');
+            }
+        };
+        
+        async function showRoleBuilder(clientId) {
+            try {
+                const accessToken = localStorage.getItem('access_token');
+                
+                // Fetch permission tree for the app
+                const response = await fetch(`/discovery/v2/permissions/${clientId}/tree`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    showAppMessage('error', 'Failed to load permissions for role builder');
+                    return;
+                }
+                
+                const treeData = await response.json();
+                const permissions = treeData.permission_tree || {};
+                
+                // Create modal
+                const modal = document.createElement('div');
+                modal.className = 'modal-overlay';
+                modal.onclick = (e) => {
+                    if (e.target === modal) {
+                        document.body.removeChild(modal);
+                    }
+                };
+                
+                const content = document.createElement('div');
+                content.className = 'modal-content';
+                content.style.maxWidth = '900px';
+                content.style.maxHeight = '90vh';
+                content.style.overflow = 'auto';
+                
+                // Header
+                const header = document.createElement('h2');
+                header.textContent = 'Create Custom Role';
+                header.style.marginBottom = '20px';
+                content.appendChild(header);
+                
+                // Role name input
+                const nameGroup = document.createElement('div');
+                nameGroup.style.marginBottom = '20px';
+                nameGroup.innerHTML = `
+                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">Role Name:</label>
+                    <input type="text" id="roleName" placeholder="e.g., viewer, editor, analyst" 
+                           style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                `;
+                content.appendChild(nameGroup);
+                
+                // Description input
+                const descGroup = document.createElement('div');
+                descGroup.style.marginBottom = '20px';
+                descGroup.innerHTML = `
+                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">Description:</label>
+                    <textarea id="roleDescription" placeholder="Describe the purpose and scope of this role" 
+                              style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-height: 60px;"></textarea>
+                `;
+                content.appendChild(descGroup);
+                
+                // AD Groups mapping
+                const adGroupsDiv = document.createElement('div');
+                adGroupsDiv.style.marginBottom = '20px';
+                adGroupsDiv.innerHTML = `
+                    <label style="display: block; margin-bottom: 5px; font-weight: 500;">
+                        Map to Azure AD Groups:
+                        <small style="color: #666; font-weight: normal;">(Users in these groups will get this role)</small>
+                    </label>
+                    <div id="adGroupsList" style="margin-bottom: 10px; max-height: 150px; overflow-y: auto;">
+                        <!-- Selected AD groups will be shown here -->
+                    </div>
+                    <div style="position: relative;">
+                        <input type="text" id="adGroupSearch" placeholder="Search Azure AD groups..." 
+                               style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+                               oninput="searchAzureGroups(this.value)">
+                        <div id="adGroupSearchResults" style="position: absolute; top: 100%; left: 0; right: 0; 
+                             max-height: 200px; overflow-y: auto; background: white; border: 1px solid #ddd; 
+                             border-top: none; border-radius: 0 0 4px 4px; display: none; z-index: 1000;">
+                            <!-- Search results will appear here -->
+                        </div>
+                    </div>
+                `;
+                content.appendChild(adGroupsDiv);
+                
+                // Quick actions
+                const quickActions = document.createElement('div');
+                quickActions.style.marginBottom = '20px';
+                quickActions.innerHTML = `
+                    <div style="margin-bottom: 10px; font-weight: 500;">Quick Actions:</div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button onclick="selectAllPermissions()" class="btn btn-sm" style="background: #17a2b8; color: white;">Select All</button>
+                        <button onclick="selectNonePermissions()" class="btn btn-sm" style="background: #6c757d; color: white;">Select None</button>
+                        <button onclick="selectReadOnlyPermissions()" class="btn btn-sm" style="background: #28a745; color: white;">Read Only</button>
+                        <button onclick="selectNonSensitivePermissions()" class="btn btn-sm" style="background: #ffc107; color: #333;">Non-Sensitive Only</button>
+                    </div>
+                `;
+                content.appendChild(quickActions);
+                
+                // Permissions selection tree
+                const permTree = document.createElement('div');
+                permTree.id = 'permissionTree';
+                permTree.style.marginBottom = '20px';
+                permTree.style.maxHeight = '400px';
+                permTree.style.overflowY = 'auto';
+                permTree.style.border = '1px solid #ddd';
+                permTree.style.borderRadius = '4px';
+                permTree.style.padding = '10px';
+                
+                // The permissions object is already organized as a tree (resource -> action -> fields)
+                // Render permission tree with checkboxes
+                for (const [resource, actions] of Object.entries(permissions)) {
+                    const resourceDiv = document.createElement('div');
+                    resourceDiv.style.marginBottom = '15px';
+                    
+                    const resourceHeader = document.createElement('div');
+                    resourceHeader.style.fontWeight = 'bold';
+                    resourceHeader.style.marginBottom = '5px';
+                    resourceHeader.innerHTML = `
+                        <label style="cursor: pointer;">
+                            <input type="checkbox" class="resource-checkbox" data-resource="${resource}" 
+                                   onchange="toggleResourcePermissions('${resource}', this.checked)">
+                            ${resource}
+                        </label>
+                    `;
+                    resourceDiv.appendChild(resourceHeader);
+                    
+                    for (const [action, actionData] of Object.entries(actions)) {
+                        const actionDiv = document.createElement('div');
+                        actionDiv.style.marginLeft = '20px';
+                        actionDiv.style.marginBottom = '8px';
+                        
+                        const actionHeader = document.createElement('div');
+                        actionHeader.style.fontWeight = '500';
+                        actionHeader.style.marginBottom = '3px';
+                        
+                        let actionLabel = action;
+                        if (actionData.has_wildcard) actionLabel += ' (*)';
+                        if (actionData.sensitive_count > 0) actionLabel += ` [${actionData.sensitive_count} sensitive]`;
+                        
+                        actionHeader.innerHTML = `
+                            <label style="cursor: pointer;">
+                                <input type="checkbox" class="action-checkbox" 
+                                       data-resource="${resource}" data-action="${action}"
+                                       onchange="toggleActionPermissions('${resource}', '${action}', this.checked)">
+                                ${actionLabel}
+                            </label>
+                        `;
+                        actionDiv.appendChild(actionHeader);
+                        
+                        const fieldList = document.createElement('div');
+                        fieldList.style.marginLeft = '20px';
+                        
+                        const fields = actionData.fields || [];
+                        for (const field of fields) {
+                            const fieldDiv = document.createElement('div');
+                            fieldDiv.style.marginBottom = '2px';
+                            
+                            const badges = [];
+                            if (field.sensitive) badges.push('<span style="background: #f50057; color: white; padding: 1px 4px; border-radius: 3px; font-size: 10px; margin-left: 5px;">SENSITIVE</span>');
+                            if (field.pii) badges.push('<span style="background: #ff9800; color: white; padding: 1px 4px; border-radius: 3px; font-size: 10px; margin-left: 5px;">PII</span>');
+                            if (field.phi) badges.push('<span style="background: #9c27b0; color: white; padding: 1px 4px; border-radius: 3px; font-size: 10px; margin-left: 5px;">PHI</span>');
+                            
+                            fieldDiv.innerHTML = `
+                                <label style="cursor: pointer; font-weight: normal;">
+                                    <input type="checkbox" class="permission-checkbox" 
+                                           data-permission="${field.permission_key}"
+                                           data-resource="${resource}" 
+                                           data-action="${action}"
+                                           data-sensitive="${field.sensitive || field.pii || field.phi}"
+                                           onchange="updateSelectionCounts()">
+                                    <code style="background: #f5f5f5; padding: 1px 4px; border-radius: 3px; font-size: 12px;">
+                                        ${field.path || field.field_path || 'undefined'}
+                                    </code>${badges.join('')}
+                                    ${field.description ? `<small style="color: #666; margin-left: 5px;">${field.description}</small>` : ''}
+                                </label>
+                            `;
+                            
+                            fieldList.appendChild(fieldDiv);
+                        }
+                        
+                        actionDiv.appendChild(fieldList);
+                        resourceDiv.appendChild(actionDiv);
+                    }
+                    
+                    permTree.appendChild(resourceDiv);
+                }
+                
+                content.appendChild(permTree);
+                
+                // Selection summary
+                const summary = document.createElement('div');
+                summary.id = 'selectionSummary';
+                summary.style.marginBottom = '20px';
+                summary.style.padding = '10px';
+                summary.style.background = '#f8f9fa';
+                summary.style.borderRadius = '4px';
+                summary.innerHTML = '<span id="selectedCount">0</span> permissions selected';
+                content.appendChild(summary);
+                
+                // Buttons
+                const buttonContainer = document.createElement('div');
+                buttonContainer.style.display = 'flex';
+                buttonContainer.style.gap = '10px';
+                buttonContainer.style.justifyContent = 'flex-end';
+                
+                const createBtn = document.createElement('button');
+                createBtn.textContent = 'Create Role';
+                createBtn.className = 'btn btn-primary';
+                createBtn.style.backgroundColor = '#4CAF50';
+                createBtn.onclick = async () => {
+                    const roleName = document.getElementById('roleName').value.trim();
+                    const roleDescription = document.getElementById('roleDescription').value.trim();
+                    const selectedPerms = Array.from(document.querySelectorAll('.permission-checkbox:checked'))
+                        .map(cb => cb.dataset.permission);
+                    
+                    if (!roleName) {
+                        alert('Please enter a role name');
+                        return;
+                    }
+                    
+                    if (selectedPerms.length === 0) {
+                        alert('Please select at least one permission');
+                        return;
+                    }
+                    
+                    try {
+                        // Create the role first
+                        const response = await fetch(`/permissions/${clientId}/roles`, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                role_name: roleName,
+                                description: roleDescription,
+                                permissions: selectedPerms
+                            })
+                        });
+                        
+                        if (response.ok) {
+                            // Now map AD groups to this role if any were specified
+                            const selectedGroups = Object.keys(window.adGroupMappings);
+                            if (selectedGroups.length > 0) {
+                                // First get existing mappings
+                                const existingResponse = await fetch(`/auth/admin/apps/${clientId}/role-mappings`, {
+                                    headers: {
+                                        'Authorization': `Bearer ${accessToken}`
+                                    }
+                                });
+                                
+                                let existingMappings = {};
+                                if (existingResponse.ok) {
+                                    const data = await existingResponse.json();
+                                    existingMappings = data.mappings || {};
+                                }
+                                
+                                // Merge with new mappings (use display names as keys)
+                                selectedGroups.forEach(displayName => {
+                                    if (!existingMappings[displayName]) {
+                                        existingMappings[displayName] = [];
+                                    }
+                                    if (!existingMappings[displayName].includes(roleName)) {
+                                        existingMappings[displayName].push(roleName);
+                                    }
+                                });
+                                
+                                // Update mappings
+                                const mappingResponse = await fetch(`/auth/admin/apps/${clientId}/role-mappings`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Authorization': `Bearer ${accessToken}`,
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({ mappings: existingMappings })
+                                });
+                                
+                                if (mappingResponse.ok) {
+                                    showAppMessage('success', `Role "${roleName}" created with ${selectedPerms.length} permissions and mapped to ${selectedGroups.length} Azure AD groups`);
+                                } else {
+                                    showAppMessage('warning', `Role "${roleName}" created but AD group mapping failed. You can map groups later.`);
+                                }
+                            } else {
+                                showAppMessage('success', `Role "${roleName}" created with ${selectedPerms.length} permissions`);
+                            }
+                            document.body.removeChild(modal);
+                        } else {
+                            const error = await response.json();
+                            showAppMessage('error', error.detail || 'Failed to create role');
+                        }
+                    } catch (error) {
+                        showAppMessage('error', 'Error creating role: ' + error.message);
+                    }
+                };
+                buttonContainer.appendChild(createBtn);
+                
+                const cancelBtn = document.createElement('button');
+                cancelBtn.textContent = 'Cancel';
+                cancelBtn.className = 'btn btn-secondary';
+                cancelBtn.onclick = () => document.body.removeChild(modal);
+                buttonContainer.appendChild(cancelBtn);
+                
+                content.appendChild(buttonContainer);
+                
+                modal.appendChild(content);
+                document.body.appendChild(modal);
+                
+                // Initialize AD groups list
+                window.adGroupMappings = {};
+                updateAdGroupsList();
+                
+                // Define helper functions in window scope
+                window.selectAllPermissions = () => {
+                    document.querySelectorAll('.permission-checkbox').forEach(cb => cb.checked = true);
+                    updateSelectionCounts();
+                };
+                
+                window.selectNonePermissions = () => {
+                    document.querySelectorAll('.permission-checkbox').forEach(cb => cb.checked = false);
+                    updateSelectionCounts();
+                };
+                
+                window.selectReadOnlyPermissions = () => {
+                    document.querySelectorAll('.permission-checkbox').forEach(cb => {
+                        cb.checked = cb.dataset.action === 'read';
+                    });
+                    updateSelectionCounts();
+                };
+                
+                window.selectNonSensitivePermissions = () => {
+                    document.querySelectorAll('.permission-checkbox').forEach(cb => {
+                        cb.checked = cb.dataset.sensitive !== 'true';
+                    });
+                    updateSelectionCounts();
+                };
+                
+                window.toggleResourcePermissions = (resource, checked) => {
+                    document.querySelectorAll(`.permission-checkbox[data-resource="${resource}"]`)
+                        .forEach(cb => cb.checked = checked);
+                    updateSelectionCounts();
+                };
+                
+                window.toggleActionPermissions = (resource, action, checked) => {
+                    document.querySelectorAll(`.permission-checkbox[data-resource="${resource}"][data-action="${action}"]`)
+                        .forEach(cb => cb.checked = checked);
+                    updateSelectionCounts();
+                };
+                
+                window.updateSelectionCounts = () => {
+                    const selectedCount = document.querySelectorAll('.permission-checkbox:checked').length;
+                    document.getElementById('selectedCount').textContent = selectedCount;
+                    
+                    // Update resource/action checkboxes based on their children
+                    document.querySelectorAll('.resource-checkbox').forEach(rcb => {
+                        const resource = rcb.dataset.resource;
+                        const allPerms = document.querySelectorAll(`.permission-checkbox[data-resource="${resource}"]`);
+                        const checkedPerms = document.querySelectorAll(`.permission-checkbox[data-resource="${resource}"]:checked`);
+                        rcb.checked = allPerms.length > 0 && allPerms.length === checkedPerms.length;
+                        rcb.indeterminate = checkedPerms.length > 0 && checkedPerms.length < allPerms.length;
+                    });
+                    
+                    document.querySelectorAll('.action-checkbox').forEach(acb => {
+                        const resource = acb.dataset.resource;
+                        const action = acb.dataset.action;
+                        const allPerms = document.querySelectorAll(`.permission-checkbox[data-resource="${resource}"][data-action="${action}"]`);
+                        const checkedPerms = document.querySelectorAll(`.permission-checkbox[data-resource="${resource}"][data-action="${action}"]:checked`);
+                        acb.checked = allPerms.length > 0 && allPerms.length === checkedPerms.length;
+                        acb.indeterminate = checkedPerms.length > 0 && checkedPerms.length < allPerms.length;
+                    });
+                };
+                
+                
+            } catch (error) {
+                showAppMessage('error', 'Error loading role builder: ' + error.message);
+            }
+        }
+        
+        function showPermissionsModal(clientId, permissions) {
+            // Create modal overlay
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay';
+            modal.onclick = (e) => {
+                if (e.target === modal) {
+                    document.body.removeChild(modal);
+                }
+            };
+            
+            // Create modal content
+            const content = document.createElement('div');
+            content.className = 'modal-content';
+            content.style.maxWidth = '800px';
+            content.style.maxHeight = '80vh';
+            content.style.overflow = 'auto';
+            
+            // Header
+            const header = document.createElement('h2');
+            header.textContent = `Discovered Permissions for ${clientId}`;
+            header.style.marginBottom = '20px';
+            content.appendChild(header);
+            
+            // Permissions tree
+            const tree = document.createElement('div');
+            tree.style.marginBottom = '20px';
+            
+            if (Object.keys(permissions).length === 0) {
+                tree.innerHTML = '<p style="color: #666;">No permissions discovered yet.</p>';
+            } else {
+                // Build permission tree
+                for (const [resource, actions] of Object.entries(permissions)) {
+                    const resourceDiv = document.createElement('div');
+                    resourceDiv.style.marginBottom = '15px';
+                    resourceDiv.style.border = '1px solid #ddd';
+                    resourceDiv.style.borderRadius = '4px';
+                    resourceDiv.style.padding = '10px';
+                    
+                    const resourceHeader = document.createElement('h3');
+                    resourceHeader.textContent = resource;
+                    resourceHeader.style.margin = '0 0 10px 0';
+                    resourceHeader.style.color = '#333';
+                    resourceDiv.appendChild(resourceHeader);
+                    
+                    for (const [action, actionData] of Object.entries(actions)) {
+                        const actionDiv = document.createElement('div');
+                        actionDiv.style.marginLeft = '20px';
+                        actionDiv.style.marginBottom = '10px';
+                        
+                        const actionHeader = document.createElement('h4');
+                        actionHeader.textContent = action;
+                        actionHeader.style.margin = '0 0 5px 0';
+                        actionHeader.style.color = '#555';
+                        actionHeader.style.fontWeight = 'normal';
+                        
+                        if (actionData.has_wildcard) {
+                            actionHeader.innerHTML += ' <span style="color: #4caf50; font-size: 12px;">(has wildcard *)</span>';
+                        }
+                        if (actionData.sensitive_count > 0) {
+                            actionHeader.innerHTML += ` <span style="color: #f50057; font-size: 12px;">(${actionData.sensitive_count} sensitive fields)</span>`;
+                        }
+                        
+                        actionDiv.appendChild(actionHeader);
+                        
+                        const fieldList = document.createElement('ul');
+                        fieldList.style.margin = '0';
+                        fieldList.style.paddingLeft = '20px';
+                        
+                        const fields = actionData.fields || [];
+                        for (const field of fields) {
+                            const fieldItem = document.createElement('li');
+                            fieldItem.style.marginBottom = '3px';
+                            
+                            let fieldText = field.path || field.field || field.key;
+                            const badges = [];
+                            
+                            if (field.sensitive) badges.push('<span style="background: #f50057; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; margin-left: 5px;">SENSITIVE</span>');
+                            if (field.pii) badges.push('<span style="background: #ff9800; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; margin-left: 5px;">PII</span>');
+                            if (field.phi) badges.push('<span style="background: #9c27b0; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; margin-left: 5px;">PHI</span>');
+                            
+                            fieldItem.innerHTML = `<code style="background: #f5f5f5; padding: 2px 4px; border-radius: 3px;">${fieldText}</code>${badges.join('')}`;
+                            if (field.description) {
+                                fieldItem.innerHTML += `<br><small style="color: #666; margin-left: 20px;">${field.description}</small>`;
+                            }
+                            
+                            fieldList.appendChild(fieldItem);
+                        }
+                        
+                        actionDiv.appendChild(fieldList);
+                        resourceDiv.appendChild(actionDiv);
+                    }
+                    
+                    tree.appendChild(resourceDiv);
+                }
+            }
+            
+            content.appendChild(tree);
+            
+            // Button container
+            const buttonContainer = document.createElement('div');
+            buttonContainer.style.display = 'flex';
+            buttonContainer.style.gap = '10px';
+            buttonContainer.style.justifyContent = 'flex-end';
+            
+            // Create Role button
+            if (Object.keys(permissions).length > 0) {
+                const createRoleBtn = document.createElement('button');
+                createRoleBtn.textContent = 'Create Role';
+                createRoleBtn.className = 'btn btn-primary';
+                createRoleBtn.style.backgroundColor = '#4CAF50';
+                createRoleBtn.onclick = () => {
+                    document.body.removeChild(modal);
+                    showRoleBuilder(clientId);
+                };
+                buttonContainer.appendChild(createRoleBtn);
+            }
+            
+            // Close button
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = 'Close';
+            closeBtn.className = 'btn btn-secondary';
+            closeBtn.onclick = () => document.body.removeChild(modal);
+            buttonContainer.appendChild(closeBtn);
+            
+            content.appendChild(buttonContainer);
+            
+            modal.appendChild(content);
+            document.body.appendChild(modal);
         }
     </script>
 </body>

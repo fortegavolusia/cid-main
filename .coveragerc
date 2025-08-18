@@ -1,0 +1,107 @@
+# Coverage.py configuration file for CIDS
+
+[run]
+# Source packages
+source = app
+
+# Omit files from coverage
+omit =
+    */tests/*
+    */test_*
+    */__pycache__/*
+    */migrations/*
+    */alembic/*
+    */.venv/*
+    */venv/*
+    */virtualenv/*
+    */.tox/*
+    */dist/*
+    */build/*
+    */.eggs/*
+    */setup.py
+    */conftest.py
+    */config.py
+    */__init__.py
+    */main.py
+
+# Use branch coverage
+branch = True
+
+# Run tests in parallel
+parallel = True
+
+# Data file
+data_file = .coverage
+
+[report]
+# Reporting options
+precision = 2
+show_missing = True
+skip_covered = False
+skip_empty = True
+
+# Exclude lines from coverage
+exclude_lines =
+    # Standard pragma
+    pragma: no cover
+    
+    # Debug-only code
+    def __repr__
+    if self\.debug
+    if settings\.DEBUG
+    if DEBUG
+    
+    # Defensive programming
+    raise AssertionError
+    raise NotImplementedError
+    
+    # Non-runnable code
+    if 0:
+    if False:
+    if __name__ == .__main__.:
+    
+    # Abstract methods
+    @(abc\.)?abstractmethod
+    @(abc\.)?abstractproperty
+    @(typing\.)?overload
+    
+    # Protocol classes
+    class .*\bProtocol\):
+    
+    # Type checking
+    if TYPE_CHECKING:
+    if typing\.TYPE_CHECKING:
+    
+    # Ellipsis
+    \.\.\.
+    pass
+
+# Ignore errors
+ignore_errors = True
+
+[html]
+# HTML report directory
+directory = htmlcov
+title = CIDS Authentication Coverage Report
+show_contexts = True
+
+[xml]
+# XML report for CI/CD
+output = coverage.xml
+
+[json]
+# JSON report
+output = coverage.json
+show_contexts = True
+
+[paths]
+# Path aliases for combining coverage data from different environments
+source =
+    app/
+    /app/app/
+    */app/
+    *\app\
+
+[tool:coverage]
+# Additional tool-specific settings
+# These might be used by IDE integrations

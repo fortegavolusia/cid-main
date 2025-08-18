@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException, Response, Header
+from fastapi import FastAPI, Request, HTTPException, Response, Header, Body
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from authlib.jose import jwt
@@ -27,6 +27,8 @@ from roles_manager import RolesManager, RolesUpdate, RoleMappingsUpdate
 from policy_manager import PolicyManager, PolicyDocument
 from audit_logger import audit_logger, AuditAction
 from discovery_service import DiscoveryService
+from enhanced_discovery_service import EnhancedDiscoveryService
+from permission_registry import PermissionRegistry
 
 load_dotenv()
 
@@ -78,6 +80,8 @@ endpoints_registry = AppEndpointsRegistry()
 roles_manager = RolesManager()
 policy_manager = PolicyManager()
 discovery_service = DiscoveryService(jwt_manager, endpoints_registry)
+enhanced_discovery = EnhancedDiscoveryService(jwt_manager)
+permission_registry = PermissionRegistry()
 
 def get_session(session_id: str) -> dict:
     return sessions.get(session_id, {})
@@ -836,6 +840,94 @@ async def get_token_activities(token_id: str, authorization: Optional[str] = Hea
         'activities': activities,
         'activity_count': len(activities)
     })
+
+@app.get("/auth/admin/azure-groups")
+async def get_azure_groups(
+    authorization: Optional[str] = Header(None),
+    search: Optional[str] = None,
+    top: int = 100
+):
+    """Get Azure AD groups for mapping (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        # Get an app-only access token for Microsoft Graph
+        tenant_id = os.getenv('AZURE_TENANT_ID')
+        client_id = os.getenv('AZURE_CLIENT_ID')
+        client_secret = os.getenv('AZURE_CLIENT_SECRET')
+        
+        # Get app-only token
+        async with httpx.AsyncClient() as client:
+            token_response = await client.post(
+                f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+                data={
+                    'client_id': client_id,
+                    'client_secret': client_secret,
+                    'scope': 'https://graph.microsoft.com/.default',
+                    'grant_type': 'client_credentials'
+                }
+            )
+            
+            if token_response.status_code != 200:
+                logger.error(f"Failed to get app token: {token_response.text}")
+                raise HTTPException(status_code=500, detail="Failed to authenticate with Microsoft Graph")
+            
+            app_token = token_response.json()['access_token']
+            
+            # Build query
+            url = f"https://graph.microsoft.com/v1.0/groups?$select=id,displayName,description&$top={top}"
+            if search:
+                # Use search query for better performance
+                url = f"https://graph.microsoft.com/v1.0/groups?$search=\"displayName:{search}\"&$select=id,displayName,description&$top={top}"
+                headers = {
+                    'Authorization': f'Bearer {app_token}',
+                    'ConsistencyLevel': 'eventual'  # Required for $search
+                }
+            else:
+                headers = {
+                    'Authorization': f'Bearer {app_token}'
+                }
+            
+            # Get groups
+            groups_response = await client.get(url, headers=headers)
+            
+            if groups_response.status_code != 200:
+                logger.error(f"Failed to get groups: {groups_response.text}")
+                error_data = groups_response.json()
+                if "error" in error_data:
+                    error_msg = error_data["error"].get("message", "Unknown error")
+                    if "Insufficient privileges" in error_msg or "Authorization_RequestDenied" in error_data["error"].get("code", ""):
+                        raise HTTPException(
+                            status_code=403, 
+                            detail="Azure AD app needs Group.Read.All or Directory.Read.All permission. Please update app permissions in Azure Portal."
+                        )
+                raise HTTPException(status_code=500, detail=f"Failed to fetch groups: {error_msg}")
+            
+            groups_data = groups_response.json()
+            
+            # Format response
+            groups = []
+            for group in groups_data.get('value', []):
+                groups.append({
+                    'id': group.get('id'),
+                    'displayName': group.get('displayName'),
+                    'description': group.get('description', '')
+                })
+            
+            return JSONResponse({
+                'groups': groups,
+                'count': len(groups),
+                'hasMore': '@odata.nextLink' in groups_data
+            })
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching Azure groups: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error fetching groups: {str(e)}")
 
 @app.get("/auth/admin/azure-tokens")
 async def get_all_azure_tokens(authorization: Optional[str] = Header(None)):
@@ -1741,6 +1833,218 @@ async def discover_endpoints_service(
             'apps': all_endpoints
         })
 
+# Enhanced Discovery Endpoints for Field-Level Permissions
+@app.post("/discovery/v2/endpoints/{client_id}")
+async def trigger_enhanced_discovery(
+    client_id: str,
+    authorization: Optional[str] = Header(None),
+    force: bool = False
+):
+    """Trigger enhanced discovery with field-level metadata (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Log the discovery trigger
+    audit_logger.log_action(
+        action=AuditAction.DISCOVERY_TRIGGERED,
+        details={
+            'app_client_id': client_id,
+            'triggered_by': claims.get('email'),
+            'force': force,
+            'version': 'v2'
+        }
+    )
+    
+    # Run enhanced discovery
+    try:
+        result = await enhanced_discovery.discover_with_fields(client_id, force)
+        
+        # If successful, register permissions
+        if result['status'] == 'success':
+            permissions = enhanced_discovery.get_app_permissions(client_id)
+            if permissions:
+                permission_registry.register_permissions(client_id, permissions.permissions)
+        
+        return JSONResponse(result)
+    except Exception as e:
+        logger.error(f"Enhanced discovery error for {client_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Discovery failed: {str(e)}")
+
+@app.get("/discovery/v2/permissions/{client_id}")
+async def get_discovered_permissions(
+    client_id: str,
+    authorization: Optional[str] = Header(None),
+    resource: Optional[str] = None,
+    action: Optional[str] = None,
+    sensitive_only: bool = False
+):
+    """Get discovered permissions for an app (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Get permissions from registry
+    if resource or action or sensitive_only:
+        # Search with filters
+        permissions = enhanced_discovery.search_permissions(
+            client_id, resource, action, sensitive_only
+        )
+        return JSONResponse({
+            "app_id": client_id,
+            "filters": {
+                "resource": resource,
+                "action": action,
+                "sensitive_only": sensitive_only
+            },
+            "permissions": [p.dict() for p in permissions],
+            "count": len(permissions)
+        })
+    else:
+        # Get all permissions
+        app_perms = enhanced_discovery.get_app_permissions(client_id)
+        if not app_perms:
+            raise HTTPException(status_code=404, detail="No permissions found for app")
+        
+        return JSONResponse(app_perms.dict())
+
+@app.get("/discovery/v2/permissions/{client_id}/tree")
+async def get_permission_tree(
+    client_id: str,
+    authorization: Optional[str] = Header(None)
+):
+    """Get permission tree structure for UI (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    tree = enhanced_discovery.get_permission_tree(client_id)
+    
+    return JSONResponse({
+        "app_id": client_id,
+        "permission_tree": tree
+    })
+
+@app.post("/permissions/{client_id}/roles")
+async def create_permission_role(
+    client_id: str,
+    authorization: Optional[str] = Header(None),
+    role_name: str = Body(...),
+    permissions: List[str] = Body(...),
+    description: Optional[str] = Body(None)
+):
+    """Create a role with specific field-level permissions (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Create role in permission registry
+    valid_perms = permission_registry.create_role(client_id, role_name, set(permissions))
+    
+    # Log the action
+    audit_logger.log_action(
+        action=AuditAction.ROLE_CREATED,
+        details={
+            'app_client_id': client_id,
+            'role_name': role_name,
+            'permissions_count': len(valid_perms),
+            'created_by': claims.get('email')
+        }
+    )
+    
+    return JSONResponse({
+        "app_id": client_id,
+        "role_name": role_name,
+        "permissions": list(valid_perms),
+        "valid_count": len(valid_perms),
+        "invalid_count": len(permissions) - len(valid_perms)
+    })
+
+@app.get("/permissions/{client_id}/roles/{role_name}")
+async def get_role_permissions(
+    client_id: str,
+    role_name: str,
+    authorization: Optional[str] = Header(None)
+):
+    """Get permissions for a specific role (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    permissions = permission_registry.get_role_permissions(client_id, role_name)
+    
+    if not permissions:
+        raise HTTPException(status_code=404, detail="Role not found")
+    
+    return JSONResponse({
+        "app_id": client_id,
+        "role_name": role_name,
+        "permissions": list(permissions),
+        "count": len(permissions)
+    })
+
+@app.get("/permissions/{client_id}/roles")
+async def list_roles(
+    client_id: str,
+    authorization: Optional[str] = Header(None)
+):
+    """List all roles for an app (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    app_roles = permission_registry.role_permissions.get(client_id, {})
+    
+    return JSONResponse({
+        "app_id": client_id,
+        "roles": {
+            role_name: list(perms) for role_name, perms in app_roles.items()
+        },
+        "count": len(app_roles)
+    })
+
+@app.delete("/permissions/{client_id}/roles/{role_name}")
+async def delete_role(
+    client_id: str,
+    role_name: str,
+    authorization: Optional[str] = Header(None)
+):
+    """Delete a role (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Check if role exists
+    if client_id not in permission_registry.role_permissions or \
+       role_name not in permission_registry.role_permissions[client_id]:
+        raise HTTPException(status_code=404, detail="Role not found")
+    
+    # Delete the role
+    del permission_registry.role_permissions[client_id][role_name]
+    permission_registry._save_registry()
+    
+    # Log the action
+    audit_logger.log_action(
+        action=AuditAction.ROLE_DELETED,
+        details={
+            'app_client_id': client_id,
+            'role_name': role_name,
+            'deleted_by': claims.get('email')
+        }
+    )
+    
+    return JSONResponse({
+        "status": "success",
+        "message": f"Role '{role_name}' deleted successfully"
+    })
+
 # Health check endpoint
 @app.get("/health")
 async def health_check():
@@ -1852,6 +2156,33 @@ def generate_token_with_iam_claims(user_info: dict, client_id: Optional[str] = N
     
     logger.info(f"Final user_roles dict: {user_roles}")
     
+    # Get field-level permissions if client_id is specified
+    permissions = {}
+    if client_id:
+        # Get all roles for this user in this app
+        app_roles_list = user_roles.get(client_id, [])
+        
+        # Get permissions for each role
+        all_perms = set()
+        for role_name in app_roles_list:
+            role_perms = permission_registry.get_role_permissions(client_id, role_name)
+            all_perms.update(role_perms)
+        
+        if all_perms:
+            permissions[client_id] = list(all_perms)
+            logger.info(f"Added {len(all_perms)} permissions for {client_id}")
+    else:
+        # Get permissions for all apps where user has roles
+        for app_id, app_roles_list in user_roles.items():
+            all_perms = set()
+            for role_name in app_roles_list:
+                role_perms = permission_registry.get_role_permissions(app_id, role_name)
+                all_perms.update(role_perms)
+            
+            if all_perms:
+                permissions[app_id] = list(all_perms)
+                logger.info(f"Added {len(all_perms)} permissions for {app_id}")
+    
     # Build claims from scratch to avoid any dict/string confusion
     claims = {
         'iss': 'internal-auth-service',
@@ -1862,10 +2193,11 @@ def generate_token_with_iam_claims(user_info: dict, client_id: Optional[str] = N
         'groups': user_groups,  # This is now a clean list of strings
         'scope': 'openid profile email',
         'roles': user_roles,
+        'permissions': permissions,  # Field-level permissions
         'attrs': {
             'tenant': user_info.get('tenant_id')
         },
-        'token_version': '2.0'  # New version with IAM claims
+        'token_version': '3.0'  # New version with field-level permissions
     }
     
     # Add any app-specific claims if provided
