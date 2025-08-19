@@ -74,29 +74,44 @@ sessions = {}
 templates = Jinja2Templates(directory="templates")
 
 
-# ==================== CIDS Token Validation ====================
+# ==================== CIDS Token/API Key Validation ====================
 
-async def validate_cids_token(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
-    """Validate CIDS token using the validation endpoint"""
+async def validate_cids_auth(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    """Validate CIDS token or API key using the validation endpoint"""
     if not authorization:
         raise HTTPException(status_code=401, detail="No authorization header")
     
-    token = authorization.replace('Bearer ', '') if authorization.startswith('Bearer ') else authorization
+    # Ensure proper Bearer format
+    if not authorization.startswith('Bearer '):
+        authorization = f'Bearer {authorization}'
     
     try:
-        # Validate token with CIDS
+        # Check if this is an API key or JWT token
+        token = authorization.replace('Bearer ', '')
+        is_api_key = token.startswith('cids_ak_')
+        
+        # Use GET /auth/validate for both JWT and API keys (it now supports both)
         async with httpx.AsyncClient(verify=False) as client:
-            response = await client.post(
+            response = await client.get(
                 f"{CIDS_URL}/auth/validate",
-                json={"token": token, "client_id": CLIENT_ID}
+                headers={"Authorization": authorization}
             )
             
             if response.status_code != 200:
-                raise HTTPException(status_code=401, detail="Invalid token")
+                if is_api_key:
+                    raise HTTPException(status_code=401, detail="Invalid API key")
+                else:
+                    raise HTTPException(status_code=401, detail="Invalid token")
             
             result = response.json()
-            if not result.get('valid'):
-                raise HTTPException(status_code=401, detail=result.get('error', 'Invalid token'))
+            
+            # Add auth type to result
+            result['auth_type'] = 'api_key' if is_api_key else 'jwt'
+            
+            if is_api_key:
+                logger.info(f"API key authenticated for app: {result.get('app_client_id')}")
+            else:
+                logger.info(f"JWT token authenticated for user: {result.get('email')}")
             
             return result.get('claims', {})
             
@@ -505,7 +520,7 @@ async def dashboard(request: Request):
     
     # Validate token and get user info
     try:
-        user_info = await validate_cids_token(f"Bearer {token}")
+        user_info = await validate_cids_auth(f"Bearer {token}")
     except:
         return RedirectResponse(url="/")
     
@@ -687,7 +702,7 @@ async def logout(request: Request):
 async def get_products(authorization: Optional[str] = Header(None)):
     """Get all products with field-level filtering based on permissions"""
     # Validate token
-    user_info = await validate_cids_token(authorization)
+    user_info = await validate_cids_auth(authorization)
     
     # Get user's permissions for this app
     permissions = user_info.get('permissions', {}).get(CLIENT_ID, [])
@@ -710,7 +725,7 @@ async def get_products(authorization: Optional[str] = Header(None)):
 async def get_product(product_id: str, authorization: Optional[str] = Header(None)):
     """Get specific product with field-level filtering"""
     # Validate token
-    user_info = await validate_cids_token(authorization)
+    user_info = await validate_cids_auth(authorization)
     
     # Check if product exists
     if product_id not in PRODUCTS:
@@ -747,7 +762,7 @@ async def create_product(
 ):
     """Create a new product (requires write permissions)"""
     # Validate token
-    user_info = await validate_cids_token(authorization)
+    user_info = await validate_cids_auth(authorization)
     
     # Check for write permission
     permissions = user_info.get('permissions', {}).get(CLIENT_ID, [])
