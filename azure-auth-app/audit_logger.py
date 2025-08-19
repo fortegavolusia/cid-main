@@ -44,6 +44,13 @@ class AuditAction(Enum):
     DISCOVERY_TRIGGERED = "discovery.triggered"
     DISCOVERY_COMPLETED = "discovery.completed"
     DISCOVERY_FAILED = "discovery.failed"
+    
+    # API Keys
+    API_KEY_CREATED = "api_key.created"
+    API_KEY_REVOKED = "api_key.revoked"
+    API_KEY_ROTATED = "api_key.rotated"
+    API_KEY_USED = "api_key.used"
+    API_KEY_EXPIRED = "api_key.expired"
 
 class AuditLogger:
     """Handles audit logging for IAM operations"""

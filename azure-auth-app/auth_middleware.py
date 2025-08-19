@@ -32,8 +32,34 @@ class AuthMiddleware:
         return self.public_keys
     
     async def validate_token(self, token: str) -> dict:
-        """Validate token and return claims"""
+        """Validate token (JWT or API key) and return claims"""
         try:
+            # Check if this is an API key
+            if token.startswith('cids_ak_'):
+                # Validate API key with auth service
+                async with httpx.AsyncClient(verify=self.verify_ssl) as client:
+                    response = await client.get(
+                        f"{self.auth_service_url}/auth/validate",
+                        headers={"Authorization": f"Bearer {token}"}
+                    )
+                    if response.status_code != 200:
+                        raise HTTPException(status_code=401, detail="Invalid API key")
+                    
+                    data = response.json()
+                    if not data.get('valid'):
+                        raise HTTPException(status_code=401, detail="Invalid API key")
+                    
+                    # Return claims-like structure for API key
+                    return {
+                        'sub': data.get('sub'),
+                        'email': data.get('email'),
+                        'name': data.get('name'),
+                        'permissions': data.get('permissions', []),
+                        'app_client_id': data.get('app_client_id'),
+                        'auth_type': 'api_key'
+                    }
+            
+            # Regular JWT validation
             # Get public keys
             jwks = await self.get_public_keys()
             
@@ -48,6 +74,7 @@ class AuthMiddleware:
             if exp and datetime.fromtimestamp(exp, timezone.utc) < now:
                 raise HTTPException(status_code=401, detail="Token has expired")
             
+            claims['auth_type'] = 'jwt'
             return claims
             
         except HTTPException:

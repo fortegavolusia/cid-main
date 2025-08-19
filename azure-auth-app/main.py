@@ -29,6 +29,8 @@ from audit_logger import audit_logger, AuditAction
 from discovery_service import DiscoveryService
 from enhanced_discovery_service import EnhancedDiscoveryService
 from permission_registry import PermissionRegistry
+from api_key_manager import api_key_manager, APIKeyTTL
+from api_key_rotation_scheduler import rotation_scheduler, start_rotation_scheduler
 
 load_dotenv()
 
@@ -40,6 +42,28 @@ class TokenRequest(BaseModel):
 class RevokeTokenRequest(BaseModel):
     token: str
     token_type_hint: Optional[str] = "refresh_token"
+
+# API Key request models
+class CreateAPIKeyRequest(BaseModel):
+    name: str
+    permissions: List[str]
+    ttl_days: Optional[int] = APIKeyTTL.DAYS_90.value
+    
+class APIKeyResponse(BaseModel):
+    key_id: str
+    key_prefix: str
+    name: str
+    permissions: List[str]
+    expires_at: str
+    created_at: str
+    created_by: str
+    is_active: bool
+    last_used_at: Optional[str] = None
+    usage_count: int = 0
+    
+class APIKeyCreationResponse(BaseModel):
+    api_key: str  # Only returned on creation
+    metadata: APIKeyResponse
 
 app = FastAPI(title="Centralized Auth Service")
 templates = Jinja2Templates(directory="templates")
@@ -89,8 +113,49 @@ def get_session(session_id: str) -> dict:
 def set_session(session_id: str, data: dict):
     sessions[session_id] = data
 
+def validate_api_key_auth(authorization: str) -> tuple[bool, Optional[str], Optional[dict]]:
+    """
+    Validate API key authentication
+    Returns: (is_valid, app_client_id, metadata_dict)
+    """
+    if not authorization.startswith('Bearer cids_ak_'):
+        return False, None, None
+    
+    api_key = authorization.replace('Bearer ', '')
+    
+    # Validate API key
+    result = api_key_manager.validate_api_key(api_key)
+    if not result:
+        return False, None, None
+    
+    app_client_id, metadata = result
+    
+    # Log API key usage
+    audit_logger.log_action(
+        action=AuditAction.API_KEY_USED,
+        resource_type="api_key",
+        resource_id=metadata.key_id,
+        details={
+            "app_client_id": app_client_id,
+            "key_name": metadata.name
+        }
+    )
+    
+    # Convert metadata to dict for claims-like structure
+    metadata_dict = {
+        'sub': f"app:{app_client_id}",
+        'email': f"{app_client_id}@api-key",
+        'name': f"API Key: {metadata.name}",
+        'permissions': metadata.permissions,
+        'api_key_id': metadata.key_id,
+        'app_client_id': app_client_id,
+        'auth_type': 'api_key'
+    }
+    
+    return True, app_client_id, metadata_dict
+
 def check_admin_access(authorization: Optional[str] = None) -> tuple[bool, Optional[dict]]:
-    """Check if the provided token has admin access"""
+    """Check if the provided token or API key has admin access"""
     logger.debug(f"=== check_admin_access called ===")
     logger.debug(f"Authorization parameter: {authorization[:50] + '...' if authorization and len(authorization) > 50 else authorization}")
     
@@ -98,6 +163,22 @@ def check_admin_access(authorization: Optional[str] = None) -> tuple[bool, Optio
         logger.debug(f"No authorization header or invalid format. Header: '{authorization}'")
         return False, None
     
+    # Check if this is an API key
+    if authorization.startswith('Bearer cids_ak_'):
+        is_valid, app_client_id, metadata_dict = validate_api_key_auth(authorization)
+        if is_valid:
+            # Check if API key has admin permission
+            if 'admin' in metadata_dict.get('permissions', []):
+                logger.info(f"API key for app '{app_client_id}' has admin access")
+                return True, metadata_dict
+            else:
+                logger.info(f"API key for app '{app_client_id}' does NOT have admin access")
+                return False, metadata_dict
+        else:
+            logger.debug(f"Invalid API key")
+            return False, None
+    
+    # Regular JWT token validation
     token = authorization.replace('Bearer ', '')
     logger.debug(f"Extracted token: {token[:20] + '...' if len(token) > 20 else token}")
     
@@ -623,10 +704,27 @@ async def get_session_token(request: Request):
 
 @app.get("/auth/validate")
 async def validate_token(authorization: Optional[str] = Header(None)):
-    """Validate an internal JWT token"""
+    """Validate an internal JWT token or API key"""
     if not authorization or not authorization.startswith('Bearer '):
         raise HTTPException(status_code=401, detail="Invalid authorization header")
     
+    # Check if this is an API key
+    if authorization.startswith('Bearer cids_ak_'):
+        is_valid, app_client_id, metadata_dict = validate_api_key_auth(authorization)
+        if is_valid:
+            return JSONResponse({
+                'valid': True,
+                'sub': metadata_dict.get('sub'),
+                'email': metadata_dict.get('email'),
+                'name': metadata_dict.get('name'),
+                'permissions': metadata_dict.get('permissions', []),
+                'app_client_id': app_client_id,
+                'auth_type': 'api_key'
+            })
+        else:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+    
+    # Regular JWT token validation
     token = authorization.replace('Bearer ', '')
     
     is_valid, claims, error = jwt_manager.validate_token(token)
@@ -658,7 +756,8 @@ async def validate_token(authorization: Optional[str] = Header(None)):
         'sub': claims.get('sub'),
         'email': claims.get('email'),
         'name': claims.get('name'),
-        'groups': claims.get('groups', [])
+        'groups': claims.get('groups', []),
+        'auth_type': 'jwt'
     })
 
 @app.get("/auth/public-key")
@@ -1227,6 +1326,204 @@ async def get_role_mappings(client_id: str, authorization: Optional[str] = Heade
         "app_name": app.get('name'),
         "mappings": mappings
     })
+
+# API Key Management Endpoints
+
+@app.post("/auth/admin/apps/{client_id}/api-keys", response_model=APIKeyCreationResponse)
+async def create_api_key(
+    client_id: str,
+    request: CreateAPIKeyRequest,
+    authorization: Optional[str] = Header(None)
+):
+    """Create a new API key for an application (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Check if app exists
+    app = app_store.get_app(client_id)
+    if not app:
+        raise HTTPException(status_code=404, detail="App not found")
+    
+    # Create API key
+    api_key, metadata = api_key_manager.create_api_key(
+        app_client_id=client_id,
+        name=request.name,
+        permissions=request.permissions,
+        created_by=claims.get('email', 'Unknown'),
+        ttl_days=request.ttl_days
+    )
+    
+    # Audit log
+    audit_logger.log_action(
+        action=AuditAction.API_KEY_CREATED,
+        user_email=claims.get('email'),
+        user_id=claims.get('sub'),
+        resource_type="api_key",
+        resource_id=metadata.key_id,
+        details={
+            "app_client_id": client_id,
+            "key_name": request.name,
+            "permissions": request.permissions,
+            "ttl_days": request.ttl_days
+        }
+    )
+    
+    logger.info(f"API key created for app '{client_id}' by {claims.get('email')}")
+    
+    return APIKeyCreationResponse(
+        api_key=api_key,
+        metadata=APIKeyResponse(
+            key_id=metadata.key_id,
+            key_prefix=metadata.key_prefix,
+            name=metadata.name,
+            permissions=metadata.permissions,
+            expires_at=metadata.expires_at,
+            created_at=metadata.created_at,
+            created_by=metadata.created_by,
+            is_active=metadata.is_active,
+            last_used_at=metadata.last_used_at,
+            usage_count=metadata.usage_count
+        )
+    )
+
+@app.get("/auth/admin/apps/{client_id}/api-keys", response_model=List[APIKeyResponse])
+async def list_api_keys(
+    client_id: str,
+    authorization: Optional[str] = Header(None)
+):
+    """List all API keys for an application (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Check if app exists
+    app = app_store.get_app(client_id)
+    if not app:
+        raise HTTPException(status_code=404, detail="App not found")
+    
+    # Get API keys
+    keys = api_key_manager.list_api_keys(client_id)
+    
+    return [
+        APIKeyResponse(
+            key_id=key.key_id,
+            key_prefix=key.key_prefix,
+            name=key.name,
+            permissions=key.permissions,
+            expires_at=key.expires_at,
+            created_at=key.created_at,
+            created_by=key.created_by,
+            is_active=key.is_active,
+            last_used_at=key.last_used_at,
+            usage_count=key.usage_count
+        )
+        for key in keys
+    ]
+
+@app.delete("/auth/admin/apps/{client_id}/api-keys/{key_id}")
+async def revoke_api_key(
+    client_id: str,
+    key_id: str,
+    authorization: Optional[str] = Header(None)
+):
+    """Revoke an API key (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Check if app exists
+    app = app_store.get_app(client_id)
+    if not app:
+        raise HTTPException(status_code=404, detail="App not found")
+    
+    # Revoke API key
+    success = api_key_manager.revoke_api_key(client_id, key_id)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="API key not found")
+    
+    # Audit log
+    audit_logger.log_action(
+        action=AuditAction.API_KEY_REVOKED,
+        user_email=claims.get('email'),
+        user_id=claims.get('sub'),
+        resource_type="api_key",
+        resource_id=key_id,
+        details={
+            "app_client_id": client_id
+        }
+    )
+    
+    logger.info(f"API key '{key_id}' revoked for app '{client_id}' by {claims.get('email')}")
+    
+    return JSONResponse({"message": "API key revoked successfully"})
+
+@app.post("/auth/admin/apps/{client_id}/api-keys/{key_id}/rotate", response_model=APIKeyCreationResponse)
+async def rotate_api_key(
+    client_id: str,
+    key_id: str,
+    grace_period_hours: int = 24,
+    authorization: Optional[str] = Header(None)
+):
+    """Rotate an API key with grace period (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Check if app exists
+    app = app_store.get_app(client_id)
+    if not app:
+        raise HTTPException(status_code=404, detail="App not found")
+    
+    # Rotate API key
+    result = api_key_manager.rotate_api_key(
+        app_client_id=client_id,
+        key_id=key_id,
+        created_by=claims.get('email', 'Unknown'),
+        grace_period_hours=grace_period_hours
+    )
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="API key not found")
+    
+    new_key, new_metadata = result
+    
+    # Audit log
+    audit_logger.log_action(
+        action=AuditAction.API_KEY_ROTATED,
+        user_email=claims.get('email'),
+        user_id=claims.get('sub'),
+        resource_type="api_key",
+        resource_id=key_id,
+        details={
+            "app_client_id": client_id,
+            "new_key_id": new_metadata.key_id,
+            "grace_period_hours": grace_period_hours
+        }
+    )
+    
+    logger.info(f"API key '{key_id}' rotated for app '{client_id}' by {claims.get('email')}")
+    
+    return APIKeyCreationResponse(
+        api_key=new_key,
+        metadata=APIKeyResponse(
+            key_id=new_metadata.key_id,
+            key_prefix=new_metadata.key_prefix,
+            name=new_metadata.name,
+            permissions=new_metadata.permissions,
+            expires_at=new_metadata.expires_at,
+            created_at=new_metadata.created_at,
+            created_by=new_metadata.created_by,
+            is_active=new_metadata.is_active,
+            last_used_at=new_metadata.last_used_at,
+            usage_count=new_metadata.usage_count
+        )
+    )
 
 # Admin UI is integrated into the main interface at /admin/apps
 
@@ -2315,6 +2612,93 @@ async def test_page(request: Request):
         "azure_token": azure_token,
         "azure_claims": azure_claims
     })
+
+# API Key Rotation Management Endpoints
+
+@app.post("/auth/admin/rotation/check")
+async def manual_rotation_check(authorization: Optional[str] = Header(None)):
+    """Manually trigger API key rotation check (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Run rotation check
+    rotated = await rotation_scheduler.check_and_rotate_keys()
+    cleaned = await rotation_scheduler.cleanup_expired_keys()
+    
+    # Log the manual check
+    audit_logger.log_action(
+        action=AuditAction.API_KEY_ROTATED,
+        user_email=claims.get('email'),
+        user_id=claims.get('sub'),
+        resource_type="rotation_check",
+        details={
+            "manual_trigger": True,
+            "rotated_count": rotated,
+            "cleaned_count": cleaned
+        }
+    )
+    
+    return JSONResponse({
+        "rotated_keys": rotated,
+        "cleaned_keys": cleaned,
+        "triggered_by": claims.get('email'),
+        "timestamp": datetime.utcnow().isoformat()
+    })
+
+@app.get("/auth/admin/rotation/policies")
+async def get_rotation_policies(authorization: Optional[str] = Header(None)):
+    """Get all rotation policies (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    return JSONResponse(rotation_scheduler.rotation_policies)
+
+@app.put("/auth/admin/apps/{client_id}/rotation-policy")
+async def set_app_rotation_policy(
+    client_id: str,
+    days_before_expiry: int = 7,
+    grace_period_hours: int = 24,
+    auto_rotate: bool = True,
+    notify_webhook: Optional[str] = None,
+    authorization: Optional[str] = Header(None)
+):
+    """Set rotation policy for an app (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Check if app exists
+    app = app_store.get_app(client_id)
+    if not app:
+        raise HTTPException(status_code=404, detail="App not found")
+    
+    # Set the policy
+    rotation_scheduler.set_app_rotation_policy(
+        app_client_id=client_id,
+        days_before_expiry=days_before_expiry,
+        grace_period_hours=grace_period_hours,
+        auto_rotate=auto_rotate,
+        notify_webhook=notify_webhook
+    )
+    
+    return JSONResponse({
+        "message": "Rotation policy updated",
+        "app_client_id": client_id,
+        "policy": {
+            "days_before_expiry": days_before_expiry,
+            "grace_period_hours": grace_period_hours,
+            "auto_rotate": auto_rotate,
+            "notify_webhook": notify_webhook
+        }
+    })
+
+# Start the rotation scheduler as a background task
+start_rotation_scheduler(app, check_interval_hours=6)
 
 if __name__ == "__main__":
     import uvicorn
