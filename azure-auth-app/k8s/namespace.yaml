@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: cids-auth
-  labels:
-    name: cids-auth
-    app.kubernetes.io/name: cids-auth
-    app.kubernetes.io/part-of: cids

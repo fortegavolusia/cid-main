@@ -21,11 +21,19 @@ class AdminService {
   }
 
   async getTokenActivity(tokenId: string): Promise<TokenActivityResponse> {
-    return apiService.get<TokenActivityResponse>(`/auth/admin/tokens/${tokenId}/activity`);
+    return apiService.get<TokenActivityResponse>(`/auth/admin/tokens/${tokenId}/activities`);
+  }
+
+  async getAzureTokenActivity(tokenId: string): Promise<TokenActivityResponse> {
+    return apiService.get<TokenActivityResponse>(`/auth/admin/azure-tokens/${tokenId}/activities`);
   }
 
   async removeToken(tokenId: string): Promise<void> {
     return apiService.delete(`/auth/admin/tokens/${tokenId}`);
+  }
+
+  async removeAzureToken(tokenId: string): Promise<void> {
+    return apiService.delete(`/auth/admin/azure-tokens/${tokenId}`);
   }
 
   // App Management

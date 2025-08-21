@@ -115,8 +115,6 @@ const ErrorMessage = styled.div`
 const AdminPage: React.FC = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'tokens' | 'apps'>('tokens');
-  const [internalOpen, setInternalOpen] = useState(true);
-  const [azureOpen, setAzureOpen] = useState(false);
   const [internalTokens, setInternalTokens] = useState<TokenListResponse | null>(null);
   const [azureTokens, setAzureTokens] = useState<TokenListResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -265,7 +263,8 @@ const AdminPage: React.FC = () => {
                 <button className="button" onClick={() => alert(JSON.stringify(token, null, 2))}>Details</button>
                 <button className="button" onClick={async () => {
                   try {
-                    const data = await adminService.getTokenActivity(token.id);
+                    const service = token.type === 'Azure' ? adminService.getAzureTokenActivity(token.id) : adminService.getTokenActivity(token.id);
+                    const data = await service;
                     alert(JSON.stringify(data, null, 2));
                   } catch (e: any) {
                     alert(e.message || 'Failed to load logs');
@@ -273,7 +272,11 @@ const AdminPage: React.FC = () => {
                 }}>Logs</button>
                 <button className="button danger" onClick={async () => {
                   if (!confirm('Revoke this token?')) return;
-                  try { await adminService.removeToken(token.id); fetchTokens(); } catch(e:any){ alert(e.message || 'Failed to revoke'); }
+                  try {
+                    if (token.type === 'Azure') await adminService.removeAzureToken(token.id);
+                    else await adminService.removeToken(token.id);
+                    fetchTokens();
+                  } catch(e:any){ alert(e.message || 'Failed to revoke'); }
                 }}>Revoke</button>
               </div>
             </TableCell>
@@ -337,77 +340,38 @@ const AdminPage: React.FC = () => {
           </div>
 
           <InfoSection>
-            <SectionHeader onClick={() => setInternalOpen(!internalOpen)}>
-              <h2 style={{ margin: 0 }}>Internal Tokens ({internalTokens?.total || 0})</h2>
-              <span style={{ transform: internalOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s ease', color: 'var(--text-secondary)' }}>▼</span>
+            <SectionHeader>
+              <h2 style={{ margin: 0 }}>Tokens ({(internalTokens?.total || 0) + (azureTokens?.total || 0)})</h2>
             </SectionHeader>
-            {internalOpen && (
-              <SectionContent>
-                {internalTokens && internalTokens.tokens.length > 0 ? (
-                  renderTokenTable(
-                    [...internalTokens.tokens]
-                      .map(t => ({ ...t, type: (t.type || 'Internal') as any }))
-                      .filter(t => {
-                        const q = filterText.toLowerCase();
-                        return !q || [t.user?.name, t.user?.email, t.subject].some(v => (v||'').toLowerCase().includes(q));
-                      })
-                      .sort((a,b) => {
-                        const ia = new Date(a.issued_at||'').getTime();
-                        const ib = new Date(b.issued_at||'').getTime();
-                        const ea = new Date(a.expires_at||'').getTime();
-                        const eb = new Date(b.expires_at||'').getTime();
-                        switch (sortKey) {
-                          case 'issued_asc': return ia - ib;
-                          case 'expires_soon': return ea - eb;
-                          case 'expires_late': return eb - ea;
-                          default: return ib - ia;
-                        }
-                      })
-                  )
-                ) : (
-                  <p>No internal tokens found.</p>
-                )}
-              </SectionContent>
-            )}
-          </InfoSection>
-
-          <InfoSection>
-            <SectionHeader onClick={() => setAzureOpen(!azureOpen)}>
-              <h2 style={{ margin: 0 }}>Azure Tokens ({azureTokens?.total || 0})</h2>
-              <span style={{ transform: azureOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s ease', color: 'var(--text-secondary)' }}>▼</span>
-            </SectionHeader>
-            {azureOpen && (
-              <SectionContent>
-                {azureTokens && azureTokens.tokens.length > 0 ? (
-                  renderTokenTable(
-                    [...azureTokens.tokens]
-                      .map(t => ({ ...t, type: t.type || 'Azure' as any }))
-                      .filter(t => {
-                        const q = filterText.toLowerCase();
-                        return !q || [t.user?.name, t.user?.email, t.subject].some(v => (v||'').toLowerCase().includes(q));
-                      })
-                      .sort((a,b) => {
-                        const ia = new Date(a.issued_at||'').getTime();
-                        const ib = new Date(b.issued_at||'').getTime();
-                        const ea = new Date(a.expires_at||'').getTime();
-                        const eb = new Date(b.expires_at||'').getTime();
-                        switch (sortKey) {
-                          case 'issued_asc': return ia - ib;
-                          case 'expires_soon': return ea - eb;
-                          case 'expires_late': return eb - ea;
-                          default: return ib - ia;
-                        }
-                      })
-                  )
-                ) : (
-                  <p>No Azure tokens found.</p>
-                )}
-              </SectionContent>
-            )}
+            <SectionContent>
+              {(() => {
+                const internal = (internalTokens?.tokens || []).map(t => ({ ...t, type: (t.type || 'Internal') as any }));
+                const azure = (azureTokens?.tokens || []).map(t => ({ ...t, type: (t.type || 'Azure') as any }));
+                const combined = [...internal, ...azure]
+                  .filter(t => {
+                    const q = filterText.toLowerCase();
+                    return !q || [t.user?.name, t.user?.email, t.subject, t.type].some(v => (v||'').toLowerCase().includes(q));
+                  })
+                  .sort((a,b) => {
+                    const ia = new Date(a.issued_at||'').getTime();
+                    const ib = new Date(b.issued_at||'').getTime();
+                    const ea = new Date(a.expires_at||'').getTime();
+                    const eb = new Date(b.expires_at||'').getTime();
+                    switch (sortKey) {
+                      case 'issued_asc': return ia - ib;
+                      case 'expires_soon': return ea - eb;
+                      case 'expires_late': return eb - ea;
+                      default: return ib - ia;
+                    }
+                  });
+                return combined.length ? renderTokenTable(combined) : <p>No tokens found.</p>;
+              })()}
+            </SectionContent>
           </InfoSection>
         </>
       )}
 
+      {activeTab === 'apps' && (
       <InfoSection>
         <SectionHeader onClick={() => { setAppsOpen(!appsOpen); if (!apps) loadApps(); }}>
           <h2 style={{ margin: 0 }}>App Management</h2>
@@ -445,6 +409,8 @@ const AdminPage: React.FC = () => {
                 <div>
                   <label><input type="checkbox" checked={registerForm.allow_discovery} onChange={e => setRegisterForm({ ...registerForm, allow_discovery: e.target.checked })} /> Allow Endpoint Discovery</label>
                 </div>
+
+
                 <div>
                   <label>Discovery Endpoint (optional)</label>
                   <input type="url" value={registerForm.discovery_endpoint} onChange={e => setRegisterForm({ ...registerForm, discovery_endpoint: e.target.value })} style={{ width: '100%' }} />
@@ -516,6 +482,7 @@ const AdminPage: React.FC = () => {
           </SectionContent>
         )}
       </InfoSection>
+      )}
     </Container>
   );
 };
