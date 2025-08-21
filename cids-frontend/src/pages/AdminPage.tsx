@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { useAuth } from '../contexts/AuthContext';
 import adminService from '../services/adminService';
 import type { TokenListResponse, TokenInfo, AppInfo } from '../types/admin';
+import RolesModal from '../components/RolesModal';
 
 const Container = styled.div`
   background-color: white;
@@ -127,6 +128,11 @@ const AdminPage: React.FC = () => {
   const [appsOpen, setAppsOpen] = useState(true);
   const [apps, setApps] = useState<AppInfo[] | null>(null);
   const [appLoading, setAppLoading] = useState(false);
+  const [rolesModal, setRolesModal] = useState<{ isOpen: boolean; clientId: string; appName: string }>({
+    isOpen: false,
+    clientId: '',
+    appName: ''
+  });
   const [registerForm, setRegisterForm] = useState({
     name: '', description: '', owner_email: '', redirect_uris: [''], allow_discovery: false, discovery_endpoint: ''
   });
@@ -517,6 +523,13 @@ const AdminPage: React.FC = () => {
                                 }
                               }
                             }}>View Endpoints</button>
+                            <button className="button" onClick={() => {
+                              setRolesModal({
+                                isOpen: true,
+                                clientId: app.client_id,
+                                appName: app.name
+                              });
+                            }}>Roles & Permissions</button>
                             <button className="button secondary" onClick={async()=>{
                               alert('Running discovery...');
                               const res = await adminService.triggerDiscovery(app.client_id);
@@ -539,6 +552,13 @@ const AdminPage: React.FC = () => {
         )}
       </InfoSection>
       )}
+      
+      <RolesModal
+        isOpen={rolesModal.isOpen}
+        onClose={() => setRolesModal({ isOpen: false, clientId: '', appName: '' })}
+        clientId={rolesModal.clientId}
+        appName={rolesModal.appName}
+      />
     </Container>
   );
 };

@@ -116,6 +116,21 @@ class AdminService {
     return apiService.get(`/discovery/v2/permissions/${clientId}/tree`);
   }
 
+  // Azure AD Groups
+  async searchAzureGroups(search?: string, top: number = 20): Promise<{
+    groups: Array<{
+      id: string;
+      displayName: string;
+      description?: string;
+    }>;
+  }> {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    params.append('top', top.toString());
+    
+    return apiService.get(`/auth/admin/azure-groups?${params.toString()}`);
+  }
+
   // Rotation Management
   async manualRotationCheck(): Promise<any> {
     return apiService.post('/auth/admin/rotation/check');

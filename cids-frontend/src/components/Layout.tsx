@@ -8,27 +8,27 @@ const LayoutContainer = styled.div`
   background-color: #f0f2f5;
 `;
 
-const Sidebar = styled.div<{ collapsed: boolean }>`
+const Sidebar = styled.div<{ $collapsed: boolean }>`
   position: fixed;
   left: 0;
   top: 0;
-  width: ${props => props.collapsed ? '0' : '280px'};
+  width: ${props => props.$collapsed ? '0' : '280px'};
   height: 100vh;
   background-color: #001529;
   color: rgba(255, 255, 255, 0.85);
-  padding: ${props => props.collapsed ? '0' : '24px'};
+  padding: ${props => props.$collapsed ? '0' : '24px'};
   box-shadow: 2px 0 8px 0 rgba(29, 35, 41, 0.05);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   transition: all 0.3s ease;
   z-index: 1000;
-  transform: ${props => props.collapsed ? 'translateX(-280px)' : 'translateX(0)'};
+  transform: ${props => props.$collapsed ? 'translateX(-280px)' : 'translateX(0)'};
 `;
 
-const SidebarToggle = styled.button<{ collapsed: boolean }>`
+const SidebarToggle = styled.button<{ $collapsed: boolean }>`
   position: fixed;
-  left: ${props => props.collapsed ? '0' : '280px'};
+  left: ${props => props.$collapsed ? '0' : '280px'};
   top: 50%;
   transform: translateY(-50%);
   width: 30px;
@@ -72,10 +72,10 @@ const SidebarFooter = styled.div`
   border-top: 1px solid rgba(255, 255, 255, 0.12);
 `;
 
-const MainContent = styled.div<{ collapsed: boolean }>`
-  margin-left: ${props => props.collapsed ? '30px' : '280px'};
+const MainContent = styled.div<{ $collapsed: boolean }>`
+  margin-left: ${props => props.$collapsed ? '30px' : '280px'};
   padding: 24px;
-  width: ${props => props.collapsed ? 'calc(100% - 30px)' : 'calc(100% - 280px)'};
+  width: ${props => props.$collapsed ? 'calc(100% - 30px)' : 'calc(100% - 280px)'};
   min-height: 100vh;
   transition: all 0.3s ease;
 `;
@@ -153,7 +153,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   return (
     <LayoutContainer>
-      <Sidebar collapsed={sidebarCollapsed}>
+      <Sidebar $collapsed={sidebarCollapsed}>
         <SidebarHeader>CIDS Auth Service</SidebarHeader>
         <SidebarContent>
           {user && (
@@ -183,13 +183,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </SidebarFooter>
       </Sidebar>
 
-      <SidebarToggle collapsed={sidebarCollapsed} onClick={toggleSidebar}>
+      <SidebarToggle $collapsed={sidebarCollapsed} onClick={toggleSidebar}>
         <span style={{ transform: sidebarCollapsed ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s ease' }}>
           ◀
         </span>
       </SidebarToggle>
 
-      <MainContent collapsed={sidebarCollapsed}>
+      <MainContent $collapsed={sidebarCollapsed}>
         {children}
       </MainContent>
     </LayoutContainer>
