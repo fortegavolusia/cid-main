@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException, Response, Header, Body
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
 from authlib.jose import jwt
 import os
 import httpx
@@ -17,7 +18,7 @@ from refresh_token_store import refresh_token_store
 from pydantic import BaseModel
 from token_activity_logger import token_activity_logger, TokenAction
 from app_registration import (
-    app_store, RegisterAppRequest, UpdateAppRequest, 
+    app_store, RegisterAppRequest, UpdateAppRequest,
     AppResponse, AppRegistrationResponse, SetRoleMappingRequest,
     registered_apps, app_role_mappings
 )
@@ -67,6 +68,27 @@ class APIKeyCreationResponse(BaseModel):
 
 app = FastAPI(title="Centralized Auth Service")
 templates = Jinja2Templates(directory="templates")
+
+# Dev-only cross-origin support for local React dev server
+DEV_CROSS_ORIGIN = os.getenv("DEV_CROSS_ORIGIN", "false").lower() == "true"
+SAMESITE_POLICY = "none" if DEV_CROSS_ORIGIN else "lax"
+
+# Enable CORS only in dev cross-origin mode
+if DEV_CROSS_ORIGIN:
+    origins = [
+        "http://localhost:3000",
+        "http://10.1.5.58:3000",
+        "https://localhost:3000",
+        "https://10.1.5.58:3000",
+    ]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 
 # Add custom Jinja2 filter for datetime conversion
 def datetime_filter(timestamp):
@@ -290,7 +312,7 @@ async def auth_login(request: Request, response: Response, return_url: Optional[
     
     # Set session cookie
     response = RedirectResponse(url=authorize_url)
-    response.set_cookie(key="auth_session_id", value=session_id, httponly=True, samesite="lax", secure=True)
+    response.set_cookie(key="auth_session_id", value=session_id, httponly=True, samesite=SAMESITE_POLICY, secure=True)
     return response
 
 @app.get("/auth/callback")
@@ -520,7 +542,7 @@ async def auth_callback(request: Request, response: Response):
         
         # Standard flow - redirect to home page
         response = RedirectResponse(url='/', status_code=303)
-        response.set_cookie(key="auth_session_id", value=session_id, httponly=True, samesite="lax", secure=True)
+        response.set_cookie(key="auth_session_id", value=session_id, httponly=True, samesite=SAMESITE_POLICY, secure=True)
         return response
         
     except HTTPException:
@@ -625,7 +647,7 @@ async def oauth_token(request: Request, response: Response):
                 value=new_refresh_token,
                 httponly=True,
                 secure=True,
-                samesite="lax",
+                samesite=SAMESITE_POLICY,
                 max_age=7*24*60*60  # 7 days
             )
             
