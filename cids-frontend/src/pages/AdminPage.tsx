@@ -457,9 +457,65 @@ const AdminPage: React.FC = () => {
                         {app.allow_discovery && (
                           <>
                             <button className="button" onClick={async()=>{
-                              const ep = await adminService.getAppEndpoints(app.client_id);
-                              if (!ep || !ep.endpoints || ep.endpoints.length === 0) alert('No endpoints registered for this app.');
-                              else alert(`Endpoints for ${app.client_id}:\n\n${ep.endpoints.map((e:any)=>`${e.method} ${e.path} - ${e.description || ''}${e.discovered ? ' (discovered)' : ''}`).join('\n')}`);
+                              try {
+                                // Try to get permission tree first for detailed view
+                                const permTree = await adminService.getAppPermissionTree(app.client_id);
+                                if (permTree && permTree.permission_tree && Object.keys(permTree.permission_tree).length > 0) {
+                                  // Format permission tree for display
+                                  let output = `Discovered Resources for ${app.client_id}:\n\n`;
+                                  const tree = permTree.permission_tree;
+                                  
+                                  for (const [resource, actions] of Object.entries(tree as any)) {
+                                    output += `${resource}\n`;
+                                    for (const [action, details] of Object.entries(actions as any)) {
+                                      const fields = details.fields || [];
+                                      const sensitiveFields = fields.filter((f: any) => f.sensitive || f.pii || f.phi);
+                                      const hasWildcard = fields.some((f: any) => f.field_name === '*');
+                                      
+                                      output += `  ${action}`;
+                                      if (hasWildcard) output += ' (has wildcard *)';
+                                      if (sensitiveFields.length > 0) output += ` (${sensitiveFields.length} sensitive fields)`;
+                                      output += '\n';
+                                      
+                                      // Show fields with details
+                                      for (const field of fields) {
+                                        if (field.field_name !== '*') {
+                                          output += `    ${field.field_name}`;
+                                          if (field.sensitive || field.pii || field.phi) {
+                                            output += 'SENSITIVE';
+                                          }
+                                          output += '\n';
+                                          if (field.description) {
+                                            output += `      ${field.description}\n`;
+                                          }
+                                        }
+                                      }
+                                    }
+                                    output += '\n';
+                                  }
+                                  alert(output);
+                                } else {
+                                  // Fallback to basic endpoints
+                                  const ep = await adminService.getAppEndpoints(app.client_id);
+                                  if (!ep || !ep.endpoints || ep.endpoints.length === 0) {
+                                    alert('No endpoints registered for this app.');
+                                  } else {
+                                    alert(`Endpoints for ${app.client_id}:\n\n${ep.endpoints.map((e:any)=>`${e.method} ${e.path} - ${e.description || ''}${e.discovered ? ' (discovered)' : ''}`).join('\n')}`);
+                                  }
+                                }
+                              } catch (error) {
+                                // Fallback to basic endpoints on error
+                                try {
+                                  const ep = await adminService.getAppEndpoints(app.client_id);
+                                  if (!ep || !ep.endpoints || ep.endpoints.length === 0) {
+                                    alert('No endpoints registered for this app.');
+                                  } else {
+                                    alert(`Endpoints for ${app.client_id}:\n\n${ep.endpoints.map((e:any)=>`${e.method} ${e.path} - ${e.description || ''}${e.discovered ? ' (discovered)' : ''}`).join('\n')}`);
+                                  }
+                                } catch (fallbackError) {
+                                  alert('Error fetching endpoint information.');
+                                }
+                              }
                             }}>View Endpoints</button>
                             <button className="button secondary" onClick={async()=>{
                               alert('Running discovery...');

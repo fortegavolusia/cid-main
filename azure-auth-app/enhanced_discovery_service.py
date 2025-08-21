@@ -21,6 +21,7 @@ from discovery_models import (
 import app_registration
 from app_registration import save_data, load_data
 from jwt_utils import JWTManager
+from app_endpoints import AppEndpointsRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,9 @@ FIELD_METADATA_FILE = Path("app_data/field_metadata.json")
 class EnhancedDiscoveryService:
     """Handles field-level discovery and permission generation"""
     
-    def __init__(self, jwt_manager: JWTManager):
+    def __init__(self, jwt_manager: JWTManager, endpoints_registry: Optional[AppEndpointsRegistry] = None):
         self.jwt_manager = jwt_manager
+        self.endpoints_registry = endpoints_registry
         self.discovery_timeout = 30  # Longer timeout for detailed discovery
         self.permissions_cache: Dict[str, DiscoveredPermissions] = {}
         self._load_permissions()
@@ -150,10 +152,17 @@ class EnhancedDiscoveryService:
             # Store field metadata separately for UI
             await self._store_field_metadata(client_id, discovery_data)
             
+            # Store endpoints in the endpoints registry
+            endpoints_stored = 0
+            if self.endpoints_registry and discovery_data.endpoints:
+                endpoints_stored = await self._store_endpoints(client_id, discovery_data)
+                logger.info(f"Stored {endpoints_stored} endpoints for {client_id}")
+            
             return {
                 "status": "success",
                 "discovery_version": discovery_data.version,
                 "endpoints_discovered": len(discovery_data.endpoints or []),
+                "endpoints_stored": endpoints_stored,
                 "services_discovered": len(discovery_data.services or []),
                 "permissions_generated": permissions.total_count,
                 "sensitive_permissions": permissions.sensitive_count,
@@ -429,6 +438,40 @@ class EnhancedDiscoveryService:
                 
         except Exception as e:
             logger.error(f"Error storing field metadata: {e}")
+    
+    async def _store_endpoints(self, client_id: str, discovery_data: DiscoveryResponse) -> int:
+        """Store discovered endpoints in the registry"""
+        if not self.endpoints_registry:
+            logger.warning("No endpoints registry configured, skipping endpoint storage")
+            return 0
+            
+        stored = 0
+        
+        # Convert discovered endpoints to registry format
+        endpoints_to_store = []
+        if discovery_data.endpoints:
+            for endpoint in discovery_data.endpoints:
+                endpoints_to_store.append({
+                    "method": endpoint.method,
+                    "path": endpoint.path,
+                    "description": endpoint.description,
+                    "discovered": True,
+                    "discovered_at": datetime.utcnow().isoformat(),
+                    "required_permissions": endpoint.required_permissions if hasattr(endpoint, 'required_permissions') else [],
+                    "required_roles": endpoint.required_roles if hasattr(endpoint, 'required_roles') else [],
+                    "tags": endpoint.tags if hasattr(endpoint, 'tags') else []
+                })
+        
+        # Store in registry (this will handle deduplication)
+        try:
+            if endpoints_to_store:
+                self.endpoints_registry.upsert_endpoints(client_id, endpoints_to_store)
+                stored = len(endpoints_to_store)
+                logger.info(f"Successfully stored {stored} endpoints for {client_id}")
+        except Exception as e:
+            logger.error(f"Failed to store endpoints for {client_id}: {e}")
+            
+        return stored
     
     def get_app_permissions(self, app_id: str) -> Optional[DiscoveredPermissions]:
         """Get discovered permissions for an app"""

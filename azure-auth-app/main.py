@@ -126,7 +126,7 @@ endpoints_registry = AppEndpointsRegistry()
 roles_manager = RolesManager()
 policy_manager = PolicyManager()
 discovery_service = DiscoveryService(jwt_manager, endpoints_registry)
-enhanced_discovery = EnhancedDiscoveryService(jwt_manager)
+enhanced_discovery = EnhancedDiscoveryService(jwt_manager, endpoints_registry)
 permission_registry = PermissionRegistry()
 
 def get_session(session_id: str) -> dict:

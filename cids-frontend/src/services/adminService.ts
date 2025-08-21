@@ -107,6 +107,15 @@ class AdminService {
     return apiService.put(`/auth/admin/apps/${clientId}/endpoints`, endpoints);
   }
 
+  // Permission Discovery
+  async getAppPermissions(clientId: string): Promise<any> {
+    return apiService.get(`/discovery/v2/permissions/${clientId}`);
+  }
+
+  async getAppPermissionTree(clientId: string): Promise<any> {
+    return apiService.get(`/discovery/v2/permissions/${clientId}/tree`);
+  }
+
   // Rotation Management
   async manualRotationCheck(): Promise<any> {
     return apiService.post('/auth/admin/rotation/check');
