@@ -53,6 +53,10 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
   const [expandedResources, setExpandedResources] = useState<Set<string>>(new Set());
   const [ruleBuilderOpen, setRuleBuilderOpen] = useState(false);
   const [ruleBuilderContext, setRuleBuilderContext] = useState<any>(null);
+  
+  // Track allow/deny states for resources and actions
+  const [resourcePermissions, setResourcePermissions] = useState<Record<string, 'allow' | 'deny' | 'unset'>>({}); 
+  const [actionPermissions, setActionPermissions] = useState<Record<string, 'allow' | 'deny' | 'unset'>>({});
 
   useEffect(() => {
     if (isOpen && clientId) {
@@ -100,6 +104,55 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
     setRuleBuilderOpen(true);
   };
 
+  const handleResourcePermission = (resource: string, permission: 'allow' | 'deny' | 'unset') => {
+    setResourcePermissions(prev => ({
+      ...prev,
+      [resource]: permission
+    }));
+    
+    // If setting resource level, update all its actions
+    if (permissionTree && permissionTree[resource] && permission !== 'unset') {
+      const newActionPerms: Record<string, 'allow' | 'deny' | 'unset'> = {};
+      Object.keys(permissionTree[resource]).forEach(action => {
+        newActionPerms[`${resource}.${action}`] = permission;
+      });
+      setActionPermissions(prev => ({
+        ...prev,
+        ...newActionPerms
+      }));
+    }
+  };
+
+  const handleActionPermission = (resource: string, action: string, permission: 'allow' | 'deny' | 'unset') => {
+    const key = `${resource}.${action}`;
+    setActionPermissions(prev => ({
+      ...prev,
+      [key]: permission
+    }));
+    
+    // Check if all actions in resource have same permission
+    if (permissionTree && permissionTree[resource]) {
+      const allActions = Object.keys(permissionTree[resource]);
+      const allSame = allActions.every(a => {
+        const actionKey = `${resource}.${a}`;
+        const currentPerm = actionKey === key ? permission : actionPermissions[actionKey];
+        return currentPerm === permission;
+      });
+      
+      if (allSame && permission !== 'unset') {
+        setResourcePermissions(prev => ({
+          ...prev,
+          [resource]: permission
+        }));
+      } else {
+        setResourcePermissions(prev => ({
+          ...prev,
+          [resource]: 'unset'
+        }));
+      }
+    }
+  };
+
   const renderField = (resource: string, action: string, field: FieldInfo) => {
     const isSensitive = field.sensitive || field.pii || field.phi;
     
@@ -141,6 +194,8 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
       f.sensitive || f.pii || f.phi
     ).length;
     const hasWildcard = details.fields.some(f => f.field_name === '*');
+    const actionKey = `${resource}.${action}`;
+    const currentPermission = actionPermissions[actionKey] || 'unset';
 
     // Determine endpoint info based on action and resource
     let endpointInfo = '';
@@ -160,7 +215,10 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
     }
 
     return (
-      <div key={`${resource}-${action}`} className="action-section">
+      <div 
+        key={`${resource}-${action}`} 
+        className={`action-section ${currentPermission !== 'unset' ? `permission-${currentPermission}` : ''}`}
+      >
         <div className="action-header">
           <span 
             className="permission-name clickable"
@@ -168,6 +226,24 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
           >
             {resource}.{action}
           </span>
+          
+          <div className="permission-selector">
+            <button 
+              className={`permission-btn allow ${currentPermission === 'allow' ? 'active' : ''}`}
+              onClick={() => handleActionPermission(resource, action, currentPermission === 'allow' ? 'unset' : 'allow')}
+              title="Allow this action"
+            >
+              ✓ Allow
+            </button>
+            <button 
+              className={`permission-btn deny ${currentPermission === 'deny' ? 'active' : ''}`}
+              onClick={() => handleActionPermission(resource, action, currentPermission === 'deny' ? 'unset' : 'deny')}
+              title="Deny this action"
+            >
+              ✗ Deny
+            </button>
+          </div>
+          
           {hasWildcard && (
             <span className="action-badge wildcard">HAS WILDCARD</span>
           )}
@@ -193,9 +269,13 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
   const renderResource = (resource: string, actions: any) => {
     const isExpanded = expandedResources.has(resource);
     const actionCount = Object.keys(actions).length;
+    const currentPermission = resourcePermissions[resource] || 'unset';
     
     return (
-      <div key={resource} className="resource-section">
+      <div 
+        key={resource} 
+        className={`resource-section ${currentPermission !== 'unset' ? `permission-${currentPermission}` : ''}`}
+      >
         <div 
           className="resource-header"
           onClick={() => toggleResource(resource)}
@@ -212,6 +292,24 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
           >
             {resource}
           </span>
+          
+          <div className="permission-selector" onClick={(e) => e.stopPropagation()}>
+            <button 
+              className={`permission-btn allow ${currentPermission === 'allow' ? 'active' : ''}`}
+              onClick={() => handleResourcePermission(resource, currentPermission === 'allow' ? 'unset' : 'allow')}
+              title="Allow all actions on this resource"
+            >
+              ✓ Allow All
+            </button>
+            <button 
+              className={`permission-btn deny ${currentPermission === 'deny' ? 'active' : ''}`}
+              onClick={() => handleResourcePermission(resource, currentPermission === 'deny' ? 'unset' : 'deny')}
+              title="Deny all actions on this resource"
+            >
+              ✗ Deny All
+            </button>
+          </div>
+          
           <span className="resource-count">
             {actionCount} {actionCount === 1 ? 'action' : 'actions'}
           </span>

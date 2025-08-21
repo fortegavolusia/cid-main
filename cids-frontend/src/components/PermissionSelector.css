@@ -31,6 +31,16 @@
   margin: 0 auto;
 }
 
+.resource-section.permission-allow .resource-header {
+  background: #dcfce7;
+  border-bottom: 2px solid #10b981;
+}
+
+.resource-section.permission-deny .resource-header {
+  background: #fee2e2;
+  border-bottom: 2px solid #ef4444;
+}
+
 .resource-header {
   display: flex;
   align-items: center;
@@ -81,6 +91,17 @@
   border-radius: 6px;
   border: 1px solid #e5e7eb;
   margin-left: 20px;
+  position: relative;
+}
+
+.action-section.permission-allow {
+  border-color: #10b981;
+  background: #f0fdf4;
+}
+
+.action-section.permission-deny {
+  border-color: #ef4444;
+  background: #fef2f2;
 }
 
 .action-section:last-child {
@@ -257,4 +278,68 @@
   border-left-color: #3b82f6;
   transform: translateX(1px);
   cursor: pointer;
+}
+
+/* Permission Allow/Deny Selectors */
+.permission-selector {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.permission-btn {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: white;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.permission-btn.allow {
+  border-color: #10b981;
+  color: #047857;
+}
+
+.permission-btn.allow:hover {
+  background: #ecfdf5;
+  border-color: #059669;
+}
+
+.permission-btn.allow.active {
+  background: #10b981;
+  color: white;
+  border-color: #059669;
+}
+
+.permission-btn.deny {
+  border-color: #ef4444;
+  color: #b91c1c;
+}
+
+.permission-btn.deny:hover {
+  background: #fef2f2;
+  border-color: #dc2626;
+}
+
+.permission-btn.deny.active {
+  background: #ef4444;
+  color: white;
+  border-color: #dc2626;
+}
+
+/* Adjust resource header for permission selector */
+.resource-header .permission-selector {
+  margin-left: auto;
+  margin-right: 12px;
+}
+
+/* Adjust action header layout */
+.action-header .permission-selector {
+  margin-left: 12px;
 }
