@@ -2,337 +2,354 @@ import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
 import './RuleBuilder.css';
 
+// React Awesome Query Builder imports
+import {
+  Query,
+  Builder,
+  BasicConfig,
+  Utils as QbUtils,
+  JsonGroup,
+  Config,
+  ImmutableTree,
+  BuilderProps
+} from '@react-awesome-query-builder/ui';
+import '@react-awesome-query-builder/ui/css/styles.css';
+
 interface RuleBuilderProps {
   isOpen: boolean;
   onClose: () => void;
-  context: {
+  context?: {
     type: 'resource' | 'action' | 'field';
+    clientId: string;
+    appName: string;
     resource?: string;
     action?: string;
     field?: string;
     fieldMetadata?: any;
-    clientId: string;
-    appName: string;
   };
 }
 
-interface Rule {
-  id: string;
-  name: string;
-  description: string;
-  effect: 'allow' | 'deny';
-  principals: string[];
-  resources: string[];
-  actions: string[];
-  conditions?: {
-    field?: string;
-    operator?: 'equals' | 'not_equals' | 'contains' | 'exists';
-    value?: string;
-  }[];
-}
+// Common JWT token fields that might be available
+const tokenFields: Config['fields'] = {
+  'token.sub': {
+    label: 'Subject (User ID)',
+    type: 'text',
+    valueSources: ['value'],
+  },
+  'token.name': {
+    label: 'User Name',
+    type: 'text',
+    valueSources: ['value'],
+  },
+  'token.email': {
+    label: 'Email',
+    type: 'text',
+    valueSources: ['value'],
+  },
+  'token.roles': {
+    label: 'Roles',
+    type: 'multiselect',
+    valueSources: ['value'],
+    fieldSettings: {
+      listValues: [
+        { value: 'admin', title: 'Admin' },
+        { value: 'user', title: 'User' },
+        { value: 'viewer', title: 'Viewer' },
+        { value: 'editor', title: 'Editor' },
+      ]
+    }
+  },
+  'token.groups': {
+    label: 'AD Groups',
+    type: 'multiselect',
+    valueSources: ['value'],
+    fieldSettings: {
+      listValues: [] // Will be populated dynamically
+    }
+  },
+  'token.department': {
+    label: 'Department',
+    type: 'text',
+    valueSources: ['value'],
+  },
+  'token.aud': {
+    label: 'Audience',
+    type: 'text',
+    valueSources: ['value'],
+  },
+  'token.iss': {
+    label: 'Issuer',
+    type: 'text',
+    valueSources: ['value'],
+  },
+  'token.exp': {
+    label: 'Expiration Time',
+    type: 'datetime',
+    valueSources: ['value'],
+  },
+  'token.iat': {
+    label: 'Issued At',
+    type: 'datetime',
+    valueSources: ['value'],
+  },
+  'token.scope': {
+    label: 'Scopes',
+    type: 'multiselect',
+    valueSources: ['value'],
+    fieldSettings: {
+      listValues: [] // Will be populated based on app
+    }
+  },
+  'token.tenant_id': {
+    label: 'Tenant ID',
+    type: 'text',
+    valueSources: ['value'],
+  },
+  'token.app_id': {
+    label: 'Application ID',
+    type: 'text',
+    valueSources: ['value'],
+  },
+  'request.ip': {
+    label: 'Request IP Address',
+    type: 'text',
+    valueSources: ['value'],
+  },
+  'request.method': {
+    label: 'HTTP Method',
+    type: 'select',
+    valueSources: ['value'],
+    fieldSettings: {
+      listValues: [
+        { value: 'GET', title: 'GET' },
+        { value: 'POST', title: 'POST' },
+        { value: 'PUT', title: 'PUT' },
+        { value: 'DELETE', title: 'DELETE' },
+        { value: 'PATCH', title: 'PATCH' },
+      ]
+    }
+  },
+  'request.path': {
+    label: 'Request Path',
+    type: 'text',
+    valueSources: ['value'],
+  },
+  'request.time': {
+    label: 'Request Time',
+    type: 'datetime',
+    valueSources: ['value'],
+  },
+  'resource.owner': {
+    label: 'Resource Owner',
+    type: 'text',
+    valueSources: ['value', 'field'],
+  },
+  'resource.created_by': {
+    label: 'Created By',
+    type: 'text',
+    valueSources: ['value', 'field'],
+  },
+  'resource.department': {
+    label: 'Resource Department',
+    type: 'text',
+    valueSources: ['value', 'field'],
+  },
+  'resource.sensitivity': {
+    label: 'Data Sensitivity',
+    type: 'select',
+    valueSources: ['value'],
+    fieldSettings: {
+      listValues: [
+        { value: 'public', title: 'Public' },
+        { value: 'internal', title: 'Internal' },
+        { value: 'confidential', title: 'Confidential' },
+        { value: 'restricted', title: 'Restricted' },
+      ]
+    }
+  }
+};
+
+// Initial query builder config
+const InitialConfig: Config = {
+  ...BasicConfig,
+  fields: tokenFields,
+  operators: {
+    ...BasicConfig.operators,
+  },
+  widgets: {
+    ...BasicConfig.widgets,
+  },
+  settings: {
+    ...BasicConfig.settings,
+    showNot: true,
+    canReorder: true,
+    canRegroup: true,
+    showLabels: true,
+    maxNesting: 5,
+    renderField: (props: any) => props.value,
+  },
+};
 
 const RuleBuilder: React.FC<RuleBuilderProps> = ({ isOpen, onClose, context }) => {
-  const [rule, setRule] = useState<Rule>({
-    id: '',
-    name: '',
-    description: '',
-    effect: 'allow',
-    principals: [],
-    resources: [],
-    actions: [],
-    conditions: []
-  });
-
-  const [principalInput, setPrincipalInput] = useState('');
-  const [resourceInput, setResourceInput] = useState('');
-  const [actionInput, setActionInput] = useState('');
+  const [config, setConfig] = useState<Config>(InitialConfig);
+  const [tree, setTree] = useState<ImmutableTree>(QbUtils.checkTree(QbUtils.loadTree({ id: QbUtils.uuid(), type: 'group' }), config));
+  const [sqlOutput, setSqlOutput] = useState<string>('');
+  const [jsonOutput, setJsonOutput] = useState<string>('');
+  const [selectedOutput, setSelectedOutput] = useState<'sql' | 'json' | 'human'>('sql');
 
   useEffect(() => {
-    if (isOpen && context) {
-      // Pre-populate based on context
-      const newRule: Rule = {
-        id: `rule_${Date.now()}`,
-        name: '',
-        description: '',
-        effect: 'allow',
-        principals: [],
-        resources: context.resource ? [`${context.resource}/*`] : [],
-        actions: context.action ? [`${context.resource}:${context.action}`] : [],
-        conditions: []
-      };
+    // Reset tree when modal opens
+    if (isOpen) {
+      const emptyTree = QbUtils.checkTree(QbUtils.loadTree({ id: QbUtils.uuid(), type: 'group' }), config);
+      setTree(emptyTree);
+      setSqlOutput('');
+      setJsonOutput('');
+    }
+  }, [isOpen]);
 
-      // If field context, add field condition
-      if (context.type === 'field' && context.field) {
-        newRule.conditions = [{
-          field: context.field,
-          operator: 'exists',
-          value: ''
-        }];
-      }
-
-      setRule(newRule);
+  useEffect(() => {
+    // Update outputs when tree changes
+    if (tree) {
+      const sqlString = QbUtils.sqlFormat(tree, config) || '';
+      setSqlOutput(sqlString);
       
-      // Set inputs
-      if (context.resource) setResourceInput(context.resource);
-      if (context.action) setActionInput(`${context.resource}:${context.action}`);
+      const jsonTree = QbUtils.getTree(tree);
+      setJsonOutput(JSON.stringify(jsonTree, null, 2));
     }
-  }, [isOpen, context]);
+  }, [tree, config]);
 
-  const addPrincipal = () => {
-    if (principalInput.trim()) {
-      setRule({
-        ...rule,
-        principals: [...rule.principals, principalInput.trim()]
-      });
-      setPrincipalInput('');
+  const onChange = (immutableTree: ImmutableTree, config: Config) => {
+    setTree(immutableTree);
+    setConfig(config);
+  };
+
+  const renderBuilder = (props: BuilderProps) => (
+    <div className="query-builder-container">
+      <Builder {...props} />
+    </div>
+  );
+
+  const getContextDescription = () => {
+    if (!context) return 'General Rule';
+    
+    if (context.type === 'resource') {
+      return `Resource: ${context.resource}`;
+    } else if (context.type === 'action') {
+      return `Action: ${context.resource}.${context.action}`;
+    } else if (context.type === 'field') {
+      return `Field: ${context.resource}.${context.action}.${context.field}`;
     }
-  };
-
-  const removePrincipal = (index: number) => {
-    setRule({
-      ...rule,
-      principals: rule.principals.filter((_, i) => i !== index)
-    });
-  };
-
-  const addResource = () => {
-    if (resourceInput.trim()) {
-      setRule({
-        ...rule,
-        resources: [...rule.resources, resourceInput.trim()]
-      });
-      setResourceInput('');
-    }
-  };
-
-  const removeResource = (index: number) => {
-    setRule({
-      ...rule,
-      resources: rule.resources.filter((_, i) => i !== index)
-    });
-  };
-
-  const addAction = () => {
-    if (actionInput.trim()) {
-      setRule({
-        ...rule,
-        actions: [...rule.actions, actionInput.trim()]
-      });
-      setActionInput('');
-    }
-  };
-
-  const removeAction = (index: number) => {
-    setRule({
-      ...rule,
-      actions: rule.actions.filter((_, i) => i !== index)
-    });
-  };
-
-  const addCondition = () => {
-    setRule({
-      ...rule,
-      conditions: [
-        ...(rule.conditions || []),
-        { field: '', operator: 'equals', value: '' }
-      ]
-    });
-  };
-
-  const updateCondition = (index: number, updates: Partial<Rule['conditions'][0]>) => {
-    const newConditions = [...(rule.conditions || [])];
-    newConditions[index] = { ...newConditions[index], ...updates };
-    setRule({ ...rule, conditions: newConditions });
-  };
-
-  const removeCondition = (index: number) => {
-    setRule({
-      ...rule,
-      conditions: rule.conditions?.filter((_, i) => i !== index)
-    });
-  };
-
-  const generatePolicyPreview = () => {
-    return JSON.stringify({
-      version: '1.0',
-      statement: {
-        id: rule.id,
-        effect: rule.effect,
-        principals: rule.principals,
-        resources: rule.resources,
-        actions: rule.actions,
-        conditions: rule.conditions
-      }
-    }, null, 2);
+    return 'General Rule';
   };
 
   const handleSave = () => {
-    // TODO: Implement save to backend
+    const rule = {
+      context: context,
+      sql: sqlOutput,
+      json: jsonOutput,
+      tree: QbUtils.getTree(tree),
+    };
+    
     console.log('Saving rule:', rule);
-    alert('Rule saved successfully! (Implementation pending)');
+    
+    // In production, this would save to backend
+    alert(`Rule saved!\n\nSQL: ${sqlOutput}`);
     onClose();
+  };
+
+  const getHumanReadable = () => {
+    if (!sqlOutput) return 'No conditions defined';
+    
+    // Convert SQL to human-readable format
+    let readable = sqlOutput;
+    readable = readable.replace(/token\./g, 'Token ');
+    readable = readable.replace(/request\./g, 'Request ');
+    readable = readable.replace(/resource\./g, 'Resource ');
+    readable = readable.replace(/AND/g, 'AND');
+    readable = readable.replace(/OR/g, 'OR');
+    readable = readable.replace(/=/g, 'equals');
+    readable = readable.replace(/!=/g, 'not equals');
+    readable = readable.replace(/>/g, 'greater than');
+    readable = readable.replace(/</g, 'less than');
+    readable = readable.replace(/IN/g, 'is one of');
+    readable = readable.replace(/NOT IN/g, 'is not one of');
+    
+    return readable;
   };
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Rule Builder"
-      width="85%"
+      title={`Rule Builder - ${getContextDescription()}`}
+      width="90%"
       maxHeight="90vh"
     >
-      <div className="rule-builder">
-        {context && (
-          <div className="rule-context-info">
-            <h3>Building rule for:</h3>
-            <div className="context-details">
-              {context.resource && <div><strong>Resource:</strong> {context.resource}</div>}
-              {context.action && <div><strong>Action:</strong> {context.action}</div>}
-              {context.field && <div><strong>Field:</strong> {context.field}</div>}
-            </div>
-          </div>
-        )}
+      <div className="rule-builder-content">
+        <div className="rule-builder-header">
+          <p className="rule-description">
+            Define access rules based on JWT token claims and request context. 
+            These rules will be evaluated at runtime to determine access permissions.
+          </p>
+        </div>
 
-        <div className="rule-form">
-          <div className="form-section">
-            <h3>Basic Information</h3>
-            <div className="form-group">
-              <label>Rule Name</label>
-              <input
-                type="text"
-                value={rule.name}
-                onChange={(e) => setRule({ ...rule, name: e.target.value })}
-                placeholder="e.g., Allow admins to read all products"
-              />
-            </div>
-            <div className="form-group">
-              <label>Description</label>
-              <textarea
-                value={rule.description}
-                onChange={(e) => setRule({ ...rule, description: e.target.value })}
-                placeholder="Describe what this rule does..."
-                rows={3}
-              />
-            </div>
-            <div className="form-group">
-              <label>Effect</label>
-              <select
-                value={rule.effect}
-                onChange={(e) => setRule({ ...rule, effect: e.target.value as 'allow' | 'deny' })}
-              >
-                <option value="allow">Allow</option>
-                <option value="deny">Deny</option>
-              </select>
-            </div>
-          </div>
+        <div className="query-builder-wrapper">
+          <Query
+            {...config}
+            value={tree}
+            onChange={onChange}
+            renderBuilder={renderBuilder}
+          />
+        </div>
 
-          <div className="form-section">
-            <h3>Principals (Who)</h3>
-            <div className="list-input">
-              <input
-                type="text"
-                value={principalInput}
-                onChange={(e) => setPrincipalInput(e.target.value)}
-                placeholder="e.g., user:john@example.com, role:admin, group:developers"
-                onKeyPress={(e) => e.key === 'Enter' && addPrincipal()}
-              />
-              <button onClick={addPrincipal} className="button secondary">Add</button>
-            </div>
-            <div className="item-list">
-              {rule.principals.map((principal, index) => (
-                <div key={index} className="list-item">
-                  <span>{principal}</span>
-                  <button onClick={() => removePrincipal(index)}>×</button>
-                </div>
-              ))}
-            </div>
+        <div className="rule-output-section">
+          <div className="output-tabs">
+            <button 
+              className={`output-tab ${selectedOutput === 'sql' ? 'active' : ''}`}
+              onClick={() => setSelectedOutput('sql')}
+            >
+              SQL Output
+            </button>
+            <button 
+              className={`output-tab ${selectedOutput === 'json' ? 'active' : ''}`}
+              onClick={() => setSelectedOutput('json')}
+            >
+              JSON Output
+            </button>
+            <button 
+              className={`output-tab ${selectedOutput === 'human' ? 'active' : ''}`}
+              onClick={() => setSelectedOutput('human')}
+            >
+              Human Readable
+            </button>
           </div>
-
-          <div className="form-section">
-            <h3>Resources (What)</h3>
-            <div className="list-input">
-              <input
-                type="text"
-                value={resourceInput}
-                onChange={(e) => setResourceInput(e.target.value)}
-                placeholder="e.g., products/*, products/123, products/sensitive/*"
-                onKeyPress={(e) => e.key === 'Enter' && addResource()}
-              />
-              <button onClick={addResource} className="button secondary">Add</button>
-            </div>
-            <div className="item-list">
-              {rule.resources.map((resource, index) => (
-                <div key={index} className="list-item">
-                  <span>{resource}</span>
-                  <button onClick={() => removeResource(index)}>×</button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="form-section">
-            <h3>Actions (What can they do)</h3>
-            <div className="list-input">
-              <input
-                type="text"
-                value={actionInput}
-                onChange={(e) => setActionInput(e.target.value)}
-                placeholder="e.g., products:read, products:write, products:delete"
-                onKeyPress={(e) => e.key === 'Enter' && addAction()}
-              />
-              <button onClick={addAction} className="button secondary">Add</button>
-            </div>
-            <div className="item-list">
-              {rule.actions.map((action, index) => (
-                <div key={index} className="list-item">
-                  <span>{action}</span>
-                  <button onClick={() => removeAction(index)}>×</button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="form-section">
-            <h3>Conditions (Optional)</h3>
-            <button onClick={addCondition} className="button secondary">Add Condition</button>
-            {rule.conditions?.map((condition, index) => (
-              <div key={index} className="condition-row">
-                <input
-                  type="text"
-                  value={condition.field || ''}
-                  onChange={(e) => updateCondition(index, { field: e.target.value })}
-                  placeholder="Field name"
-                />
-                <select
-                  value={condition.operator || 'equals'}
-                  onChange={(e) => updateCondition(index, { operator: e.target.value as any })}
-                >
-                  <option value="equals">Equals</option>
-                  <option value="not_equals">Not Equals</option>
-                  <option value="contains">Contains</option>
-                  <option value="exists">Exists</option>
-                </select>
-                <input
-                  type="text"
-                  value={condition.value || ''}
-                  onChange={(e) => updateCondition(index, { value: e.target.value })}
-                  placeholder="Value"
-                  disabled={condition.operator === 'exists'}
-                />
-                <button onClick={() => removeCondition(index)} className="button danger">×</button>
+          
+          <div className="output-content">
+            {selectedOutput === 'sql' && (
+              <pre className="output-code sql">
+                {sqlOutput || 'No conditions defined'}
+              </pre>
+            )}
+            {selectedOutput === 'json' && (
+              <pre className="output-code json">
+                {jsonOutput || '{}'}
+              </pre>
+            )}
+            {selectedOutput === 'human' && (
+              <div className="output-human">
+                {getHumanReadable()}
               </div>
-            ))}
+            )}
           </div>
+        </div>
 
-          <div className="form-section">
-            <h3>Policy Preview</h3>
-            <pre className="policy-preview">{generatePolicyPreview()}</pre>
-          </div>
-
-          <div className="form-actions">
-            <button onClick={handleSave} className="button primary">Save Rule</button>
-            <button onClick={onClose} className="button secondary">Cancel</button>
-          </div>
+        <div className="rule-builder-actions">
+          <button className="button primary" onClick={handleSave}>
+            Save Rule
+          </button>
+          <button className="button secondary" onClick={onClose}>
+            Cancel
+          </button>
         </div>
       </div>
     </Modal>

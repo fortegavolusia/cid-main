@@ -1,209 +1,198 @@
-.rule-builder {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
+.rule-builder-content {
+  padding: 20px;
+  min-height: 400px;
 }
 
-.rule-context-info {
-  background: #f0f9ff;
-  border: 1px solid #bae6fd;
-  border-radius: 8px;
-  padding: 16px;
+.rule-builder-header {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #e5e7eb;
 }
 
-.rule-context-info h3 {
-  margin: 0 0 12px 0;
-  color: #0369a1;
-  font-size: 1rem;
-}
-
-.context-details {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.context-details div {
+.rule-description {
+  color: #6b7280;
   font-size: 0.95rem;
-  color: #334155;
+  margin: 0;
+  line-height: 1.5;
 }
 
-.context-details strong {
-  color: #0f172a;
-  margin-right: 8px;
-}
-
-.rule-form {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-.form-section {
+/* Query Builder Wrapper */
+.query-builder-wrapper {
+  background: #f9fafb;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   padding: 20px;
-  background: #fafafa;
+  margin-bottom: 24px;
+  min-height: 200px;
 }
 
-.form-section h3 {
-  margin: 0 0 16px 0;
-  color: #111827;
-  font-size: 1.125rem;
-  font-weight: 600;
-}
-
-.form-group {
-  margin-bottom: 16px;
-}
-
-.form-group:last-child {
-  margin-bottom: 0;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 500;
-  color: #374151;
-  font-size: 0.875rem;
-}
-
-.form-group input,
-.form-group select,
-.form-group textarea {
+.query-builder-container {
   width: 100%;
-  padding: 8px 12px;
+}
+
+/* Override react-awesome-query-builder styles */
+.query-builder-container .group {
+  background: white;
   border: 1px solid #d1d5db;
   border-radius: 6px;
-  font-size: 0.95rem;
-  background: white;
-  transition: border-color 0.2s;
+  padding: 12px;
+  margin: 8px 0;
 }
 
-.form-group input:focus,
-.form-group select:focus,
-.form-group textarea:focus {
+.query-builder-container .rule {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin: 8px 0;
+}
+
+.query-builder-container .rule--field select,
+.query-builder-container .rule--operator select,
+.query-builder-container .rule--value input,
+.query-builder-container .rule--value select {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  background: white;
+}
+
+.query-builder-container .rule--field select:focus,
+.query-builder-container .rule--operator select:focus,
+.query-builder-container .rule--value input:focus,
+.query-builder-container .rule--value select:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.form-group textarea {
-  resize: vertical;
-  font-family: inherit;
+.query-builder-container .group--conjunctions .btn {
+  padding: 4px 12px;
+  font-size: 0.875rem;
+  border-radius: 4px;
+  margin: 0 4px;
 }
 
-.list-input {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
+.query-builder-container .group--conjunctions .btn.active {
+  background: #3b82f6;
+  color: white;
+  border-color: #2563eb;
 }
 
-.list-input input {
-  flex: 1;
-  padding: 8px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 0.95rem;
+.query-builder-container .group--actions .btn {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  margin: 0 4px;
+  border-radius: 4px;
 }
 
-.list-input button {
-  padding: 8px 16px;
+.query-builder-container .btn-success {
+  background: #10b981;
+  border-color: #059669;
+  color: white;
 }
 
-.item-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.query-builder-container .btn-danger {
+  background: #ef4444;
+  border-color: #dc2626;
+  color: white;
 }
 
-.list-item {
+.query-builder-container .rule--header {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Output Section */
+.rule-output-section {
   background: white;
   border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 0.875rem;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 24px;
 }
 
-.list-item span {
-  color: #1f2937;
-  font-family: 'Courier New', monospace;
-}
-
-.list-item button {
-  background: none;
-  border: none;
-  color: #ef4444;
-  font-size: 1.25rem;
-  cursor: pointer;
-  padding: 0;
-  width: 20px;
-  height: 20px;
+.output-tabs {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 3px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
 }
 
-.list-item button:hover {
-  background: #fee2e2;
-}
-
-.condition-row {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-  align-items: center;
-}
-
-.condition-row input {
+.output-tab {
   flex: 1;
-  padding: 8px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 0.95rem;
+  padding: 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-weight: 500;
+  color: #6b7280;
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
 }
 
-.condition-row select {
-  padding: 8px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 0.95rem;
+.output-tab:hover {
+  color: #374151;
+  background: #f3f4f6;
+}
+
+.output-tab.active {
+  color: #3b82f6;
   background: white;
+  border-bottom-color: #3b82f6;
 }
 
-.condition-row button {
-  padding: 8px 12px;
-}
-
-.policy-preview {
-  background: #1e293b;
-  color: #94a3b8;
-  padding: 16px;
-  border-radius: 6px;
-  font-family: 'Courier New', monospace;
-  font-size: 0.875rem;
-  overflow-x: auto;
+.output-content {
+  padding: 20px;
+  min-height: 150px;
   max-height: 300px;
   overflow-y: auto;
 }
 
-.form-actions {
+.output-code {
+  margin: 0;
+  padding: 12px;
+  background: #1f2937;
+  color: #f3f4f6;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.output-code.sql {
+  background: #1e293b;
+  color: #60a5fa;
+}
+
+.output-code.json {
+  background: #1e293b;
+  color: #34d399;
+}
+
+.output-human {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #111827;
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+}
+
+/* Actions */
+.rule-builder-actions {
   display: flex;
-  gap: 12px;
   justify-content: flex-end;
-  padding-top: 16px;
-  border-top: 1px solid #e5e7eb;
+  gap: 12px;
 }
 
 .button {
   padding: 10px 20px;
   border-radius: 6px;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -229,12 +218,69 @@
   background: #e5e7eb;
 }
 
-.button.danger {
-  background: #ef4444;
-  color: white;
-  padding: 6px 10px;
+/* Additional Query Builder Style Overrides */
+.query-builder-container .qb-rule-field {
+  min-width: 180px;
 }
 
-.button.danger:hover {
-  background: #dc2626;
+.query-builder-container .qb-rule-operator {
+  min-width: 120px;
+}
+
+.query-builder-container .qb-rule-value {
+  min-width: 200px;
+}
+
+.query-builder-container .group--header {
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.query-builder-container .qb-drag-handler {
+  color: #9ca3af;
+  margin-right: 8px;
+}
+
+.query-builder-container .qb-rule-field-wrapper,
+.query-builder-container .qb-rule-operator-wrapper,
+.query-builder-container .qb-rule-value-wrapper {
+  display: inline-block;
+  margin: 0 4px;
+}
+
+/* Datetime picker styles */
+.query-builder-container .ant-picker {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+}
+
+.query-builder-container .ant-picker:hover,
+.query-builder-container .ant-picker-focused {
+  border-color: #3b82f6;
+}
+
+/* Multiselect styles */
+.query-builder-container .ant-select {
+  min-width: 200px;
+}
+
+.query-builder-container .ant-select-selector {
+  border: 1px solid #d1d5db !important;
+  border-radius: 4px !important;
+}
+
+.query-builder-container .ant-select:hover .ant-select-selector {
+  border-color: #3b82f6 !important;
+}
+
+/* NOT operator styles */
+.query-builder-container .qb-rule-group-ext--not {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.query-builder-container .qb-rule-group-ext--not .group {
+  background: #fee2e2;
 }
