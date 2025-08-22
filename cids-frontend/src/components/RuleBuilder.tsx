@@ -27,90 +27,118 @@ interface RuleBuilderProps {
   };
 }
 
-// Initialize config
-const InitialConfig: Config = {
-  ...BasicConfig,
-  fields: {
-    user_email: {
-      label: 'User Email',
-      type: 'text',
-      valueSources: ['value'],
-    },
-    user_name: {
-      label: 'User Name',
-      type: 'text',
-      valueSources: ['value'],
-    },
-    user_department: {
-      label: 'User Department',
-      type: 'select',
-      valueSources: ['value'],
-      fieldSettings: {
-        listValues: [
-          { value: 'IT', title: 'IT' },
-          { value: 'HR', title: 'Human Resources' },
-          { value: 'Finance', title: 'Finance' },
-          { value: 'Sales', title: 'Sales' },
-          { value: 'Marketing', title: 'Marketing' },
-          { value: 'Engineering', title: 'Engineering' },
-        ],
-      },
-    },
-    user_role: {
-      label: 'User Role',
-      type: 'select',
-      valueSources: ['value'],
-      fieldSettings: {
-        listValues: [
-          { value: 'admin', title: 'Administrator' },
-          { value: 'manager', title: 'Manager' },
-          { value: 'user', title: 'Regular User' },
-          { value: 'viewer', title: 'Viewer' },
-          { value: 'editor', title: 'Editor' },
-        ],
-      },
-    },
-    user_location: {
-      label: 'User Location',
-      type: 'select',
-      valueSources: ['value'],
-      fieldSettings: {
-        listValues: [
-          { value: 'US', title: 'United States' },
-          { value: 'EU', title: 'Europe' },
-          { value: 'Asia', title: 'Asia' },
-          { value: 'Remote', title: 'Remote' },
-        ],
-      },
-    },
-    request_time: {
-      label: 'Request Time',
-      type: 'select',
-      valueSources: ['value'],
-      fieldSettings: {
-        listValues: [
-          { value: 'business_hours', title: 'Business Hours (9-5)' },
-          { value: 'after_hours', title: 'After Hours' },
-          { value: 'weekend', title: 'Weekend' },
-        ],
-      },
-    },
-    data_sensitivity: {
-      label: 'Data Sensitivity',
-      type: 'select',
-      valueSources: ['value'],
-      fieldSettings: {
-        listValues: [
-          { value: 'public', title: 'Public' },
-          { value: 'internal', title: 'Internal' },
-          { value: 'confidential', title: 'Confidential' },
-          { value: 'restricted', title: 'Restricted' },
-        ],
-      },
+// Define fields based on security context
+const securityFields: Config['fields'] = {
+  permission: {
+    label: 'Permission',
+    type: 'select',
+    valueSources: ['value'],
+    fieldSettings: {
+      listValues: [
+        { value: 'select_tables', title: 'Select tables' },
+        { value: 'view_data', title: 'View data' },
+        { value: 'edit_data', title: 'Edit data' },
+        { value: 'delete_data', title: 'Delete data' },
+        { value: 'create_tables', title: 'Create tables' },
+        { value: 'drop_tables', title: 'Drop tables' },
+        { value: 'execute_queries', title: 'Execute queries' },
+        { value: 'export_data', title: 'Export data' },
+      ],
     },
   },
+  user: {
+    label: 'User',
+    type: 'text',
+    valueSources: ['value'],
+  },
+  role: {
+    label: 'Role',
+    type: 'select',
+    valueSources: ['value'],
+    fieldSettings: {
+      listValues: [
+        { value: 'admin', title: 'Admin' },
+        { value: 'editor', title: 'Editor' },
+        { value: 'viewer', title: 'Viewer' },
+        { value: 'analyst', title: 'Analyst' },
+        { value: 'developer', title: 'Developer' },
+      ],
+    },
+  },
+  department: {
+    label: 'Department',
+    type: 'select',
+    valueSources: ['value'],
+    fieldSettings: {
+      listValues: [
+        { value: 'engineering', title: 'Engineering' },
+        { value: 'sales', title: 'Sales' },
+        { value: 'marketing', title: 'Marketing' },
+        { value: 'hr', title: 'Human Resources' },
+        { value: 'finance', title: 'Finance' },
+        { value: 'operations', title: 'Operations' },
+      ],
+    },
+  },
+  location: {
+    label: 'Location',
+    type: 'select',
+    valueSources: ['value'],
+    fieldSettings: {
+      listValues: [
+        { value: 'headquarters', title: 'Headquarters' },
+        { value: 'remote', title: 'Remote' },
+        { value: 'branch_office', title: 'Branch Office' },
+        { value: 'home', title: 'Home' },
+      ],
+    },
+  },
+  ip_address: {
+    label: 'IP Address',
+    type: 'text',
+    valueSources: ['value'],
+  },
+  time_range: {
+    label: 'Time Range',
+    type: 'select',
+    valueSources: ['value'],
+    fieldSettings: {
+      listValues: [
+        { value: 'business_hours', title: 'Business Hours' },
+        { value: 'after_hours', title: 'After Hours' },
+        { value: 'weekends', title: 'Weekends' },
+        { value: 'always', title: 'Always' },
+      ],
+    },
+  },
+};
+
+// Configure the query builder
+const queryBuilderConfig: Config = {
+  ...BasicConfig,
+  fields: securityFields,
   operators: {
     ...BasicConfig.operators,
+    equal: {
+      ...BasicConfig.operators.equal,
+      label: 'is',
+    },
+    not_equal: {
+      ...BasicConfig.operators.not_equal,
+      label: 'is not',
+    },
+    select_equals: {
+      ...BasicConfig.operators.select_equals,
+      label: 'is',
+    },
+    select_not_equals: {
+      ...BasicConfig.operators.select_not_equals,
+      label: 'is not',
+    },
+    like: {
+      ...BasicConfig.operators.like,
+      label: 'contains',
+    },
   },
   widgets: {
     ...BasicConfig.widgets,
@@ -123,174 +151,111 @@ const InitialConfig: Config = {
     canRegroup: false,
     maxNesting: 1,
     showLabels: false,
-  },
-  conjunctions: {
-    AND: {
-      label: 'ALL',
-      formatConj: (children: any, conj: string, isForDisplay?: boolean) => {
-        return isForDisplay ? 'ALL conditions must be true' : 'AND';
-      },
-    },
-    OR: {
-      label: 'ANY',
-      formatConj: (children: any, conj: string, isForDisplay?: boolean) => {
-        return isForDisplay ? 'ANY condition can be true' : 'OR';
-      },
-    },
+    renderSize: 'small',
+    renderField: (props: any) => props.value,
+    renderOperator: (props: any) => props.value,
+    addRuleLabel: '+ Add',
+    deleteLabel: 'Delete',
+    addGroupLabel: '+ Add Group',
+    delGroupLabel: 'Delete',
   },
 };
 
-// Create empty tree
-const queryValue = {
+const emptyTree = {
   id: QbUtils.uuid(),
-  type: 'group',
-  properties: {
-    conjunction: 'AND',
-  },
+  type: 'group' as const,
 };
 
 const RuleBuilder: React.FC<RuleBuilderProps> = ({ isOpen, onClose, context }) => {
   const [tree, setTree] = useState<ImmutableTree>(
-    QbUtils.checkTree(QbUtils.loadTree(queryValue), InitialConfig)
+    QbUtils.checkTree(QbUtils.loadTree(emptyTree), queryBuilderConfig)
   );
-  const [config] = useState(InitialConfig);
+  const [saveLabel, setSaveLabel] = useState('Save');
 
   useEffect(() => {
     if (isOpen) {
-      // Reset tree when modal opens
-      setTree(QbUtils.checkTree(QbUtils.loadTree(queryValue), config));
+      setTree(QbUtils.checkTree(QbUtils.loadTree(emptyTree), queryBuilderConfig));
+      setSaveLabel('Save');
     }
-  }, [isOpen, config]);
+  }, [isOpen]);
 
   const onChange = useCallback((immutableTree: ImmutableTree, config: Config) => {
     setTree(immutableTree);
   }, []);
 
   const renderBuilder = useCallback((props: BuilderProps) => (
-    <div className="query-builder-container">
+    <div className="query-builder-simple">
       <Builder {...props} />
     </div>
   ), []);
 
-  const getContextTitle = () => {
-    if (!context) return 'Define Access Rule';
-    
-    switch (context.type) {
-      case 'resource':
-        return `Access Rules for ${context.resource}`;
-      case 'action':
-        return `Rules for ${context.action} on ${context.resource}`;
-      case 'field':
-        return `Field Access: ${context.field}`;
-      default:
-        return 'Define Access Rule';
-    }
-  };
-
-  const getSqlOutput = () => {
-    try {
-      return QbUtils.sqlFormat(tree, config) || '';
-    } catch (error) {
-      return '';
-    }
-  };
-
-  const getJsonOutput = () => {
-    try {
-      return JSON.stringify(QbUtils.getTree(tree), null, 2);
-    } catch (error) {
-      return '{}';
-    }
-  };
-
-  const getPlainEnglish = () => {
-    const treeData = QbUtils.getTree(tree);
-    if (!treeData || !treeData.children1 || treeData.children1.length === 0) {
-      return 'No conditions defined. Click "+ Add rule" to start.';
-    }
-
-    const conjunction = treeData.properties?.conjunction || 'AND';
-    const conjText = conjunction === 'OR' ? 'ANY' : 'ALL';
-    
-    let result = `Grant access when ${conjText} of these conditions are met:\n\n`;
-    
-    treeData.children1.forEach((child: any, index: number) => {
-      if (child.type === 'rule' && child.properties) {
-        const field = config.fields[child.properties.field];
-        const fieldLabel = field?.label || child.properties.field;
-        const value = child.properties.value?.[0] || '';
-        const operator = child.properties.operator;
-        
-        let opText = 'equals';
-        if (operator === 'not_equal') opText = 'is not';
-        if (operator === 'less') opText = 'is less than';
-        if (operator === 'greater') opText = 'is greater than';
-        
-        result += `${index + 1}. ${fieldLabel} ${opText} "${value}"\n`;
-      }
-    });
-    
-    return result;
-  };
-
   const handleSave = () => {
-    const output = {
-      sql: getSqlOutput(),
-      json: getJsonOutput(),
-      plain: getPlainEnglish(),
-      context: context,
-    };
+    const jsonTree = QbUtils.getTree(tree);
+    console.log('Saving rules:', jsonTree);
     
-    console.log('Saving rule:', output);
-    alert('Rule saved successfully!');
+    // Show feedback
+    setSaveLabel('Saved!');
+    setTimeout(() => {
+      onClose();
+    }, 1000);
+  };
+
+  const handleCancel = () => {
     onClose();
+  };
+
+  const handleClear = () => {
+    setTree(QbUtils.checkTree(QbUtils.loadTree(emptyTree), queryBuilderConfig));
   };
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={getContextTitle()}
-      width="80%"
-      maxHeight="85vh"
+      title="Manage security rules"
+      width="700px"
+      maxHeight="500px"
     >
-      <div className="rule-builder-content">
-        <div className="rule-intro">
-          <h3>Build Your Access Rules</h3>
-          <p>
-            Define who can access this resource by setting conditions. 
-            Choose whether ALL conditions must be met (AND) or if ANY single condition is enough (OR).
-          </p>
+      <div className="rule-builder-simple">
+        <div className="rule-builder-description">
+          Define conditions for data access and permissions
         </div>
-
-        <div className="builder-section">
-          <div className="builder-label">Conditions:</div>
-          <Query
-            {...config}
-            value={tree}
-            onChange={onChange}
-            renderBuilder={renderBuilder}
-          />
-        </div>
-
-        <div className="preview-section">
-          <h4>Rule Preview</h4>
-          <div className="preview-tabs">
-            <div className="preview-tab active">Plain English</div>
-            <div className="preview-tab">SQL</div>
-            <div className="preview-tab">JSON</div>
+        
+        <div className="rules-section">
+          <div className="rules-header">
+            <span className="rules-label">Rules</span>
+            <div className="header-actions">
+              <button 
+                className="link-button"
+                onClick={handleClear}
+              >
+                Clear
+              </button>
+            </div>
           </div>
-          <div className="preview-content">
-            <pre>{getPlainEnglish()}</pre>
+          
+          <div className="query-wrapper">
+            <Query
+              {...queryBuilderConfig}
+              value={tree}
+              onChange={onChange}
+              renderBuilder={renderBuilder}
+            />
           </div>
         </div>
 
-        <div className="builder-actions">
-          <button className="btn-save" onClick={handleSave}>
-            Save Rule
-          </button>
-          <button className="btn-cancel" onClick={onClose}>
+        <div className="modal-footer">
+          <button 
+            className="btn-text"
+            onClick={handleCancel}
+          >
             Cancel
+          </button>
+          <button 
+            className="btn-primary"
+            onClick={handleSave}
+          >
+            {saveLabel}
           </button>
         </div>
       </div>
