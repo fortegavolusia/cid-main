@@ -1,308 +1,326 @@
-/* Simple Rule Builder Styles */
-.rule-builder-simple {
-  padding: 0;
+/* Power BI Style RLS Rule Builder */
+.rls-rule-builder {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
-.rule-builder-description {
-  padding: 20px 24px;
-  color: #6b7280;
+.rule-builder-layout {
+  display: flex;
+  flex: 1;
+  gap: 0;
+  min-height: 500px;
+}
+
+/* Sidebar */
+.rule-sidebar {
+  width: 280px;
+  background: #f5f5f5;
+  border-right: 1px solid #ddd;
+  overflow-y: auto;
+}
+
+.sidebar-section {
+  border-bottom: 1px solid #ddd;
+}
+
+.sidebar-section h4 {
+  margin: 0;
+  padding: 12px 16px;
+  background: #e8e8e8;
   font-size: 0.875rem;
-  border-bottom: 1px solid #e5e7eb;
-  background: #f9fafb;
+  font-weight: 600;
+  color: #333;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-/* Rules Section */
-.rules-section {
-  padding: 20px 24px;
-  min-height: 300px;
+/* Template List */
+.template-list {
+  padding: 8px;
 }
 
-.rules-header {
+.template-item {
+  padding: 8px 12px;
+  margin-bottom: 4px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.template-item:hover {
+  background: #e8f4fd;
+  border-color: #0078d4;
+}
+
+.template-item.selected {
+  background: #0078d4;
+  border-color: #0078d4;
+  color: white;
+}
+
+.template-name {
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin-bottom: 4px;
+}
+
+.template-desc {
+  font-size: 0.75rem;
+  opacity: 0.8;
+  line-height: 1.3;
+}
+
+.template-item.selected .template-desc {
+  opacity: 0.9;
+}
+
+/* Function List */
+.function-list {
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.function-btn {
+  padding: 4px 8px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.75rem;
+  color: #0078d4;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.function-btn:hover {
+  background: #e8f4fd;
+  border-color: #0078d4;
+}
+
+/* Main Editor Area */
+.rule-editor-area {
+  flex: 1;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  background: white;
+}
+
+.editor-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
-}
-
-.rules-label {
-  font-weight: 600;
-  color: #111827;
-  font-size: 0.875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.header-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.link-button {
-  background: none;
-  border: none;
-  color: #3b82f6;
-  font-size: 0.875rem;
-  cursor: pointer;
-  text-decoration: underline;
-  padding: 0;
-}
-
-.link-button:hover {
-  color: #2563eb;
-}
-
-/* Query Wrapper */
-.query-wrapper {
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  padding: 16px;
-  min-height: 200px;
-}
-
-/* Query Builder Simple Styles */
-.query-builder-simple {
-  width: 100%;
-}
-
-.query-builder-simple .group {
-  border: none;
-  padding: 0;
-  background: transparent;
-}
-
-.query-builder-simple .group--header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
   margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #f3f4f6;
 }
 
-/* AND/OR Buttons */
-.query-builder-simple .group--conjunctions {
-  display: inline-flex;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  overflow: hidden;
+.editor-label {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #333;
 }
 
-.query-builder-simple .group--conjunctions .btn {
+.help-toggle {
   padding: 4px 12px;
   background: white;
-  border: none;
-  border-right: 1px solid #d1d5db;
-  color: #6b7280;
+  border: 1px solid #ddd;
+  border-radius: 3px;
   font-size: 0.75rem;
-  font-weight: 500;
+  color: #0078d4;
   cursor: pointer;
+  transition: all 0.15s;
+}
+
+.help-toggle:hover {
+  background: #f5f5f5;
+}
+
+/* Help Panel */
+.help-panel {
+  background: #fff4ce;
+  border: 1px solid #fdb81e;
+  border-radius: 3px;
+  padding: 12px;
+  margin-bottom: 12px;
+  font-size: 0.875rem;
+}
+
+.help-panel p {
+  margin: 0 0 8px 0;
+  font-weight: 600;
+  color: #333;
+}
+
+.help-panel ul {
   margin: 0;
-  transition: all 0.15s;
+  padding-left: 20px;
 }
 
-.query-builder-simple .group--conjunctions .btn:last-child {
-  border-right: none;
+.help-panel li {
+  margin-bottom: 4px;
+  color: #555;
 }
 
-.query-builder-simple .group--conjunctions .btn:hover {
-  background: #f9fafb;
-}
-
-.query-builder-simple .group--conjunctions .btn.active {
-  background: #3b82f6;
-  color: white;
-}
-
-/* Rules */
-.query-builder-simple .rule {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  padding: 8px 12px;
-  margin: 8px 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.query-builder-simple .rule--header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* Editor Container */
+.editor-container {
   flex: 1;
-}
-
-.query-builder-simple .rule--field,
-.query-builder-simple .rule--operator,
-.query-builder-simple .rule--value {
-  display: inline-block;
-}
-
-.query-builder-simple select,
-.query-builder-simple input[type="text"] {
-  padding: 4px 8px;
-  border: 1px solid #d1d5db;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #ddd;
   border-radius: 3px;
-  font-size: 0.8rem;
   background: white;
-  color: #374151;
-  height: 28px;
 }
 
-.query-builder-simple .rule--field select {
-  min-width: 120px;
-}
-
-.query-builder-simple .rule--operator select {
-  min-width: 80px;
-}
-
-.query-builder-simple .rule--value input {
-  min-width: 150px;
-}
-
-.query-builder-simple select:focus,
-.query-builder-simple input:focus {
+.rule-editor {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #333;
+  resize: none;
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
-/* Delete button */
-.query-builder-simple .rule--delete {
-  margin-left: auto;
+.rule-editor::placeholder {
+  color: #999;
+  font-style: italic;
 }
 
-.query-builder-simple .rule--delete .btn {
-  padding: 2px 8px;
-  background: white;
-  border: 1px solid #ef4444;
-  color: #ef4444;
-  border-radius: 3px;
-  font-size: 0.75rem;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.query-builder-simple .rule--delete .btn:hover {
-  background: #fef2f2;
-}
-
-/* Add button */
-.query-builder-simple .group--actions {
-  margin-top: 12px;
-}
-
-.query-builder-simple .group--actions .btn {
-  padding: 6px 12px;
-  background: white;
-  border: 1px solid #10b981;
-  color: #10b981;
-  border-radius: 4px;
-  font-size: 0.8rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s;
-  margin-right: 8px;
-}
-
-.query-builder-simple .group--actions .btn:hover {
-  background: #f0fdf4;
-}
-
-/* Hide elements */
-.query-builder-simple .qb-drag-handler,
-.query-builder-simple .rule--not {
-  display: none;
-}
-
-/* Modal Footer */
-.modal-footer {
+.editor-status {
   display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 24px;
-  border-top: 1px solid #e5e7eb;
-  background: #f9fafb;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f5f5f5;
+  border-top: 1px solid #ddd;
+  font-size: 0.75rem;
 }
 
-.btn-text {
-  padding: 8px 16px;
-  background: transparent;
-  border: none;
-  color: #6b7280;
+.char-count {
+  color: #666;
+}
+
+.test-result {
+  font-weight: 600;
+}
+
+.test-result.valid {
+  color: #107c10;
+}
+
+.test-result.invalid {
+  color: #d83b01;
+}
+
+/* Example Section */
+.example-section {
+  margin-top: 16px;
+  padding: 12px;
+  background: #f8f8f8;
+  border-radius: 3px;
+}
+
+.example-section h5 {
+  margin: 0 0 8px 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.example-code {
+  display: block;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.8rem;
+  color: #0078d4;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.example-code:hover {
+  background: #e8f4fd;
+  border-color: #0078d4;
+}
+
+/* Footer */
+.rule-builder-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #f5f5f5;
+  border-top: 1px solid #ddd;
+}
+
+.footer-left,
+.footer-right {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-test {
+  padding: 6px 16px;
+  background: white;
+  border: 1px solid #0078d4;
+  color: #0078d4;
+  border-radius: 3px;
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
 }
 
-.btn-text:hover {
-  color: #374151;
+.btn-test:hover:not(:disabled) {
+  background: #e8f4fd;
 }
 
-.btn-primary {
-  padding: 8px 20px;
-  background: #3b82f6;
+.btn-test:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-cancel {
+  padding: 6px 16px;
+  background: white;
+  border: 1px solid #ddd;
+  color: #333;
+  border-radius: 3px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-cancel:hover {
+  background: #f5f5f5;
+}
+
+.btn-save-rule {
+  padding: 6px 20px;
+  background: #0078d4;
   border: none;
   color: white;
+  border-radius: 3px;
   font-size: 0.875rem;
   font-weight: 500;
-  border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s;
 }
 
-.btn-primary:hover {
-  background: #2563eb;
+.btn-save-rule:hover:not(:disabled) {
+  background: #005ba1;
 }
 
-/* Override some default RAQB styles for cleaner look */
-.query-builder-simple .group--children {
-  margin-left: 0;
-}
-
-.query-builder-simple .group--children1 {
-  margin-left: 0;
-}
-
-.query-builder-simple .rule--body {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-}
-
-.query-builder-simple .rule--body--wrapper {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-}
-
-/* Clean up spacing */
-.query-builder-simple .group--actions--buttons {
-  display: flex;
-  gap: 8px;
-}
-
-.query-builder-simple .rule:first-child {
-  margin-top: 0;
-}
-
-/* Placeholder text */
-.query-wrapper:has(.group:not(:has(.rule))) {
-  position: relative;
-}
-
-.query-wrapper:has(.group:not(:has(.rule)))::after {
-  content: "Click '+ Add' to create your first rule";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: #9ca3af;
-  font-size: 0.875rem;
-  pointer-events: none;
+.btn-save-rule:disabled {
+  background: #ccc;
+  cursor: not-allowed;
 }

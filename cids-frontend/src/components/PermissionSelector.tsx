@@ -155,10 +155,11 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
 
   const renderField = (resource: string, action: string, field: FieldInfo) => {
     const isSensitive = field.sensitive || field.pii || field.phi;
+    const fieldKey = `${resource}-${action}-${field.field_name}`;
     
     return (
       <div 
-        key={field.field_name} 
+        key={fieldKey} 
         className="field-item clickable"
         onClick={() => openRuleBuilder('field', { resource, action, field: field.field_name, fieldMetadata: field })}
       >
@@ -260,7 +261,7 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
         )}
         <div className="fields-label">Fields accessible:</div>
         <div className="fields-list">
-          {details.fields.map(field => renderField(resource, action, field))}
+          {details.fields.map((field, index) => renderField(resource, action, field))}
         </div>
       </div>
     );

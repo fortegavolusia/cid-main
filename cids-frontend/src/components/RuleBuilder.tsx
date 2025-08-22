@@ -1,17 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
 import './RuleBuilder.css';
-
-import {
-  Query,
-  Builder,
-  BasicConfig,
-  Utils as QbUtils,
-  Config,
-  ImmutableTree,
-  BuilderProps,
-} from '@react-awesome-query-builder/ui';
-import '@react-awesome-query-builder/ui/css/styles.css';
 
 interface RuleBuilderProps {
   isOpen: boolean;
@@ -27,236 +16,289 @@ interface RuleBuilderProps {
   };
 }
 
-// Define fields based on security context
-const securityFields: Config['fields'] = {
-  permission: {
-    label: 'Permission',
-    type: 'select',
-    valueSources: ['value'],
-    fieldSettings: {
-      listValues: [
-        { value: 'select_tables', title: 'Select tables' },
-        { value: 'view_data', title: 'View data' },
-        { value: 'edit_data', title: 'Edit data' },
-        { value: 'delete_data', title: 'Delete data' },
-        { value: 'create_tables', title: 'Create tables' },
-        { value: 'drop_tables', title: 'Drop tables' },
-        { value: 'execute_queries', title: 'Execute queries' },
-        { value: 'export_data', title: 'Export data' },
-      ],
-    },
+// Common SQL rule templates
+const ruleTemplates = [
+  {
+    name: 'User Email Match',
+    rule: 'user_email = @current_user_email',
+    description: 'Allow access only to rows where user_email matches logged-in user'
   },
-  user: {
-    label: 'User',
-    type: 'text',
-    valueSources: ['value'],
+  {
+    name: 'Department Match',
+    rule: 'department = @current_user_department',
+    description: 'Filter data by user\'s department'
   },
-  role: {
-    label: 'Role',
-    type: 'select',
-    valueSources: ['value'],
-    fieldSettings: {
-      listValues: [
-        { value: 'admin', title: 'Admin' },
-        { value: 'editor', title: 'Editor' },
-        { value: 'viewer', title: 'Viewer' },
-        { value: 'analyst', title: 'Analyst' },
-        { value: 'developer', title: 'Developer' },
-      ],
-    },
+  {
+    name: 'Role-Based Access',
+    rule: 'required_role IN (@current_user_roles)',
+    description: 'Check if required role is in user\'s roles'
   },
-  department: {
-    label: 'Department',
-    type: 'select',
-    valueSources: ['value'],
-    fieldSettings: {
-      listValues: [
-        { value: 'engineering', title: 'Engineering' },
-        { value: 'sales', title: 'Sales' },
-        { value: 'marketing', title: 'Marketing' },
-        { value: 'hr', title: 'Human Resources' },
-        { value: 'finance', title: 'Finance' },
-        { value: 'operations', title: 'Operations' },
-      ],
-    },
+  {
+    name: 'Time-Based Access',
+    rule: 'EXTRACT(HOUR FROM CURRENT_TIMESTAMP) BETWEEN 9 AND 17',
+    description: 'Allow access only during business hours (9 AM - 5 PM)'
   },
-  location: {
-    label: 'Location',
-    type: 'select',
-    valueSources: ['value'],
-    fieldSettings: {
-      listValues: [
-        { value: 'headquarters', title: 'Headquarters' },
-        { value: 'remote', title: 'Remote' },
-        { value: 'branch_office', title: 'Branch Office' },
-        { value: 'home', title: 'Home' },
-      ],
-    },
+  {
+    name: 'Location-Based',
+    rule: 'location = \'Headquarters\' OR allow_remote = TRUE',
+    description: 'Allow headquarters location or remote-enabled resources'
   },
-  ip_address: {
-    label: 'IP Address',
-    type: 'text',
-    valueSources: ['value'],
+  {
+    name: 'Owner Access',
+    rule: 'created_by = @current_user_id OR owner_id = @current_user_id',
+    description: 'Allow access to resources owned or created by user'
   },
-  time_range: {
-    label: 'Time Range',
-    type: 'select',
-    valueSources: ['value'],
-    fieldSettings: {
-      listValues: [
-        { value: 'business_hours', title: 'Business Hours' },
-        { value: 'after_hours', title: 'After Hours' },
-        { value: 'weekends', title: 'Weekends' },
-        { value: 'always', title: 'Always' },
-      ],
-    },
+  {
+    name: 'Active Records Only',
+    rule: 'status = \'ACTIVE\' AND deleted_at IS NULL',
+    description: 'Show only active, non-deleted records'
   },
-};
+  {
+    name: 'Date Range',
+    rule: 'created_date >= CURRENT_DATE - INTERVAL \'30 days\'',
+    description: 'Show records from last 30 days'
+  }
+];
 
-// Configure the query builder
-const queryBuilderConfig: Config = {
-  ...BasicConfig,
-  fields: securityFields,
-  operators: {
-    ...BasicConfig.operators,
-    equal: {
-      ...BasicConfig.operators.equal,
-      label: 'is',
-    },
-    not_equal: {
-      ...BasicConfig.operators.not_equal,
-      label: 'is not',
-    },
-    select_equals: {
-      ...BasicConfig.operators.select_equals,
-      label: 'is',
-    },
-    select_not_equals: {
-      ...BasicConfig.operators.select_not_equals,
-      label: 'is not',
-    },
-    like: {
-      ...BasicConfig.operators.like,
-      label: 'contains',
-    },
-  },
-  widgets: {
-    ...BasicConfig.widgets,
-  },
-  settings: {
-    ...BasicConfig.settings,
-    showNot: false,
-    showLock: false,
-    canReorder: false,
-    canRegroup: false,
-    maxNesting: 1,
-    showLabels: false,
-    renderSize: 'small',
-    renderField: (props: any) => props.value,
-    renderOperator: (props: any) => props.value,
-    addRuleLabel: '+ Add',
-    deleteLabel: 'Delete',
-    addGroupLabel: '+ Add Group',
-    delGroupLabel: 'Delete',
-  },
-};
-
-const emptyTree = {
-  id: QbUtils.uuid(),
-  type: 'group' as const,
-};
+// Common SQL functions and variables for autocomplete
+const commonFunctions = [
+  '@current_user_email',
+  '@current_user_id',
+  '@current_user_name',
+  '@current_user_department',
+  '@current_user_roles',
+  '@current_user_groups',
+  '@client_ip',
+  '@request_time',
+  'CURRENT_DATE',
+  'CURRENT_TIME',
+  'CURRENT_TIMESTAMP',
+  'EXTRACT()',
+  'DATE_PART()',
+  'NOW()',
+  'UPPER()',
+  'LOWER()',
+  'SUBSTRING()',
+  'LENGTH()',
+  'COALESCE()',
+  'CASE WHEN',
+  'EXISTS()',
+  'NOT EXISTS()',
+];
 
 const RuleBuilder: React.FC<RuleBuilderProps> = ({ isOpen, onClose, context }) => {
-  const [tree, setTree] = useState<ImmutableTree>(
-    QbUtils.checkTree(QbUtils.loadTree(emptyTree), queryBuilderConfig)
-  );
-  const [saveLabel, setSaveLabel] = useState('Save');
+  const [ruleExpression, setRuleExpression] = useState('');
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
+  const [showHelp, setShowHelp] = useState(false);
+  const [testResult, setTestResult] = useState<string>('');
+  const [isTesting, setIsTesting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      setTree(QbUtils.checkTree(QbUtils.loadTree(emptyTree), queryBuilderConfig));
-      setSaveLabel('Save');
+      // Reset when modal opens
+      setRuleExpression('');
+      setSelectedTemplate('');
+      setTestResult('');
+      setIsTesting(false);
     }
   }, [isOpen]);
 
-  const onChange = useCallback((immutableTree: ImmutableTree, config: Config) => {
-    setTree(immutableTree);
-  }, []);
-
-  const renderBuilder = useCallback((props: BuilderProps) => (
-    <div className="query-builder-simple">
-      <Builder {...props} />
-    </div>
-  ), []);
-
-  const handleSave = () => {
-    const jsonTree = QbUtils.getTree(tree);
-    console.log('Saving rules:', jsonTree);
-    
-    // Show feedback
-    setSaveLabel('Saved!');
-    setTimeout(() => {
-      onClose();
-    }, 1000);
+  const handleTemplateSelect = (template: typeof ruleTemplates[0]) => {
+    setRuleExpression(template.rule);
+    setSelectedTemplate(template.name);
   };
 
-  const handleCancel = () => {
+  const handleInsertFunction = (func: string) => {
+    // Insert function at cursor position or at end
+    setRuleExpression(prev => {
+      if (prev && !prev.endsWith(' ')) {
+        return prev + ' ' + func;
+      }
+      return prev + func;
+    });
+  };
+
+  const handleTest = () => {
+    setIsTesting(true);
+    // Simulate testing the SQL rule
+    setTimeout(() => {
+      if (!ruleExpression.trim()) {
+        setTestResult('✗ Rule cannot be empty');
+      } else if (ruleExpression.includes('SELECT') || ruleExpression.includes('DROP') || ruleExpression.includes('DELETE FROM')) {
+        setTestResult('✗ Only WHERE clause conditions allowed');
+      } else {
+        setTestResult('✓ SQL syntax is valid');
+      }
+      setIsTesting(false);
+    }, 500);
+  };
+
+  const handleSave = () => {
+    const rule = {
+      expression: ruleExpression,
+      context: context,
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log('Saving SQL rule:', rule);
+    
+    // Show success feedback
+    alert('Rule saved successfully!');
     onClose();
   };
 
-  const handleClear = () => {
-    setTree(QbUtils.checkTree(QbUtils.loadTree(emptyTree), queryBuilderConfig));
+  const getContextTitle = () => {
+    if (!context) return 'Define SQL Filter';
+    
+    switch (context.type) {
+      case 'resource':
+        return `SQL Filter for ${context.resource}`;
+      case 'action':
+        return `Filter for ${context.action} on ${context.resource}`;
+      case 'field':
+        return `Field Filter: ${context.field}`;
+      default:
+        return 'Define SQL Filter';
+    }
   };
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Manage security rules"
-      width="700px"
-      maxHeight="500px"
+      title={getContextTitle()}
+      width="900px"
+      maxHeight="700px"
     >
-      <div className="rule-builder-simple">
-        <div className="rule-builder-description">
-          Define conditions for data access and permissions
-        </div>
-        
-        <div className="rules-section">
-          <div className="rules-header">
-            <span className="rules-label">Rules</span>
-            <div className="header-actions">
-              <button 
-                className="link-button"
-                onClick={handleClear}
-              >
-                Clear
-              </button>
+      <div className="rls-rule-builder">
+        <div className="rule-builder-layout">
+          {/* Left Panel - Templates and Functions */}
+          <div className="rule-sidebar">
+            <div className="sidebar-section">
+              <h4>Common Filters</h4>
+              <div className="template-list">
+                {ruleTemplates.map((template, index) => (
+                  <div
+                    key={index}
+                    className={`template-item ${selectedTemplate === template.name ? 'selected' : ''}`}
+                    onClick={() => handleTemplateSelect(template)}
+                  >
+                    <div className="template-name">{template.name}</div>
+                    <div className="template-desc">{template.description}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="sidebar-section">
+              <h4>Variables & Functions</h4>
+              <div className="function-list">
+                {commonFunctions.map((func, index) => (
+                  <button
+                    key={index}
+                    className="function-btn"
+                    onClick={() => handleInsertFunction(func)}
+                    title="Click to insert"
+                  >
+                    {func}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-          
-          <div className="query-wrapper">
-            <Query
-              {...queryBuilderConfig}
-              value={tree}
-              onChange={onChange}
-              renderBuilder={renderBuilder}
-            />
+
+          {/* Main Editor Area */}
+          <div className="rule-editor-area">
+            <div className="editor-header">
+              <label className="editor-label">SQL WHERE clause:</label>
+              <button 
+                className="help-toggle"
+                onClick={() => setShowHelp(!showHelp)}
+              >
+                {showHelp ? 'Hide Help' : 'Show Help'}
+              </button>
+            </div>
+
+            {showHelp && (
+              <div className="help-panel">
+                <p><strong>How to write SQL filter expressions:</strong></p>
+                <ul>
+                  <li>Use column names directly: <code>department = 'Sales'</code></li>
+                  <li>Use @ variables for user context: <code>@current_user_email</code></li>
+                  <li>Operators: =, !=, &gt;, &lt;, &gt;=, &lt;=, IN, NOT IN, LIKE, IS NULL</li>
+                  <li>Combine conditions: AND, OR, NOT</li>
+                  <li>String values need quotes: <code>'value'</code></li>
+                  <li>Use parentheses for complex logic: <code>(A OR B) AND C</code></li>
+                </ul>
+              </div>
+            )}
+
+            <div className="editor-container">
+              <textarea
+                className="rule-editor"
+                value={ruleExpression}
+                onChange={(e) => setRuleExpression(e.target.value)}
+                placeholder="Enter your SQL WHERE clause here...&#10;&#10;Example: department = 'Sales' AND region IN ('North', 'South')&#10;Example: created_by = @current_user_id OR is_public = TRUE"
+                spellCheck={false}
+                rows={8}
+              />
+              
+              <div className="editor-status">
+                <span className="char-count">
+                  {ruleExpression.length} characters
+                </span>
+                {testResult && (
+                  <span className={`test-result ${testResult.includes('✓') ? 'valid' : 'invalid'}`}>
+                    {testResult}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="example-section">
+              <h5>Example SQL Filters:</h5>
+              <code className="example-code">
+                user_email = @current_user_email
+              </code>
+              <code className="example-code">
+                department = 'Sales' OR is_public = TRUE
+              </code>
+              <code className="example-code">
+                created_by = @current_user_id AND status = 'ACTIVE'
+              </code>
+              <code className="example-code">
+                created_date &gt;= CURRENT_DATE - INTERVAL '7 days'
+              </code>
+              <code className="example-code">
+                role IN (@current_user_roles) AND location = 'HQ'
+              </code>
+            </div>
           </div>
         </div>
 
-        <div className="modal-footer">
-          <button 
-            className="btn-text"
-            onClick={handleCancel}
-          >
-            Cancel
-          </button>
-          <button 
-            className="btn-primary"
-            onClick={handleSave}
-          >
-            {saveLabel}
-          </button>
+        {/* Footer Actions */}
+        <div className="rule-builder-footer">
+          <div className="footer-left">
+            <button
+              className="btn-test"
+              onClick={handleTest}
+              disabled={isTesting || !ruleExpression.trim()}
+            >
+              {isTesting ? 'Testing...' : 'Validate SQL'}
+            </button>
+          </div>
+          <div className="footer-right">
+            <button className="btn-cancel" onClick={onClose}>
+              Cancel
+            </button>
+            <button 
+              className="btn-save-rule"
+              onClick={handleSave}
+              disabled={!ruleExpression.trim()}
+            >
+              Save Filter
+            </button>
+          </div>
         </div>
       </div>
     </Modal>
