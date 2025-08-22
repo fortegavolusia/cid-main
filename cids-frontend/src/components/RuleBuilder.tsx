@@ -29,130 +29,100 @@ interface RuleBuilderProps {
   };
 }
 
-// Common JWT token fields that might be available
+// User-friendly field configuration
 const tokenFields: Config['fields'] = {
-  'token.sub': {
-    label: 'Subject (User ID)',
+  'user.email': {
+    label: 'User Email',
     type: 'text',
     valueSources: ['value'],
+    preferWidgets: ['text'],
   },
-  'token.name': {
+  'user.name': {
     label: 'User Name',
     type: 'text',
     valueSources: ['value'],
+    preferWidgets: ['text'],
   },
-  'token.email': {
-    label: 'Email',
-    type: 'text',
-    valueSources: ['value'],
-  },
-  'token.roles': {
-    label: 'Roles',
-    type: 'multiselect',
-    valueSources: ['value'],
-    fieldSettings: {
-      listValues: [
-        { value: 'admin', title: 'Admin' },
-        { value: 'user', title: 'User' },
-        { value: 'viewer', title: 'Viewer' },
-        { value: 'editor', title: 'Editor' },
-      ]
-    }
-  },
-  'token.groups': {
-    label: 'AD Groups',
-    type: 'multiselect',
-    valueSources: ['value'],
-    fieldSettings: {
-      listValues: [] // Will be populated dynamically
-    }
-  },
-  'token.department': {
-    label: 'Department',
-    type: 'text',
-    valueSources: ['value'],
-  },
-  'token.aud': {
-    label: 'Audience',
-    type: 'text',
-    valueSources: ['value'],
-  },
-  'token.iss': {
-    label: 'Issuer',
-    type: 'text',
-    valueSources: ['value'],
-  },
-  'token.exp': {
-    label: 'Expiration Time',
-    type: 'datetime',
-    valueSources: ['value'],
-  },
-  'token.iat': {
-    label: 'Issued At',
-    type: 'datetime',
-    valueSources: ['value'],
-  },
-  'token.scope': {
-    label: 'Scopes',
-    type: 'multiselect',
-    valueSources: ['value'],
-    fieldSettings: {
-      listValues: [] // Will be populated based on app
-    }
-  },
-  'token.tenant_id': {
-    label: 'Tenant ID',
-    type: 'text',
-    valueSources: ['value'],
-  },
-  'token.app_id': {
-    label: 'Application ID',
-    type: 'text',
-    valueSources: ['value'],
-  },
-  'request.ip': {
-    label: 'Request IP Address',
-    type: 'text',
-    valueSources: ['value'],
-  },
-  'request.method': {
-    label: 'HTTP Method',
+  'user.department': {
+    label: 'User Department',
     type: 'select',
     valueSources: ['value'],
     fieldSettings: {
       listValues: [
-        { value: 'GET', title: 'GET' },
-        { value: 'POST', title: 'POST' },
-        { value: 'PUT', title: 'PUT' },
-        { value: 'DELETE', title: 'DELETE' },
-        { value: 'PATCH', title: 'PATCH' },
+        { value: 'IT', title: 'IT' },
+        { value: 'HR', title: 'Human Resources' },
+        { value: 'Finance', title: 'Finance' },
+        { value: 'Sales', title: 'Sales' },
+        { value: 'Marketing', title: 'Marketing' },
+        { value: 'Engineering', title: 'Engineering' },
+        { value: 'Operations', title: 'Operations' },
       ]
     }
   },
-  'request.path': {
-    label: 'Request Path',
-    type: 'text',
+  'user.role': {
+    label: 'User Role',
+    type: 'select',
     valueSources: ['value'],
+    fieldSettings: {
+      listValues: [
+        { value: 'admin', title: 'Administrator' },
+        { value: 'manager', title: 'Manager' },
+        { value: 'user', title: 'Regular User' },
+        { value: 'viewer', title: 'Viewer Only' },
+        { value: 'editor', title: 'Editor' },
+      ]
+    }
   },
-  'request.time': {
-    label: 'Request Time',
-    type: 'datetime',
+  'user.groups': {
+    label: 'User Groups',
+    type: 'multiselect',
     valueSources: ['value'],
+    fieldSettings: {
+      listValues: [
+        { value: 'AllEmployees', title: 'All Employees' },
+        { value: 'Managers', title: 'Managers' },
+        { value: 'Executives', title: 'Executives' },
+        { value: 'Contractors', title: 'Contractors' },
+        { value: 'RemoteWorkers', title: 'Remote Workers' },
+      ]
+    }
   },
-  'resource.owner': {
-    label: 'Resource Owner',
-    type: 'text',
-    valueSources: ['value', 'field'],
+  'user.location': {
+    label: 'User Location',
+    type: 'select',
+    valueSources: ['value'],
+    fieldSettings: {
+      listValues: [
+        { value: 'US', title: 'United States' },
+        { value: 'EU', title: 'Europe' },
+        { value: 'Asia', title: 'Asia' },
+        { value: 'Remote', title: 'Remote' },
+      ]
+    }
   },
-  'resource.created_by': {
-    label: 'Created By',
-    type: 'text',
-    valueSources: ['value', 'field'],
+  'request.time_of_day': {
+    label: 'Time of Day',
+    type: 'select',
+    valueSources: ['value'],
+    fieldSettings: {
+      listValues: [
+        { value: 'business_hours', title: 'Business Hours (9AM-5PM)' },
+        { value: 'after_hours', title: 'After Hours' },
+        { value: 'weekend', title: 'Weekend' },
+      ]
+    }
   },
-  'resource.department': {
-    label: 'Resource Department',
-    type: 'text',
-    valueSources: ['value', 'field'],
+  'request.ip_location': {
+    label: 'Request Location',
+    type: 'select',
+    valueSources: ['value'],
+    fieldSettings: {
+      listValues: [
+        { value: 'internal', title: 'Internal Network' },
+        { value: 'vpn', title: 'VPN' },
+        { value: 'external', title: 'External/Public' },
+      ]
+    }
   },
   'resource.sensitivity': {
     label: 'Data Sensitivity',
@@ -161,62 +131,126 @@ const tokenFields: Config['fields'] = {
     fieldSettings: {
       listValues: [
         { value: 'public', title: 'Public' },
-        { value: 'internal', title: 'Internal' },
+        { value: 'internal', title: 'Internal Use' },
         { value: 'confidential', title: 'Confidential' },
-        { value: 'restricted', title: 'Restricted' },
+        { value: 'restricted', title: 'Highly Restricted' },
       ]
     }
+  },
+  'resource.owner': {
+    label: 'Resource Owner',
+    type: 'text',
+    valueSources: ['value'],
+    preferWidgets: ['text'],
   }
 };
 
-// Initial query builder config
+// Simplified, user-friendly config
 const InitialConfig: Config = {
   ...BasicConfig,
   fields: tokenFields,
   operators: {
     ...BasicConfig.operators,
+    equal: {
+      ...BasicConfig.operators.equal,
+      label: 'is'
+    },
+    not_equal: {
+      ...BasicConfig.operators.not_equal,
+      label: 'is not'
+    },
+    less: {
+      ...BasicConfig.operators.less,
+      label: 'less than'
+    },
+    greater: {
+      ...BasicConfig.operators.greater,
+      label: 'greater than'
+    },
+    select_equals: {
+      ...BasicConfig.operators.select_equals,
+      label: 'is'
+    },
+    select_not_equals: {
+      ...BasicConfig.operators.select_not_equals,
+      label: 'is not'
+    },
+    multiselect_contains: {
+      ...BasicConfig.operators.multiselect_contains,
+      label: 'includes'
+    },
+    multiselect_not_contains: {
+      ...BasicConfig.operators.multiselect_not_contains,
+      label: 'does not include'
+    },
   },
   widgets: {
     ...BasicConfig.widgets,
   },
   settings: {
     ...BasicConfig.settings,
-    showNot: true,
-    canReorder: true,
-    canRegroup: true,
+    showNot: false, // Hide the NOT checkbox
+    showLock: false,
+    canReorder: false, // Simplify by removing drag handles
+    canRegroup: false, // Simplify by removing regroup
     showLabels: true,
-    maxNesting: 5,
+    maxNesting: 3,
+    addRuleLabel: '+ Add Condition',
+    addGroupLabel: '+ Add Group',
+    delGroupLabel: 'Delete Group',
+    delRuleLabel: 'Delete',
+    valueLabel: 'Value',
+    fieldLabel: 'When',
+    operatorLabel: 'Is',
+    conjunctionLabel: 'Match',
+    renderConjsAsRadios: false, // Keep as buttons
     renderField: (props: any) => props.value,
+    renderOperator: (props: any) => props.value,
+    renderConjs: (props: any, {renderProps}: any) => {
+      return (
+        <div className="conjunction-wrapper">
+          <span className="conjunction-label">Match:</span>
+          <div className="conjunction-buttons">
+            {renderProps({
+              ...props,
+              conjunctionOptions: {
+                AND: { label: 'ALL conditions', className: 'conj-and' },
+                OR: { label: 'ANY condition', className: 'conj-or' }
+              }
+            })}
+          </div>
+        </div>
+      );
+    },
   },
 };
 
 const RuleBuilder: React.FC<RuleBuilderProps> = ({ isOpen, onClose, context }) => {
   const [config, setConfig] = useState<Config>(InitialConfig);
-  const [tree, setTree] = useState<ImmutableTree>(QbUtils.checkTree(QbUtils.loadTree({ id: QbUtils.uuid(), type: 'group' }), config));
-  const [sqlOutput, setSqlOutput] = useState<string>('');
-  const [jsonOutput, setJsonOutput] = useState<string>('');
-  const [selectedOutput, setSelectedOutput] = useState<'sql' | 'json' | 'human'>('sql');
+  const [tree, setTree] = useState<ImmutableTree>(
+    QbUtils.checkTree(QbUtils.loadTree({ 
+      id: QbUtils.uuid(), 
+      type: 'group',
+      properties: {
+        conjunction: 'AND'
+      }
+    }), config)
+  );
+  const [selectedOutput, setSelectedOutput] = useState<'simple' | 'technical'>('simple');
 
   useEffect(() => {
     // Reset tree when modal opens
     if (isOpen) {
-      const emptyTree = QbUtils.checkTree(QbUtils.loadTree({ id: QbUtils.uuid(), type: 'group' }), config);
+      const emptyTree = QbUtils.checkTree(QbUtils.loadTree({ 
+        id: QbUtils.uuid(), 
+        type: 'group',
+        properties: {
+          conjunction: 'AND'
+        }
+      }), config);
       setTree(emptyTree);
-      setSqlOutput('');
-      setJsonOutput('');
     }
   }, [isOpen]);
-
-  useEffect(() => {
-    // Update outputs when tree changes
-    if (tree) {
-      const sqlString = QbUtils.sqlFormat(tree, config) || '';
-      setSqlOutput(sqlString);
-      
-      const jsonTree = QbUtils.getTree(tree);
-      setJsonOutput(JSON.stringify(jsonTree, null, 2));
-    }
-  }, [tree, config]);
 
   const onChange = (immutableTree: ImmutableTree, config: Config) => {
     setTree(immutableTree);
@@ -224,76 +258,88 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ isOpen, onClose, context }) =
   };
 
   const renderBuilder = (props: BuilderProps) => (
-    <div className="query-builder-container">
+    <div className="query-builder-container user-friendly">
       <Builder {...props} />
     </div>
   );
 
   const getContextDescription = () => {
-    if (!context) return 'General Rule';
+    if (!context) return 'Access Rule';
     
     if (context.type === 'resource') {
-      return `Resource: ${context.resource}`;
+      return `Who can access ${context.resource}?`;
     } else if (context.type === 'action') {
-      return `Action: ${context.resource}.${context.action}`;
+      return `Who can ${context.action} ${context.resource}?`;
     } else if (context.type === 'field') {
-      return `Field: ${context.resource}.${context.action}.${context.field}`;
+      return `Who can see ${context.field} in ${context.resource}?`;
     }
-    return 'General Rule';
+    return 'Access Rule';
+  };
+
+  const getSimpleDescription = () => {
+    const jsonTree = QbUtils.getTree(tree);
+    if (!jsonTree || !jsonTree.children1 || jsonTree.children1.length === 0) {
+      return 'No conditions set - Access will be denied by default';
+    }
+    
+    const conjunction = jsonTree.properties?.conjunction === 'OR' ? 'ANY' : 'ALL';
+    const ruleCount = jsonTree.children1.length;
+    
+    return `Access granted when ${conjunction} of the ${ruleCount} condition${ruleCount > 1 ? 's' : ''} below ${ruleCount > 1 ? 'are' : 'is'} met:`;
   };
 
   const handleSave = () => {
+    const jsonTree = QbUtils.getTree(tree);
+    const sqlString = QbUtils.sqlFormat(tree, config);
+    
     const rule = {
       context: context,
-      sql: sqlOutput,
-      json: jsonOutput,
-      tree: QbUtils.getTree(tree),
+      sql: sqlString,
+      json: jsonTree,
+      description: getSimpleDescription(),
     };
     
     console.log('Saving rule:', rule);
     
     // In production, this would save to backend
-    alert(`Rule saved!\n\nSQL: ${sqlOutput}`);
+    alert(`Rule saved!\n\n${getSimpleDescription()}`);
     onClose();
   };
 
-  const getHumanReadable = () => {
-    if (!sqlOutput) return 'No conditions defined';
+  const getTechnicalOutput = () => {
+    const sqlString = QbUtils.sqlFormat(tree, config) || 'TRUE';
+    const jsonTree = QbUtils.getTree(tree);
     
-    // Convert SQL to human-readable format
-    let readable = sqlOutput;
-    readable = readable.replace(/token\./g, 'Token ');
-    readable = readable.replace(/request\./g, 'Request ');
-    readable = readable.replace(/resource\./g, 'Resource ');
-    readable = readable.replace(/AND/g, 'AND');
-    readable = readable.replace(/OR/g, 'OR');
-    readable = readable.replace(/=/g, 'equals');
-    readable = readable.replace(/!=/g, 'not equals');
-    readable = readable.replace(/>/g, 'greater than');
-    readable = readable.replace(/</g, 'less than');
-    readable = readable.replace(/IN/g, 'is one of');
-    readable = readable.replace(/NOT IN/g, 'is not one of');
-    
-    return readable;
+    return {
+      sql: sqlString,
+      json: JSON.stringify(jsonTree, null, 2)
+    };
   };
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={`Rule Builder - ${getContextDescription()}`}
-      width="90%"
+      title={getContextDescription()}
+      width="85%"
       maxHeight="90vh"
     >
       <div className="rule-builder-content">
         <div className="rule-builder-header">
+          <h3 className="rule-title">Define Access Conditions</h3>
           <p className="rule-description">
-            Define access rules based on JWT token claims and request context. 
-            These rules will be evaluated at runtime to determine access permissions.
+            Set up conditions that must be met for users to access this resource. 
+            You can combine multiple conditions using "ALL" (every condition must be true) 
+            or "ANY" (at least one condition must be true).
           </p>
         </div>
 
-        <div className="query-builder-wrapper">
+        <div className="rule-summary">
+          <div className="summary-icon">ℹ️</div>
+          <div className="summary-text">{getSimpleDescription()}</div>
+        </div>
+
+        <div className="query-builder-wrapper user-friendly">
           <Query
             {...config}
             value={tree}
@@ -305,39 +351,57 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ isOpen, onClose, context }) =
         <div className="rule-output-section">
           <div className="output-tabs">
             <button 
-              className={`output-tab ${selectedOutput === 'sql' ? 'active' : ''}`}
-              onClick={() => setSelectedOutput('sql')}
+              className={`output-tab ${selectedOutput === 'simple' ? 'active' : ''}`}
+              onClick={() => setSelectedOutput('simple')}
             >
-              SQL Output
+              Simple View
             </button>
             <button 
-              className={`output-tab ${selectedOutput === 'json' ? 'active' : ''}`}
-              onClick={() => setSelectedOutput('json')}
+              className={`output-tab ${selectedOutput === 'technical' ? 'active' : ''}`}
+              onClick={() => setSelectedOutput('technical')}
             >
-              JSON Output
-            </button>
-            <button 
-              className={`output-tab ${selectedOutput === 'human' ? 'active' : ''}`}
-              onClick={() => setSelectedOutput('human')}
-            >
-              Human Readable
+              Technical Details
             </button>
           </div>
           
           <div className="output-content">
-            {selectedOutput === 'sql' && (
-              <pre className="output-code sql">
-                {sqlOutput || 'No conditions defined'}
-              </pre>
-            )}
-            {selectedOutput === 'json' && (
-              <pre className="output-code json">
-                {jsonOutput || '{}'}
-              </pre>
-            )}
-            {selectedOutput === 'human' && (
-              <div className="output-human">
-                {getHumanReadable()}
+            {selectedOutput === 'simple' ? (
+              <div className="output-simple">
+                <h4>Rule Summary:</h4>
+                <p>{getSimpleDescription()}</p>
+                {QbUtils.getTree(tree)?.children1?.map((child: any, index: number) => {
+                  if (child.type === 'rule') {
+                    const field = tokenFields[child.properties.field];
+                    const fieldLabel = field?.label || child.properties.field;
+                    const operator = child.properties.operator;
+                    const value = child.properties.value?.[0];
+                    
+                    let operatorText = 'equals';
+                    if (operator === 'not_equal' || operator === 'select_not_equals') operatorText = 'is not';
+                    if (operator === 'less') operatorText = 'is less than';
+                    if (operator === 'greater') operatorText = 'is greater than';
+                    if (operator === 'multiselect_contains') operatorText = 'includes';
+                    if (operator === 'multiselect_not_contains') operatorText = 'does not include';
+                    
+                    return (
+                      <div key={index} className="condition-item">
+                        • {fieldLabel} {operatorText} "{value}"
+                      </div>
+                    );
+                  }
+                  return null;
+                })}
+              </div>
+            ) : (
+              <div className="output-technical">
+                <div className="technical-section">
+                  <h5>SQL Query:</h5>
+                  <pre className="output-code sql">{getTechnicalOutput().sql}</pre>
+                </div>
+                <div className="technical-section">
+                  <h5>JSON Structure:</h5>
+                  <pre className="output-code json">{getTechnicalOutput().json}</pre>
+                </div>
               </div>
             )}
           </div>
