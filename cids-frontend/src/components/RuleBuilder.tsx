@@ -5,6 +5,7 @@ import './RuleBuilder.css';
 interface RuleBuilderProps {
   isOpen: boolean;
   onClose: () => void;
+  onSave?: (filterKey: string, expression: string) => void;
   context?: {
     type: 'resource' | 'action' | 'field';
     clientId: string;
@@ -13,6 +14,8 @@ interface RuleBuilderProps {
     action?: string;
     field?: string;
     fieldMetadata?: any;
+    filterKey?: string;
+    existingFilter?: string;
   };
 }
 
@@ -86,7 +89,7 @@ const commonFunctions = [
   'NOT EXISTS()',
 ];
 
-const RuleBuilder: React.FC<RuleBuilderProps> = ({ isOpen, onClose, context }) => {
+const RuleBuilder: React.FC<RuleBuilderProps> = ({ isOpen, onClose, onSave, context }) => {
   const [ruleExpression, setRuleExpression] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [showHelp, setShowHelp] = useState(false);
@@ -95,13 +98,17 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ isOpen, onClose, context }) =
 
   useEffect(() => {
     if (isOpen) {
-      // Reset when modal opens
-      setRuleExpression('');
+      // Load existing filter if available, otherwise reset
+      if (context?.existingFilter) {
+        setRuleExpression(context.existingFilter);
+      } else {
+        setRuleExpression('');
+      }
       setSelectedTemplate('');
       setTestResult('');
       setIsTesting(false);
     }
-  }, [isOpen]);
+  }, [isOpen, context?.existingFilter]);
 
   const handleTemplateSelect = (template: typeof ruleTemplates[0]) => {
     setRuleExpression(template.rule);
@@ -134,29 +141,27 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ isOpen, onClose, context }) =
   };
 
   const handleSave = () => {
-    const rule = {
-      expression: ruleExpression,
-      context: context,
-      timestamp: new Date().toISOString()
-    };
-    
-    console.log('Saving SQL rule:', rule);
+    if (onSave && context?.filterKey) {
+      onSave(context.filterKey, ruleExpression);
+    }
     
     // Show success feedback
-    alert('Rule saved successfully!');
+    alert('Filter saved successfully!');
     onClose();
   };
 
   const getContextTitle = () => {
     if (!context) return 'Define SQL Filter';
     
+    const isEditing = context.existingFilter ? 'Edit' : 'Add New';
+    
     switch (context.type) {
       case 'resource':
-        return `SQL Filter for ${context.resource}`;
+        return `${isEditing} SQL Filter for ${context.resource}`;
       case 'action':
-        return `Filter for ${context.action} on ${context.resource}`;
+        return `${isEditing} Filter for ${context.action} on ${context.resource}`;
       case 'field':
-        return `Field Filter: ${context.field}`;
+        return `${isEditing} Field Filter: ${context.field}`;
       default:
         return 'Define SQL Filter';
     }
