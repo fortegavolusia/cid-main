@@ -475,28 +475,34 @@
   color: #0078d4;
 }
 
-.filters-footer {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid #ddd;
+/* Permissions Footer */
+.permissions-footer {
+  position: sticky;
+  bottom: 0;
+  background: white;
+  border-top: 2px solid #e5e7eb;
+  padding: 16px 20px;
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
+  margin-top: 20px;
+  z-index: 10;
 }
 
-.add-filter-btn {
-  padding: 8px 20px;
-  background: #0078d4;
+.save-permissions-btn {
+  padding: 10px 24px;
+  background: #10b981;
   color: white;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.add-filter-btn:hover {
-  background: #005a9e;
+.save-permissions-btn:hover {
+  background: #059669;
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 120, 212, 0.3);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
+

@@ -126,14 +126,32 @@ const RolesModal: React.FC<RolesModalProps> = ({
         roleMap.get(mapping.app_role)!.push(mapping.ad_group);
       });
       
-      // Convert to roles format
-      const rolesData = Array.from(roleMap.entries()).map(([roleName, adGroups], index) => ({
-        id: `role_${index}`,
-        name: roleName,
-        ad_groups: adGroups,
-        permissions: [], // Will be fetched separately
-        resource_scopes: []
-      }));
+      // Convert to roles format and load saved permissions
+      const rolesData = Array.from(roleMap.entries()).map(([roleName, adGroups], index) => {
+        // Try to load saved permissions for this role
+        const unifiedKey = `cids_unified_role_${clientId}_${roleName}`;
+        const saved = localStorage.getItem(unifiedKey);
+        let permissions: string[] = [];
+        let resourceScopes: string[] = [];
+        
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            permissions = parsed.permissions || [];
+            resourceScopes = parsed.resourceScopes || [];
+          } catch (e) {
+            console.error('Error loading saved permissions for role:', roleName, e);
+          }
+        }
+        
+        return {
+          id: `role_${index}`,
+          name: roleName,
+          ad_groups: adGroups,
+          permissions,
+          resource_scopes: resourceScopes
+        };
+      });
       
       setRoles(rolesData);
     } catch (err) {
@@ -354,6 +372,97 @@ const RolesModal: React.FC<RolesModalProps> = ({
       setRoles(roles.map(r => r.id === selectedRole.id ? updatedRole : r));
     }
   };
+  
+  const handleExportRole = (role: any) => {
+    // Load the full configuration from localStorage
+    const unifiedKey = `cids_unified_role_${clientId}_${role.name}`;
+    const saved = localStorage.getItem(unifiedKey);
+    
+    let exportData: any = {
+      app_id: clientId,
+      app_name: appName,
+      role_name: role.name,
+      ad_groups: role.ad_groups,
+      permissions: [],
+      rls_filters: [],
+      exported_at: new Date().toISOString()
+    };
+    
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        
+        // Format permissions for database
+        exportData.permissions = parsed.permissions?.map((perm: string) => {
+          const [resource, action] = perm.split('.');
+          return {
+            endpoint: perm,
+            resource: resource,
+            action: action,
+            allowed: true
+          };
+        }) || [];
+        
+        // Format RLS filters for database
+        if (parsed.savedFilters) {
+          exportData.rls_filters = Object.entries(parsed.savedFilters).flatMap(([key, filters]: [string, any]) => {
+            if (Array.isArray(filters)) {
+              return filters.map((filter: any) => {
+                const [type, path] = key.split(':');
+                return {
+                  filter_type: type,
+                  filter_path: path,
+                  expression: filter.expression,
+                  created_at: filter.timestamp
+                };
+              });
+            }
+            return [];
+          });
+        }
+        
+        // Add summary statistics
+        exportData.summary = {
+          total_permissions: exportData.permissions.length,
+          total_rls_filters: exportData.rls_filters.length,
+          resources: [...new Set(exportData.permissions.map((p: any) => p.resource))],
+          actions: [...new Set(exportData.permissions.map((p: any) => p.action))]
+        };
+      } catch (e) {
+        console.error('Error parsing saved role data:', e);
+      }
+    } else {
+      // Use basic data if no saved config exists
+      exportData.permissions = role.permissions?.map((perm: string) => {
+        const [resource, action] = perm.split('.');
+        return {
+          endpoint: perm,
+          resource: resource || perm,
+          action: action || '',
+          allowed: true
+        };
+      }) || [];
+      
+      exportData.summary = {
+        total_permissions: role.permissions?.length || 0,
+        total_rls_filters: role.resource_scopes?.length || 0
+      };
+    }
+    
+    // Create and download the JSON file
+    const jsonStr = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${clientId}_${role.name}_permissions_${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    console.log('Exported role configuration:', exportData);
+  };
 
   return (
     <>
@@ -377,12 +486,61 @@ const RolesModal: React.FC<RolesModalProps> = ({
             <>
               <div className="roles-header">
                 <h3>Application Roles</h3>
-                <button 
-                  className="button primary"
-                  onClick={handleCreateRole}
-                >
-                  Create New Role
-                </button>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button 
+                    className="button secondary"
+                    onClick={() => {
+                      // Export all roles
+                      const allRolesExport = {
+                        app_id: clientId,
+                        app_name: appName,
+                        roles: roles.map(role => {
+                          const unifiedKey = `cids_unified_role_${clientId}_${role.name}`;
+                          const saved = localStorage.getItem(unifiedKey);
+                          let roleData: any = {
+                            role_name: role.name,
+                            ad_groups: role.ad_groups,
+                            permissions: role.permissions,
+                            resource_scopes: role.resource_scopes
+                          };
+                          
+                          if (saved) {
+                            try {
+                              const parsed = JSON.parse(saved);
+                              roleData.rls_filters = parsed.savedFilters || {};
+                              roleData.action_permissions = parsed.actionPermissions || {};
+                            } catch (e) {
+                              console.error('Error parsing role data:', e);
+                            }
+                          }
+                          
+                          return roleData;
+                        }),
+                        exported_at: new Date().toISOString()
+                      };
+                      
+                      const jsonStr = JSON.stringify(allRolesExport, null, 2);
+                      const blob = new Blob([jsonStr], { type: 'application/json' });
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.download = `${clientId}_all_roles_${Date.now()}.json`;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                      URL.revokeObjectURL(url);
+                    }}
+                    title="Export all roles configuration"
+                  >
+                    Export All Roles
+                  </button>
+                  <button 
+                    className="button primary"
+                    onClick={handleCreateRole}
+                  >
+                    Create New Role
+                  </button>
+                </div>
               </div>
 
               {createMode && (
@@ -636,6 +794,13 @@ const RolesModal: React.FC<RolesModalProps> = ({
                           onClick={() => handleEditPermissions(role)}
                         >
                           Edit Permissions
+                        </button>
+                        <button 
+                          className="button secondary"
+                          onClick={() => handleExportRole(role)}
+                          title="Export role configuration as JSON"
+                        >
+                          Export
                         </button>
                         <button 
                           className="button danger"

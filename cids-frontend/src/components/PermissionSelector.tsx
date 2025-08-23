@@ -16,8 +16,10 @@ interface PermissionSelectorProps {
 }
 
 interface FieldInfo {
-  field_name: string;
-  field_type: string;
+  path?: string;  // The actual field name is stored in the 'path' property
+  field_name?: string;  // Legacy property - may not be present
+  permission_key?: string;  // Full permission key
+  field_type?: string;
   description?: string;
   sensitive?: boolean;
   pii?: boolean;
@@ -55,8 +57,61 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
   const [ruleBuilderContext, setRuleBuilderContext] = useState<any>(null);
   
   // Track allow/deny states for resources and actions
-  const [resourcePermissions, setResourcePermissions] = useState<Record<string, 'allow' | 'deny' | 'unset'>>({}); 
-  const [actionPermissions, setActionPermissions] = useState<Record<string, 'allow' | 'deny' | 'unset'>>({});
+  const [resourcePermissions, setResourcePermissions] = useState<Record<string, 'allow' | 'deny' | 'unset'>>(() => {
+    // Try to load from unified storage first
+    const unifiedKey = `cids_unified_role_${clientId}_${roleName}`;
+    const saved = localStorage.getItem(unifiedKey);
+    
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Extract resource permissions from action permissions
+        const resourcePerms: Record<string, 'allow' | 'deny' | 'unset'> = {};
+        if (parsed.actionPermissions) {
+          Object.entries(parsed.actionPermissions).forEach(([key, value]) => {
+            const resource = (key as string).split('.')[0];
+            if (!resourcePerms[resource] || resourcePerms[resource] === 'unset') {
+              resourcePerms[resource] = value as 'allow' | 'deny' | 'unset';
+            }
+          });
+        }
+        return resourcePerms;
+      } catch (e) {
+        console.error('Error loading saved permissions:', e);
+      }
+    }
+    
+    // Fallback to current resource scopes
+    const initial: Record<string, 'allow' | 'deny' | 'unset'> = {};
+    currentResourceScopes.forEach(scope => {
+      initial[scope] = 'allow';
+    });
+    return initial;
+  }); 
+  
+  const [actionPermissions, setActionPermissions] = useState<Record<string, 'allow' | 'deny' | 'unset'>>(() => {
+    // Try to load from unified storage first
+    const unifiedKey = `cids_unified_role_${clientId}_${roleName}`;
+    const saved = localStorage.getItem(unifiedKey);
+    
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.actionPermissions) {
+          return parsed.actionPermissions;
+        }
+      } catch (e) {
+        console.error('Error loading saved permissions:', e);
+      }
+    }
+    
+    // Fallback to current permissions
+    const initial: Record<string, 'allow' | 'deny' | 'unset'> = {};
+    currentPermissions.forEach(perm => {
+      initial[perm] = 'allow';
+    });
+    return initial;
+  });
   
   // Track saved filters - now as arrays of filters per key
   const [savedFilters, setSavedFilters] = useState<Record<string, Array<{ id: string; expression: string; timestamp: string }>>>(() => {
@@ -103,8 +158,49 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
   useEffect(() => {
     if (isOpen && clientId) {
       fetchPermissions();
+      // Migrate any old filters with field-N format to use actual field names
+      migrateOldFilters();
     }
   }, [isOpen, clientId]);
+  
+  const migrateOldFilters = () => {
+    const storageKey = `cids_filters_${clientId}_${roleName}`;
+    const stored = localStorage.getItem(storageKey);
+    if (!stored) return;
+    
+    try {
+      const filters = JSON.parse(stored);
+      let needsUpdate = false;
+      const migrated: Record<string, any[]> = {};
+      
+      Object.entries(filters).forEach(([key, filterArray]: [string, any]) => {
+        // Check if key contains field-N pattern
+        if (key.includes(':field-')) {
+          console.log('Found old filter format, attempting to migrate:', key);
+          needsUpdate = true;
+          // Skip migration for now - would need the actual field data
+          migrated[key] = filterArray;
+        } else {
+          migrated[key] = filterArray;
+        }
+      });
+      
+      if (needsUpdate) {
+        console.warn('Old filter format detected. Please recreate filters to use proper field names.');
+        // Clear old filters with field-N format
+        const cleaned: Record<string, any[]> = {};
+        Object.entries(migrated).forEach(([key, filterArray]) => {
+          if (!key.includes(':field-')) {
+            cleaned[key] = filterArray;
+          }
+        });
+        setSavedFilters(cleaned);
+        localStorage.setItem(storageKey, JSON.stringify(cleaned));
+      }
+    } catch (e) {
+      console.error('Error migrating filters:', e);
+    }
+  };
 
   const fetchPermissions = async () => {
     setLoading(true);
@@ -112,6 +208,27 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
     try {
       const response = await adminService.getAppPermissionTree(clientId);
       if (response && response.permission_tree) {
+        console.log('Permission tree loaded:', response.permission_tree);
+        
+        // Check for any fields with undefined field_name and log field structure
+        Object.entries(response.permission_tree).forEach(([resource, actions]: [string, any]) => {
+          Object.entries(actions).forEach(([action, details]: [string, any]) => {
+            if (details.fields) {
+              console.log(`Fields for ${resource}.${action}:`, details.fields);
+              details.fields.forEach((field: any, index: number) => {
+                const extractedName = field.path || field.field_name || field.name || field.column_name || field.id;
+                if (!extractedName) {
+                  console.warn(`Field at ${resource}.${action}[${index}] - could not extract name from:`, field);
+                  console.log('Available properties:', Object.keys(field));
+                  console.log('Full field object:', JSON.stringify(field, null, 2));
+                } else if (field.path) {
+                  console.log(`Field ${resource}.${action}.${field.path} extracted from 'path' property`);
+                }
+              });
+            }
+          });
+        });
+        
         setPermissionTree(response.permission_tree);
         // Auto-expand all resources
         setExpandedResources(new Set(Object.keys(response.permission_tree)));
@@ -328,18 +445,19 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
 
   const renderField = (resource: string, action: string, field: FieldInfo, index: number) => {
     const isSensitive = field.sensitive || field.pii || field.phi;
-    // Use index as fallback if field_name is undefined
-    const fieldKey = `${resource}-${action}-${field.field_name || `field-${index}`}`;
+    // Extract field name - the actual field name is in the 'path' property
+    const fieldName = field.path || field.field_name || field.name || field.column_name || field.id || `field-${index}`;
+    const fieldKey = `${resource}-${action}-${fieldName}`;
     
     return (
       <div 
         key={fieldKey} 
         className="field-item clickable"
-        onClick={() => openRuleBuilder('field', { resource, action, field: field.field_name, fieldMetadata: field })}
+        onClick={() => openRuleBuilder('field', { resource, action, field: fieldName, fieldMetadata: field })}
       >
         <div className="field-header">
           <span className="field-name">
-            {field.field_name === '*' ? '* (all fields)' : field.field_name}
+            {fieldName === '*' ? '* (all fields)' : fieldName}
           </span>
           {isSensitive && (
             <span className="field-badge sensitive">SENSITIVE</span>
@@ -559,6 +677,57 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
             </div>
           )}
         </div>
+        
+        <div className="permissions-footer">
+          <button 
+            className="save-permissions-btn"
+            onClick={() => {
+              // Collect all allowed permissions (endpoints/actions)
+              const permissions: string[] = [];
+              
+              // Add action-level permissions (Allow/Deny on endpoints)
+              Object.entries(actionPermissions).forEach(([actionKey, permission]) => {
+                if (permission === 'allow') {
+                  permissions.push(actionKey);
+                }
+              });
+              
+              // Collect RLS filters as resource scopes
+              const resourceScopes: string[] = [];
+              Object.entries(savedFilters).forEach(([filterKey, filterArray]) => {
+                if (Array.isArray(filterArray) && filterArray.length > 0) {
+                  // Each filter represents a resource scope
+                  filterArray.forEach(filter => {
+                    resourceScopes.push(`${filterKey}:${filter.expression}`);
+                  });
+                }
+              });
+              
+              // Save complete role configuration for persistence
+              const roleConfig = {
+                clientId,
+                roleName,
+                permissions,  // Allowed endpoints
+                resourceScopes,  // RLS filters
+                actionPermissions,  // Full allow/deny state for actions
+                savedFilters,  // Raw filter data
+                timestamp: new Date().toISOString()
+              };
+              
+              // Store unified role configuration
+              const unifiedKey = `cids_unified_role_${clientId}_${roleName}`;
+              localStorage.setItem(unifiedKey, JSON.stringify(roleConfig));
+              
+              console.log('Saved role configuration:', roleConfig);
+              
+              // Call the onSave callback with collected permissions
+              onSave(permissions, resourceScopes);
+              alert(`Permissions saved successfully!\nPermissions: ${permissions.length}\nResource Scopes (RLS Filters): ${resourceScopes.length}`);
+            }}
+          >
+            Save Permissions
+          </button>
+        </div>
       </Modal>
       
       <RuleBuilder
@@ -639,32 +808,6 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
                       </div>
                     </div>
                   ))}
-                </div>
-                <div className="filters-footer">
-                  <button
-                    className="add-filter-btn"
-                    onClick={() => {
-                      // Determine what type of filter to add based on context
-                      let type: any = 'resource';
-                      let data: any = {};
-                      
-                      if (viewFiltersContext.action) {
-                        type = 'action';
-                        data = { 
-                          resource: viewFiltersContext.resource, 
-                          action: viewFiltersContext.action 
-                        };
-                      } else if (viewFiltersContext.resource) {
-                        type = 'resource';
-                        data = { resource: viewFiltersContext.resource };
-                      }
-                      
-                      setViewFiltersModal(false);
-                      openRuleBuilder(type, data);
-                    }}
-                  >
-                    + Add New Filter
-                  </button>
                 </div>
               </>
             ) : (
