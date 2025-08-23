@@ -27,28 +27,62 @@ python3 azure-auth-app/test_apps/fastapi_app/fastapi_test_app.py
 
 ### PermissionSelector (React)
 - Manages permissions at resource, action, and field levels
-- Supports Allow/Deny permissions
+- Supports Allow/Deny permissions for endpoints
 - Implements multiple SQL filters per resource/action/field for RLS
-- Filter persistence via localStorage (per app + role)
+- Unified persistence via localStorage (per app + role)
+- Save button to persist all permission settings
+- Field name extraction from API 'path' property
 
 ### RuleBuilder (React)
 - Power BI style SQL WHERE clause editor
 - Template library for common filter patterns
 - Support for context variables (@current_user_email, etc.)
-- Test filter functionality
+- Edit existing filters or add new ones
 
-## RLS Filter System
+### RolesModal (React)
+- Display permission and resource scope counts
+- Export individual role configurations
+- Export all roles for an application
+- Database-ready JSON export format
 
-### Filter Storage Structure
-- Filters stored as arrays per key: `resource:name`, `action:resource.action`, `field:resource.action.field`
-- Each filter has unique ID, expression, and timestamp
-- Storage key: `cids_filters_{clientId}_{roleName}`
+## Permission & RLS System
+
+### Unified Storage Structure
+- **Permissions**: Endpoint allow/deny states (e.g., `products.read`)
+- **Resource Scopes**: SQL WHERE clauses for RLS filtering
+- Storage keys: 
+  - `cids_unified_role_{clientId}_{roleName}` - Complete role config
+  - `cids_filters_{clientId}_{roleName}` - RLS filters only
 
 ### Filter Management Features
 - **Multiple filters per field**: Unlimited SQL WHERE clauses
 - **CRUD operations**: Add, view, edit, delete individual filters  
-- **Filter count badges**: Visual indicators on resources/actions
-- **Bulk management**: View all filters for a resource/action
+- **Filter count badges**: Visual indicators showing total filters
+- **Persistence**: Both permissions and filters saved together
+
+### Export Format
+```json
+{
+  "app_id": "client_123",
+  "role_name": "Admin",
+  "permissions": [
+    {
+      "endpoint": "products.read",
+      "resource": "products",
+      "action": "read",
+      "allowed": true
+    }
+  ],
+  "rls_filters": [
+    {
+      "filter_type": "field",
+      "filter_path": "products.read.created_by",
+      "expression": "created_by = @current_user_id",
+      "created_at": "2024-01-01T..."
+    }
+  ]
+}
+```
 
 ## Testing & Validation
 
@@ -68,6 +102,8 @@ npm run typecheck
 ### Filter Storage Migration
 - Automatic migration from single-filter to multi-filter format
 - Handles corrupted data gracefully with try/catch
+- Migration for old field-N format to actual field names
+- Field names extracted from API 'path' property
 
 ## Git Workflow
 - Feature branch: `feature/resource-permissions`
