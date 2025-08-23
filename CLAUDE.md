@@ -5,7 +5,12 @@ CIDS (Centralized Identity Discovery Service) is a comprehensive authentication 
 
 ## Architecture
 - **Backend Auth Service**: Handles authentication and JWT token management
+  - Token template management system
+  - Azure AD group integration
+  - Automatic template application based on user groups
 - **React Frontend**: Permission management interface  
+  - Token Administration with Builder and Templates
+  - Real-time Azure AD group search
 - **FastAPI Test Apps**: Example applications demonstrating integration
 
 ## Development Environment
@@ -44,6 +49,22 @@ python3 azure-auth-app/test_apps/fastapi_app/fastapi_test_app.py
 - Export individual role configurations
 - Export all roles for an application
 - Database-ready JSON export format
+
+### Token Administration (React)
+- **Token Builder**: Visual JWT token structure editor
+  - Drag-and-drop claim management
+  - Standard and custom JWT claims
+  - Real-time JSON structure preview
+  - Save/load token templates
+- **Token Templates**: Manage saved token structures
+  - Azure AD group associations with live search
+  - Template priority for conflict resolution
+  - Enable/disable templates
+  - Import/export templates as JSON
+- **Backend Integration**: Automatic template application
+  - Matches templates to user's AD groups
+  - Applies highest priority matching template
+  - Filters token claims based on template
 
 ## Permission & RLS System
 
@@ -116,8 +137,22 @@ npm run typecheck
 - CSS modules for styling
 - localStorage for persistence
 
+## API Endpoints
+
+### Token Template Management
+- `GET /auth/admin/token-templates` - List all templates
+- `GET /auth/admin/token-templates/{name}` - Get specific template
+- `POST /auth/admin/token-templates` - Create/update template
+- `DELETE /auth/admin/token-templates/{name}` - Delete template
+- `POST /auth/admin/token-templates/import` - Bulk import templates
+
+### Azure AD Integration
+- `GET /auth/admin/azure-groups?search={query}` - Search Azure AD groups
+
 ## Security Considerations
 - RLS filters apply SQL WHERE clauses at data access layer
 - Context variables prevent SQL injection
 - Filters scoped to app + role combination
 - No secrets or keys in frontend code
+- Token templates applied based on Azure AD group membership
+- Template priority system for handling multiple group matches
