@@ -408,7 +408,7 @@ const TokenTemplates: React.FC<TokenTemplatesProps> = ({ onLoadTemplate }) => {
                               setTimeout(() => setShowSuggestions(false), 200);
                             }}
                             onFocus={() => {
-                              if (groupInput && filteredSuggestions.length > 0) {
+                              if (groupInput && azureGroups.length > 0) {
                                 setShowSuggestions(true);
                               }
                             }}
