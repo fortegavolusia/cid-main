@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
 from authlib.jose import jwt, JsonWebKey
 import logging
+from token_templates import TokenTemplateManager
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -30,6 +31,7 @@ class JWTManager:
         self.private_pem = None
         self.public_pem = None
         self.kid = "auth-service-key-1"  # Key ID for rotation support
+        self.template_manager = TokenTemplateManager()  # Initialize template manager
         
         self._initialize_keys()
     
@@ -140,6 +142,13 @@ class JWTManager:
                 claims['token_version'] = '2.0'
             else:
                 claims['token_version'] = token_version
+            
+            # Apply token template based on AD groups
+            try:
+                claims = self.template_manager.apply_template(claims, processed_groups)
+                logger.info(f"Applied token template for groups: {processed_groups[:3]}...")  # Log first 3 groups
+            except Exception as e:
+                logger.warning(f"Failed to apply token template: {e}. Using full claims.")
         elif token_type == 'refresh':
             # Refresh tokens have minimal claims
             claims.update({

@@ -1,0 +1,142 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CID Discovery Test App</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; }
+    header { display:flex; align-items:center; justify-content:space-between; }
+    .row { display:flex; gap:24px; align-items:flex-start; }
+    .card { background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:16px; box-shadow:0 1px 2px rgba(0,0,0,0.04); }
+    .w-50 { width:50%; }
+    label { display:block; font-weight:600; margin-top:8px; }
+    input, select, textarea { width:100%; padding:8px; border-radius:6px; border:1px solid #cbd5e1; }
+    textarea { min-height: 80px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-bottom:1px solid #e5e7eb; padding:8px; text-align:left; }
+    .btn { background:#2563eb; color:white; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; }
+    .btn.secondary { background:#64748b; }
+    pre { background:#f8fafc; padding:12px; border-radius:6px; overflow:auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>CID Discovery Test App</h1>
+    <div>
+      <a href="/discovery/endpoints" target="_blank" class="btn secondary">View Discovery JSON</a>
+    </div>
+  </header>
+
+  <div class="row">
+    <div class="card w-50">
+      <h2>Add/Update Endpoint</h2>
+      <form id="endpoint-form">
+        <label>Method</label>
+        <select name="method" required>
+          <option>GET</option>
+          <option>POST</option>
+          <option>PUT</option>
+          <option>PATCH</option>
+          <option>DELETE</option>
+        </select>
+
+        <label>Path</label>
+        <input name="path" placeholder="/api/items or /api/items/{id}" required />
+
+        <label>Operation ID</label>
+        <input name="operation_id" placeholder="list_items" />
+
+        <label>Description</label>
+        <textarea name="description" placeholder="What this operation does"></textarea>
+
+        <h3>Response Fields</h3>
+        <p>Enter one field per line as: name,type,required(true/false),sensitive(true/false),description</p>
+        <textarea name="response_fields" placeholder="id,string,true,false,Item identifier"></textarea>
+
+        <h3>Request Fields (optional)</h3>
+        <textarea name="request_fields" placeholder="name,string,true,false,Item name"></textarea>
+
+        <button type="submit" class="btn" style="margin-top:12px;">Save Endpoint</button>
+      </form>
+    </div>
+
+    <div class="card w-50">
+      <h2>Current Endpoints</h2>
+      <div id="endpoints"></div>
+    </div>
+  </div>
+
+  <script>
+    function parseFields(text) {
+      const allowedTypes = ["string","number","integer","boolean","object","array"];
+      const lines = (text || '').split(/\n+/).map(l => l.trim()).filter(Boolean);
+      const obj = {};
+      for (const line of lines) {
+        const [name, type, required, sensitive, ...descParts] = line.split(',');
+        if (!name) continue;
+        const t = (type || 'string').trim();
+        if (!allowedTypes.includes(t)) continue;
+        obj[name.trim()] = {
+          type: t,
+          required: required ? required.trim().toLowerCase() === 'true' : undefined,
+          sensitive: sensitive ? sensitive.trim().toLowerCase() === 'true' : undefined,
+          description: descParts?.join(',').trim() || undefined,
+        };
+      }
+      return Object.keys(obj).length ? obj : undefined;
+    }
+
+    async function loadEndpoints() {
+      const res = await fetch('/discovery/endpoints');
+      const data = await res.json();
+      const eps = data.endpoints || [];
+      const container = document.getElementById('endpoints');
+      if (!eps.length) { container.innerHTML = '<p>No endpoints yet.</p>'; return; }
+      let html = '<table><thead><tr><th>Method</th><th>Path</th><th>Operation</th><th>Description</th><th></th></tr></thead><tbody>';
+      for (const e of eps) {
+        html += `<tr>
+          <td>${e.method}</td>
+          <td>${e.path}</td>
+          <td>${e.operation_id || ''}</td>
+          <td>${e.description || ''}</td>
+          <td><button class="btn secondary" onclick="delEndpoint('${e.method}','${e.path}')">Delete</button></td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    async function delEndpoint(method, path) {
+      const u = new URL('/admin/endpoints', location.origin);
+      u.searchParams.set('method', method);
+      u.searchParams.set('path', path);
+      const res = await fetch(u, { method: 'DELETE' });
+      await loadEndpoints();
+    }
+
+    document.getElementById('endpoint-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const body = {
+        method: f.method.value,
+        path: f.path.value,
+        operation_id: f.operation_id.value || undefined,
+        description: f.description.value || undefined,
+        response_fields: parseFields(f.response_fields.value),
+        request_fields: parseFields(f.request_fields.value),
+      };
+      const res = await fetch('/admin/endpoints', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      await loadEndpoints();
+    });
+
+    loadEndpoints();
+  </script>
+</body>
+</html>
+

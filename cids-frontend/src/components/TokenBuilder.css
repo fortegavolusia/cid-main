@@ -1,0 +1,414 @@
+.token-builder {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.builder-layout {
+  display: grid;
+  grid-template-columns: 300px 1fr 400px;
+  gap: 24px;
+  padding: 24px;
+  height: 600px;
+}
+
+/* Claims Panel */
+.claims-panel {
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.panel-header {
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.panel-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  color: #111827;
+}
+
+.claims-section {
+  margin-bottom: 24px;
+}
+
+.claims-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 0.875rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.claims-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.claim-item {
+  padding: 10px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.claim-item:hover {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  transform: translateX(2px);
+}
+
+.claim-key {
+  display: block;
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+  color: #1e40af;
+  margin-bottom: 4px;
+}
+
+.claim-type {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  background: #f3f4f6;
+  color: #6b7280;
+  border-radius: 3px;
+  margin-right: 8px;
+}
+
+.claim-desc {
+  display: block;
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+/* Add Custom Section */
+.add-custom-section {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.add-custom-btn {
+  width: 100%;
+  padding: 10px;
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.add-custom-btn:hover {
+  background: #059669;
+}
+
+.add-custom-form {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.add-custom-form input,
+.add-custom-form select {
+  padding: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+.add-custom-form button {
+  padding: 8px;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.add-custom-form button:first-of-type {
+  background: #3b82f6;
+  color: white;
+}
+
+.add-custom-form button:last-of-type {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+/* Editor Panel */
+.editor-panel {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.template-name-input {
+  display: flex;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.template-name-input input {
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  width: 200px;
+}
+
+.save-template-btn,
+.load-current-btn {
+  padding: 6px 16px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.save-template-btn:hover {
+  background: #2563eb;
+}
+
+.load-current-btn {
+  background: #10b981;
+}
+
+.load-current-btn:hover {
+  background: #059669;
+}
+
+.claims-editor {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 0;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #6b7280;
+}
+
+.empty-state p {
+  margin: 0 0 8px 0;
+}
+
+.hint {
+  font-size: 0.875rem;
+  color: #9ca3af;
+}
+
+.active-claims {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.active-claim {
+  padding: 12px;
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.active-claim:hover {
+  border-color: #9ca3af;
+}
+
+.active-claim.selected {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.claim-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.claim-header .claim-key {
+  flex: 1;
+  margin: 0;
+}
+
+.claim-type-badge {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  background: #e5e7eb;
+  color: #374151;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.required-badge {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  background: #fee2e2;
+  color: #991b1b;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.remove-btn {
+  width: 24px;
+  height: 24px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.remove-btn:hover {
+  background: #dc2626;
+}
+
+.claim-description {
+  margin-top: 8px;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+/* Claim Details */
+.claim-details {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.claim-details h4 {
+  margin: 0 0 16px 0;
+  font-size: 1rem;
+  color: #374151;
+}
+
+.detail-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detail-form label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  color: #374151;
+}
+
+.detail-form input[type="text"],
+.detail-form select {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+.detail-form input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
+/* Preview Panel */
+.preview-panel {
+  background: #1f2937;
+  color: #d1d5db;
+  border-radius: 8px;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.preview-panel .panel-header h3 {
+  color: #f3f4f6;
+}
+
+.json-preview {
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 24px;
+  overflow-x: auto;
+}
+
+.json-preview pre {
+  margin: 0;
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  color: #10b981;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.sample-token h4 {
+  margin: 0 0 16px 0;
+  color: #f3f4f6;
+  font-size: 1rem;
+}
+
+.token-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.token-part {
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.part-label {
+  display: block;
+  font-size: 0.75rem;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.token-part pre {
+  margin: 0;
+  font-family: 'Courier New', monospace;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.token-part.header pre {
+  color: #fbbf24;
+}
+
+.token-part.payload pre {
+  color: #a78bfa;
+}
+
+.token-part.signature pre {
+  color: #60a5fa;
+}

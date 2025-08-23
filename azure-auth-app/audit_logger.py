@@ -48,6 +48,11 @@ class AuditAction(Enum):
     # API Keys
     API_KEY_CREATED = "api_key.created"
     API_KEY_REVOKED = "api_key.revoked"
+    
+    # Token Templates
+    TOKEN_TEMPLATE_UPDATED = "token_template.updated"
+    TOKEN_TEMPLATE_DELETED = "token_template.deleted"
+    TOKEN_TEMPLATES_IMPORTED = "token_templates.imported"
     API_KEY_ROTATED = "api_key.rotated"
     API_KEY_USED = "api_key.used"
     API_KEY_EXPIRED = "api_key.expired"

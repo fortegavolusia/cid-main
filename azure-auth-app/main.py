@@ -2719,6 +2719,121 @@ async def set_app_rotation_policy(
         }
     })
 
+# Token Template Management Endpoints
+@app.get("/auth/admin/token-templates")
+async def get_token_templates(authorization: Optional[str] = Header(None)):
+    """Get all token templates (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    templates = jwt_manager.template_manager.get_all_templates()
+    return JSONResponse({"templates": templates})
+
+@app.get("/auth/admin/token-templates/{template_name}")
+async def get_token_template(template_name: str, authorization: Optional[str] = Header(None)):
+    """Get a specific token template (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    template = jwt_manager.template_manager.get_template(template_name)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    return JSONResponse(template)
+
+@app.post("/auth/admin/token-templates")
+async def create_token_template(
+    template: Dict = Body(...),
+    authorization: Optional[str] = Header(None)
+):
+    """Create or update a token template (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    if 'name' not in template:
+        raise HTTPException(status_code=400, detail="Template name is required")
+    
+    success = jwt_manager.template_manager.update_template(template['name'], template)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save template")
+    
+    # Log the action
+    audit_logger.log_action(
+        action=AuditAction.TOKEN_TEMPLATE_UPDATED,
+        user_id=claims.get('sub', 'unknown'),
+        details={
+            "template_name": template['name'],
+            "ad_groups": template.get('adGroups', []),
+            "priority": template.get('priority', 0)
+        }
+    )
+    
+    return JSONResponse({"message": "Template saved successfully", "template_name": template['name']})
+
+@app.delete("/auth/admin/token-templates/{template_name}")
+async def delete_token_template(template_name: str, authorization: Optional[str] = Header(None)):
+    """Delete a token template (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    success = jwt_manager.template_manager.delete_template(template_name)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete template")
+    
+    # Log the action
+    audit_logger.log_action(
+        action=AuditAction.TOKEN_TEMPLATE_DELETED,
+        user_id=claims.get('sub', 'unknown'),
+        details={"template_name": template_name}
+    )
+    
+    return JSONResponse({"message": "Template deleted successfully"})
+
+@app.post("/auth/admin/token-templates/import")
+async def import_token_templates(
+    templates: List[Dict] = Body(...),
+    authorization: Optional[str] = Header(None)
+):
+    """Import multiple token templates (admin only)"""
+    is_admin, claims = check_admin_access(authorization)
+    
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    imported = 0
+    failed = 0
+    
+    for template in templates:
+        if 'name' in template:
+            success = jwt_manager.template_manager.update_template(template['name'], template)
+            if success:
+                imported += 1
+            else:
+                failed += 1
+        else:
+            failed += 1
+    
+    # Log the action
+    audit_logger.log_action(
+        action=AuditAction.TOKEN_TEMPLATES_IMPORTED,
+        user_id=claims.get('sub', 'unknown'),
+        details={"imported": imported, "failed": failed}
+    )
+    
+    return JSONResponse({
+        "message": f"Import completed. {imported} templates imported, {failed} failed.",
+        "imported": imported,
+        "failed": failed
+    })
+
 # Start the rotation scheduler as a background task
 start_rotation_scheduler(app, check_interval_hours=6)
 

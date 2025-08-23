@@ -8,6 +8,7 @@ import HomePage from './pages/HomePage';
 import CallbackPage from './pages/CallbackPage';
 import AdminPage from './pages/AdminPage';
 import QueryBuilderPage from './pages/QueryBuilderPage';
+import TokenAdministrationPage from './pages/TokenAdministrationPage';
 import './App.css';
 
 // Create a client
@@ -114,6 +115,16 @@ const AppRoutes: React.FC = () => {
           <ProtectedRoute>
             <Layout>
               <QueryBuilderPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/token-admin"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <TokenAdministrationPage />
             </Layout>
           </ProtectedRoute>
         }

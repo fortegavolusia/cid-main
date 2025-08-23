@@ -1,0 +1,166 @@
+{
+  "templates": [
+    {
+      "name": "Default Token",
+      "description": "Standard token for all users",
+      "adGroups": [],
+      "priority": 0,
+      "enabled": true,
+      "claims": [
+        {
+          "key": "iss",
+          "include": true
+        },
+        {
+          "key": "sub",
+          "include": true
+        },
+        {
+          "key": "aud",
+          "include": true
+        },
+        {
+          "key": "exp",
+          "include": true
+        },
+        {
+          "key": "iat",
+          "include": true
+        },
+        {
+          "key": "email",
+          "include": true
+        },
+        {
+          "key": "name",
+          "include": true
+        }
+      ]
+    },
+    {
+      "name": "Admin Token",
+      "description": "Extended token for administrators",
+      "adGroups": [
+        "Domain Admins",
+        "Administrators"
+      ],
+      "priority": 10,
+      "enabled": true,
+      "claims": [
+        {
+          "key": "iss",
+          "include": true
+        },
+        {
+          "key": "sub",
+          "include": true
+        },
+        {
+          "key": "aud",
+          "include": true
+        },
+        {
+          "key": "exp",
+          "include": true
+        },
+        {
+          "key": "iat",
+          "include": true
+        },
+        {
+          "key": "nbf",
+          "include": true
+        },
+        {
+          "key": "jti",
+          "include": true
+        },
+        {
+          "key": "email",
+          "include": true
+        },
+        {
+          "key": "name",
+          "include": true
+        },
+        {
+          "key": "groups",
+          "include": true
+        },
+        {
+          "key": "roles",
+          "include": true
+        },
+        {
+          "key": "permissions",
+          "include": true
+        },
+        {
+          "key": "tenant_id",
+          "include": true
+        },
+        {
+          "key": "client_id",
+          "include": true
+        }
+      ]
+    },
+    {
+      "name": "Developer Token",
+      "description": "Token for developers with debug info",
+      "adGroups": [
+        "Developers",
+        "DevOps"
+      ],
+      "priority": 5,
+      "enabled": true,
+      "claims": [
+        {
+          "key": "iss",
+          "include": true
+        },
+        {
+          "key": "sub",
+          "include": true
+        },
+        {
+          "key": "aud",
+          "include": true
+        },
+        {
+          "key": "exp",
+          "include": true
+        },
+        {
+          "key": "iat",
+          "include": true
+        },
+        {
+          "key": "email",
+          "include": true
+        },
+        {
+          "key": "name",
+          "include": true
+        },
+        {
+          "key": "groups",
+          "include": true
+        },
+        {
+          "key": "preferred_username",
+          "include": true
+        },
+        {
+          "key": "token_version",
+          "include": true
+        },
+        {
+          "key": "ver",
+          "include": true
+        }
+      ]
+    }
+  ],
+  "updated_at": "2025-08-23T19:44:01.905465"
+}
