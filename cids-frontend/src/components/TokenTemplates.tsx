@@ -20,6 +20,7 @@ interface TokenTemplate {
   adGroups?: string[];
   priority?: number;
   enabled?: boolean;
+  isDefault?: boolean;
 }
 
 interface TokenTemplatesProps {
@@ -187,6 +188,39 @@ const TokenTemplates: React.FC<TokenTemplatesProps> = ({ onLoadTemplate }) => {
     
     if (selectedTemplate?.name === templateName) {
       setSelectedTemplate({ ...selectedTemplate, enabled: !template.enabled });
+    }
+  };
+
+  const setDefaultTemplate = (templateName: string) => {
+    const template = templates.find(t => t.name === templateName);
+    if (!template) return;
+    
+    // If already default, remove default status
+    if (template.isDefault) {
+      const updated = templates.map(t => 
+        t.name === templateName ? { ...t, isDefault: false } : t
+      );
+      setTemplates(updated);
+      localStorage.setItem('cids_token_templates', JSON.stringify(updated));
+      
+      if (selectedTemplate?.name === templateName) {
+        setSelectedTemplate({ ...selectedTemplate, isDefault: false });
+      }
+    } else {
+      // Remove default from all other templates and set this one as default
+      const updated = templates.map(t => ({
+        ...t,
+        isDefault: t.name === templateName
+      }));
+      setTemplates(updated);
+      localStorage.setItem('cids_token_templates', JSON.stringify(updated));
+      
+      if (selectedTemplate) {
+        setSelectedTemplate({ 
+          ...selectedTemplate, 
+          isDefault: selectedTemplate.name === templateName 
+        });
+      }
     }
   };
 
@@ -377,6 +411,9 @@ const TokenTemplates: React.FC<TokenTemplatesProps> = ({ onLoadTemplate }) => {
                   <h4>{template.name}</h4>
                   <div className="template-badges">
                     <span className="claim-count">{template.claims.length} claims</span>
+                    {template.isDefault && (
+                      <span className="default-badge">DEFAULT</span>
+                    )}
                     {template.enabled !== false && (
                       <span className="enabled-badge">Active</span>
                     )}
@@ -527,6 +564,19 @@ const TokenTemplates: React.FC<TokenTemplatesProps> = ({ onLoadTemplate }) => {
             
             <div className="template-settings">
               <div className="setting-row">
+                <label>Default Template:</label>
+                <button
+                  className={`toggle-btn ${selectedTemplate.isDefault ? 'default-active' : 'default-inactive'}`}
+                  onClick={() => setDefaultTemplate(selectedTemplate.name)}
+                >
+                  {selectedTemplate.isDefault ? 'Default Template' : 'Set as Default'}
+                </button>
+                {selectedTemplate.isDefault && (
+                  <span className="default-hint">Applied to all authenticated users</span>
+                )}
+              </div>
+
+              <div className="setting-row">
                 <label>Status:</label>
                 <button
                   className={`toggle-btn ${selectedTemplate.enabled !== false ? 'enabled' : 'disabled'}`}
@@ -546,7 +596,7 @@ const TokenTemplates: React.FC<TokenTemplatesProps> = ({ onLoadTemplate }) => {
                   onChange={(e) => updateTemplatePriority(selectedTemplate.name, parseInt(e.target.value) || 0)}
                   className="priority-input"
                 />
-                <span className="priority-hint">Higher priority templates are applied first</span>
+                <span className="priority-hint">Higher priority templates override lower priority ones</span>
               </div>
               
               <div className="setting-row">
@@ -557,7 +607,7 @@ const TokenTemplates: React.FC<TokenTemplatesProps> = ({ onLoadTemplate }) => {
                       <span key={group} className="group-tag-preview">{group}</span>
                     ))
                   ) : (
-                    <span className="no-groups-preview">No groups assigned</span>
+                    <span className="no-groups-preview">{selectedTemplate.isDefault ? 'Default for all users' : 'No groups assigned'}</span>
                   )}
                 </div>
               </div>

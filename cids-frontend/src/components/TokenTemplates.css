@@ -225,6 +225,17 @@
   font-weight: 500;
 }
 
+.default-badge {
+  padding: 2px 8px;
+  background: #3b82f6;
+  color: white;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .priority-badge {
   padding: 2px 8px;
   background: #fef3c7;
@@ -544,6 +555,31 @@
 
 .toggle-btn.disabled:hover {
   background: #dc2626;
+}
+
+.toggle-btn.default-active {
+  background: #3b82f6;
+  color: white;
+}
+
+.toggle-btn.default-active:hover {
+  background: #2563eb;
+}
+
+.toggle-btn.default-inactive {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.toggle-btn.default-inactive:hover {
+  background: #c7d2fe;
+}
+
+.default-hint {
+  margin-left: 12px;
+  font-size: 0.75rem;
+  color: #3b82f6;
+  font-style: italic;
 }
 
 .priority-input {

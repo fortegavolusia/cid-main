@@ -57,11 +57,14 @@ python3 azure-auth-app/test_apps/fastapi_app/fastapi_test_app.py
   - Real-time JSON structure preview
   - Save/load token templates
 - **Token Templates**: Manage saved token structures
-  - Azure AD group associations with live search
+  - Azure AD group associations with live autocomplete search
+  - Default template support (applied to all authenticated users)
   - Template priority for conflict resolution
   - Enable/disable templates
   - Import/export templates as JSON
 - **Backend Integration**: Automatic template application
+  - Default template applies to all authenticated users
+  - AD group templates override default based on priority
   - Matches templates to user's AD groups
   - Applies highest priority matching template
   - Filters token claims based on template
@@ -156,3 +159,5 @@ npm run typecheck
 - No secrets or keys in frontend code
 - Token templates applied based on Azure AD group membership
 - Template priority system for handling multiple group matches
+- Default template ensures baseline token structure for all users
+- Only one template can be marked as default at a time
