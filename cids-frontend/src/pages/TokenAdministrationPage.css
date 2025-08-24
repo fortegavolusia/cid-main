@@ -87,3 +87,135 @@
   font-size: 0.875rem;
   font-weight: 500;
 }
+
+/* Logs tab styles */
+.logs-content {
+  padding: 24px;
+}
+
+.logs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.logs-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #111827;
+}
+
+.logs-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.filter-input {
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  min-width: 200px;
+}
+
+.sort-select {
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: white;
+}
+
+.logs-table-container {
+  overflow-x: auto;
+}
+
+.logs-table-container h4 {
+  margin: 0 0 16px 0;
+  color: #111827;
+}
+
+.token-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.token-table th {
+  text-align: left;
+  padding: 12px;
+  background-color: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  font-weight: 500;
+  color: #111827;
+  white-space: nowrap;
+}
+
+.token-table td {
+  padding: 12px;
+  border-bottom: 1px solid #f3f4f6;
+  color: #4b5563;
+}
+
+.token-table tbody tr:hover {
+  background-color: #f9fafb;
+}
+
+.token-status {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.token-status.internal {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.token-status.azure {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.token-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.button.small {
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  min-width: auto;
+}
+
+.button.danger {
+  background-color: #ef4444;
+}
+
+.button.danger:hover {
+  background-color: #dc2626;
+}
+
+.loading {
+  text-align: center;
+  padding: 48px;
+  color: #6b7280;
+}
+
+.error-message {
+  background-color: #fee2e2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+}

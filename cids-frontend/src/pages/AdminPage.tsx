@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import styled from 'styled-components';
 import { useAuth } from '../contexts/AuthContext';
 import adminService from '../services/adminService';
-import type { TokenListResponse, TokenInfo, AppInfo } from '../types/admin';
+import type { AppInfo } from '../types/admin';
 import RolesModal from '../components/RolesModal';
 
 const Container = styled.div`
@@ -45,64 +45,6 @@ const SectionContent = styled.div`
   padding: 24px;
 `;
 
-const TokenTable = styled.table`
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-
-  tbody tr:hover {
-    background-color: #f5f5f5;
-  }
-`;
-
-const TableHeader = styled.th`
-  text-align: left;
-  padding: 12px;
-  background-color: #fafafa;
-  border-bottom: 1px solid #f0f0f0;
-  font-weight: 500;
-  color: rgba(0, 0, 0, 0.85);
-  white-space: nowrap;
-`;
-
-const TableCell = styled.td`
-  padding: 12px;
-  border-bottom: 1px solid #f0f0f0;
-  color: rgba(0, 0, 0, 0.65);
-  white-space: nowrap;
-`;
-
-const TokenStatus = styled.span<{ type: string }>`
-  display: inline-block;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  background-color: ${props => {
-    switch (props.type) {
-      case 'Internal': return '#e6f7ff';
-      case 'Azure': return '#f6ffed';
-      default: return '#f0f0f0';
-    }
-  }};
-  color: ${props => {
-    switch (props.type) {
-      case 'Internal': return '#1890ff';
-      case 'Azure': return '#52c41a';
-      default: return '#666';
-    }
-  }};
-`;
-
-const LoadingSpinner = styled.div`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 200px;
-  font-size: 16px;
-  color: #666;
-`;
-
 const ErrorMessage = styled.div`
   background-color: #fff2f0;
   border: 1px solid #ffccc7;
@@ -115,14 +57,8 @@ const ErrorMessage = styled.div`
 
 const AdminPage: React.FC = () => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'tokens' | 'apps'>('tokens');
-  const [internalTokens, setInternalTokens] = useState<TokenListResponse | null>(null);
-  const [azureTokens, setAzureTokens] = useState<TokenListResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Token filters/sort
-  const [filterText, setFilterText] = useState('');
-  const [sortKey, setSortKey] = useState<'issued_desc' | 'issued_asc' | 'expires_soon' | 'expires_late'>('issued_desc');
 
   // Apps state
   const [appsOpen, setAppsOpen] = useState(true);
@@ -137,28 +73,6 @@ const AdminPage: React.FC = () => {
     name: '', description: '', owner_email: '', redirect_uris: [''], allow_discovery: false, discovery_endpoint: ''
   });
 
-  useEffect(() => {
-    fetchTokens();
-  }, []);
-
-  const fetchTokens = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const [internalResponse, azureResponse] = await Promise.all([
-        adminService.getInternalTokens(),
-        adminService.getAzureTokens()
-      ]);
-
-      setInternalTokens(internalResponse);
-      setAzureTokens(azureResponse);
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch tokens');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const formatDate = (dateString?: string) => {
     try {
@@ -170,10 +84,6 @@ const AdminPage: React.FC = () => {
     }
   };
 
-  const shorten = (val?: string, max: number = 20) => {
-    if (!val) return '—';
-    return val.length > max ? `${val.substring(0, max)}...` : val;
-  };
 
   const loadApps = async () => {
     try {
@@ -236,69 +146,6 @@ const AdminPage: React.FC = () => {
   const addRedirect = () => setRegisterForm({ ...registerForm, redirect_uris: [...registerForm.redirect_uris, ''] });
   const removeRedirect = (idx: number) => setRegisterForm({ ...registerForm, redirect_uris: registerForm.redirect_uris.filter((_, i) => i !== idx) });
 
-  const renderTokenTable = (tokens: TokenInfo[]) => (
-    <TokenTable>
-      <thead>
-        <tr>
-          <TableHeader>User</TableHeader>
-          <TableHeader>Email</TableHeader>
-          <TableHeader>Type</TableHeader>
-          <TableHeader>Issued</TableHeader>
-          <TableHeader>Expires</TableHeader>
-          <TableHeader>Subject</TableHeader>
-          <TableHeader>Actions</TableHeader>
-        </tr>
-      </thead>
-      <tbody>
-        {tokens.map((token, idx) => (
-          <tr key={token.id || `${token.user?.email || 'unknown'}-${token.issued_at || idx}`}>
-            <TableCell>{token.user?.name || '—'}</TableCell>
-            <TableCell>{token.user?.email || '—'}</TableCell>
-            <TableCell>
-              <TokenStatus type={token.type || 'Unknown'}>
-                {token.type || 'Unknown'}
-              </TokenStatus>
-            </TableCell>
-            <TableCell>{formatDate(token.issued_at)}</TableCell>
-            <TableCell>{formatDate(token.expires_at)}</TableCell>
-            <TableCell style={{ fontFamily: 'monospace', fontSize: '12px' }}>
-              {shorten(token.subject, 20)}
-            </TableCell>
-            <TableCell>
-              <div className="token-actions" style={{ display: 'flex', gap: 8, flexWrap: 'nowrap' }}>
-                <button className="button" onClick={() => alert(JSON.stringify(token, null, 2))}>Details</button>
-                <button className="button" onClick={async () => {
-                  try {
-                    const service = token.type === 'Azure' ? adminService.getAzureTokenActivity(token.id) : adminService.getTokenActivity(token.id);
-                    const data = await service;
-                    alert(JSON.stringify(data, null, 2));
-                  } catch (e: any) {
-                    alert(e.message || 'Failed to load logs');
-                  }
-                }}>Logs</button>
-                <button className="button danger" onClick={async () => {
-                  if (!confirm('Revoke this token?')) return;
-                  try {
-                    if (token.type === 'Azure') await adminService.removeAzureToken(token.id);
-                    else await adminService.removeToken(token.id);
-                    fetchTokens();
-                  } catch(e:any){ alert(e.message || 'Failed to revoke'); }
-                }}>Revoke</button>
-              </div>
-            </TableCell>
-          </tr>
-        ))}
-      </tbody>
-    </TokenTable>
-  );
-
-  if (loading) {
-    return (
-      <Container>
-        <LoadingSpinner>Loading admin panel...</LoadingSpinner>
-      </Container>
-    );
-  }
 
   return (
     <Container>
@@ -314,70 +161,6 @@ const AdminPage: React.FC = () => {
         <ErrorMessage>{error}</ErrorMessage>
       )}
 
-      {/* Tabs */}
-      <div style={{ borderBottom: '1px solid var(--border-color)', marginBottom: 16 }}>
-        <button
-          className="button"
-          style={{ width: 'auto', marginRight: 8, backgroundColor: activeTab === 'tokens' ? 'var(--primary-color)' : '#6c757d' }}
-          onClick={() => setActiveTab('tokens')}
-        >
-          Token Management
-        </button>
-        <button
-          className="button"
-          style={{ width: 'auto', backgroundColor: activeTab === 'apps' ? 'var(--primary-color)' : '#6c757d' }}
-          onClick={() => setActiveTab('apps')}
-        >
-          App Management
-        </button>
-      </div>
-
-      {activeTab === 'tokens' && (
-        <>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
-            <input placeholder="Filter by user, email, subject" value={filterText} onChange={e=>setFilterText(e.target.value)} style={{ flex: 1, padding: 6 }} />
-            <select value={sortKey} onChange={e=>setSortKey(e.target.value as any)} style={{ padding: 6 }}>
-              <option value="issued_desc">Newest issued</option>
-              <option value="issued_asc">Oldest issued</option>
-              <option value="expires_soon">Expires soon</option>
-              <option value="expires_late">Expires latest</option>
-            </select>
-            <button className="button" style={{ width: 'auto' }} onClick={fetchTokens}>Refresh</button>
-          </div>
-
-          <InfoSection>
-            <SectionHeader>
-              <h2 style={{ margin: 0 }}>Tokens ({(internalTokens?.total || 0) + (azureTokens?.total || 0)})</h2>
-            </SectionHeader>
-            <SectionContent>
-              {(() => {
-                const internal = (internalTokens?.tokens || []).map(t => ({ ...t, type: (t.type || 'Internal') as any }));
-                const azure = (azureTokens?.tokens || []).map(t => ({ ...t, type: (t.type || 'Azure') as any }));
-                const combined = [...internal, ...azure]
-                  .filter(t => {
-                    const q = filterText.toLowerCase();
-                    return !q || [t.user?.name, t.user?.email, t.subject, t.type].some(v => (v||'').toLowerCase().includes(q));
-                  })
-                  .sort((a,b) => {
-                    const ia = new Date(a.issued_at||'').getTime();
-                    const ib = new Date(b.issued_at||'').getTime();
-                    const ea = new Date(a.expires_at||'').getTime();
-                    const eb = new Date(b.expires_at||'').getTime();
-                    switch (sortKey) {
-                      case 'issued_asc': return ia - ib;
-                      case 'expires_soon': return ea - eb;
-                      case 'expires_late': return eb - ea;
-                      default: return ib - ia;
-                    }
-                  });
-                return combined.length ? renderTokenTable(combined) : <p>No tokens found.</p>;
-              })()}
-            </SectionContent>
-          </InfoSection>
-        </>
-      )}
-
-      {activeTab === 'apps' && (
       <InfoSection>
         <SectionHeader onClick={() => { setAppsOpen(!appsOpen); if (!apps) loadApps(); }}>
           <h2 style={{ margin: 0 }}>App Management</h2>
@@ -551,7 +334,6 @@ const AdminPage: React.FC = () => {
           </SectionContent>
         )}
       </InfoSection>
-      )}
       
       <RolesModal
         isOpen={rolesModal.isOpen}

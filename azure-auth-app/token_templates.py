@@ -86,7 +86,8 @@ class TokenTemplateManager:
             
             # If template has no groups, it's a default/fallback
             if not template_groups:
-                matching_templates.append((template, -1))  # Lowest priority
+                # Use the template's actual priority for defaults
+                matching_templates.append((template, template.get('priority', 0)))
                 continue
             
             # Check if user has any of the template's groups
@@ -126,7 +127,7 @@ class TokenTemplateManager:
         template_claims = {c['key']: c for c in template.get('claims', [])}
         
         # Always include required JWT claims
-        required_claims = ['iss', 'sub', 'aud', 'exp', 'iat', 'token_type']
+        required_claims = ['iss', 'sub', 'aud', 'exp', 'iat', 'nbf', 'jti', 'token_type', 'token_version']
         
         for key, value in token_data.items():
             # Include if it's a required claim
@@ -135,12 +136,9 @@ class TokenTemplateManager:
             # Include if template says to include it
             elif key in template_claims and template_claims[key].get('include', True):
                 filtered_token[key] = value
-            # Skip if template says to exclude it
-            elif key in template_claims and not template_claims[key].get('include', True):
+            # Skip if template says to exclude it or if not in template at all
+            else:
                 continue
-            # If not in template, include by default (for backward compatibility)
-            elif key not in template_claims:
-                filtered_token[key] = value
         
         # Add template metadata
         filtered_token['_template_applied'] = template['name']

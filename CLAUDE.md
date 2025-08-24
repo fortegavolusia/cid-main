@@ -56,18 +56,27 @@ python3 azure-auth-app/test_apps/fastapi_app/fastapi_test_app.py
   - Standard and custom JWT claims
   - Real-time JSON structure preview
   - Save/load token templates
+  - Backend synchronization for templates
 - **Token Templates**: Manage saved token structures
   - Azure AD group associations with live autocomplete search
   - Default template support (applied to all authenticated users)
   - Template priority for conflict resolution
   - Enable/disable templates
   - Import/export templates as JSON
+  - Full backend API integration for persistence
+- **Logs Tab**: Token activity monitoring
+  - View active Internal and Azure tokens
+  - Filter by user, email, or subject
+  - Sort by issue date or expiration
+  - View token details and activity logs
+  - Revoke tokens
 - **Backend Integration**: Automatic template application
   - Default template applies to all authenticated users
-  - AD group templates override default based on priority
+  - AD group templates override based on priority (higher priority wins)
   - Matches templates to user's AD groups
   - Applies highest priority matching template
-  - Filters token claims based on template
+  - Filters token claims based on template definition
+  - Only includes explicitly defined claims in template
 
 ## Permission & RLS System
 
@@ -129,6 +138,12 @@ npm run typecheck
 - Migration for old field-N format to actual field names
 - Field names extracted from API 'path' property
 
+### Token Template Synchronization
+- Templates saved to both localStorage and backend
+- Backend is authoritative source on page load
+- Fallback to localStorage if backend unavailable
+- Automatic sync of localStorage templates to backend on first load
+
 ## Git Workflow
 - Feature branch: `feature/resource-permissions`
 - Commit messages follow conventional format
@@ -161,3 +176,5 @@ npm run typecheck
 - Template priority system for handling multiple group matches
 - Default template ensures baseline token structure for all users
 - Only one template can be marked as default at a time
+- Template claim filtering ensures only specified claims are included in tokens
+- Required JWT claims (iss, sub, aud, exp, iat, nbf, jti, token_type, token_version) always included

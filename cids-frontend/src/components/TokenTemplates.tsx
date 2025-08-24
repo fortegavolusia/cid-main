@@ -136,58 +136,145 @@ const TokenTemplates: React.FC<TokenTemplatesProps> = ({ onLoadTemplate }) => {
     setShowSuggestions(false);
   };
 
-  const loadTemplates = () => {
-    const saved = localStorage.getItem('cids_token_templates');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setTemplates(parsed);
-      } catch (e) {
-        console.error('Failed to load templates', e);
+  const loadTemplates = async () => {
+    try {
+      // Try to load from backend first
+      const response = await adminService.getTokenTemplates();
+      if (response && response.templates) {
+        // Convert backend format to frontend format if needed
+        const backendTemplates = response.templates.map((t: any) => ({
+          name: t.name,
+          description: t.description,
+          claims: t.claims || [],
+          savedAt: t.savedAt || new Date().toISOString(),
+          adGroups: t.adGroups || [],
+          priority: t.priority || 0,
+          enabled: t.enabled !== false,
+          isDefault: t.isDefault || false
+        }));
+        setTemplates(backendTemplates);
+        // Also save to localStorage as cache
+        localStorage.setItem('cids_token_templates', JSON.stringify(backendTemplates));
+      } else {
+        // Fallback to localStorage if backend fails
+        const saved = localStorage.getItem('cids_token_templates');
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            setTemplates(parsed);
+            // Try to sync localStorage templates to backend
+            syncTemplatesToBackend(parsed);
+          } catch (e) {
+            console.error('Failed to load templates from localStorage', e);
+            setTemplates([]);
+          }
+        } else {
+          setTemplates([]);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load templates from backend:', error);
+      // Fallback to localStorage
+      const saved = localStorage.getItem('cids_token_templates');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setTemplates(parsed);
+        } catch (e) {
+          console.error('Failed to load templates', e);
+          setTemplates([]);
+        }
+      } else {
         setTemplates([]);
       }
-    } else {
-      // No default templates - users should create based on their needs
-      setTemplates([]);
     }
   };
 
-  const updateTemplateGroups = (templateName: string, groups: string[]) => {
-    const updated = templates.map(t => 
-      t.name === templateName ? { ...t, adGroups: groups } : t
-    );
-    setTemplates(updated);
-    localStorage.setItem('cids_token_templates', JSON.stringify(updated));
+  const syncTemplatesToBackend = async (templates: TokenTemplate[]) => {
+    try {
+      // Import all templates to backend
+      await adminService.importTokenTemplates(templates);
+      console.log('Templates synced to backend');
+    } catch (error) {
+      console.error('Failed to sync templates to backend:', error);
+    }
+  };
+
+  const updateTemplateGroups = async (templateName: string, groups: string[]) => {
+    const template = templates.find(t => t.name === templateName);
+    if (!template) return;
+
+    const updatedTemplate = { ...template, adGroups: groups };
     
-    if (selectedTemplate?.name === templateName) {
-      setSelectedTemplate({ ...selectedTemplate, adGroups: groups });
+    try {
+      // Save to backend
+      await adminService.saveTokenTemplate(updatedTemplate);
+      
+      // Update local state
+      const updated = templates.map(t => 
+        t.name === templateName ? updatedTemplate : t
+      );
+      setTemplates(updated);
+      localStorage.setItem('cids_token_templates', JSON.stringify(updated));
+      
+      if (selectedTemplate?.name === templateName) {
+        setSelectedTemplate(updatedTemplate);
+      }
+    } catch (error) {
+      console.error('Failed to update template groups:', error);
+      alert('Failed to save template groups to backend');
     }
   };
 
-  const updateTemplatePriority = (templateName: string, priority: number) => {
-    const updated = templates.map(t => 
-      t.name === templateName ? { ...t, priority } : t
-    );
-    setTemplates(updated);
-    localStorage.setItem('cids_token_templates', JSON.stringify(updated));
+  const updateTemplatePriority = async (templateName: string, priority: number) => {
+    const template = templates.find(t => t.name === templateName);
+    if (!template) return;
+
+    const updatedTemplate = { ...template, priority };
     
-    if (selectedTemplate?.name === templateName) {
-      setSelectedTemplate({ ...selectedTemplate, priority });
+    try {
+      // Save to backend
+      await adminService.saveTokenTemplate(updatedTemplate);
+      
+      // Update local state
+      const updated = templates.map(t => 
+        t.name === templateName ? updatedTemplate : t
+      );
+      setTemplates(updated);
+      localStorage.setItem('cids_token_templates', JSON.stringify(updated));
+      
+      if (selectedTemplate?.name === templateName) {
+        setSelectedTemplate(updatedTemplate);
+      }
+    } catch (error) {
+      console.error('Failed to update template priority:', error);
+      alert('Failed to save template priority to backend');
     }
   };
 
-  const toggleTemplateEnabled = (templateName: string) => {
+  const toggleTemplateEnabled = async (templateName: string) => {
     const template = templates.find(t => t.name === templateName);
     if (!template) return;
     
-    const updated = templates.map(t => 
-      t.name === templateName ? { ...t, enabled: !t.enabled } : t
-    );
-    setTemplates(updated);
-    localStorage.setItem('cids_token_templates', JSON.stringify(updated));
+    const updatedTemplate = { ...template, enabled: !template.enabled };
     
-    if (selectedTemplate?.name === templateName) {
-      setSelectedTemplate({ ...selectedTemplate, enabled: !template.enabled });
+    try {
+      // Save to backend
+      await adminService.saveTokenTemplate(updatedTemplate);
+      
+      // Update local state
+      const updated = templates.map(t => 
+        t.name === templateName ? updatedTemplate : t
+      );
+      setTemplates(updated);
+      localStorage.setItem('cids_token_templates', JSON.stringify(updated));
+      
+      if (selectedTemplate?.name === templateName) {
+        setSelectedTemplate(updatedTemplate);
+      }
+    } catch (error) {
+      console.error('Failed to update template enabled status:', error);
+      alert('Failed to save template enabled status to backend');
     }
   };
 
@@ -224,13 +311,22 @@ const TokenTemplates: React.FC<TokenTemplatesProps> = ({ onLoadTemplate }) => {
     }
   };
 
-  const deleteTemplate = (templateName: string) => {
+  const deleteTemplate = async (templateName: string) => {
     if (confirm(`Are you sure you want to delete the template "${templateName}"?`)) {
-      const updated = templates.filter(t => t.name !== templateName);
-      setTemplates(updated);
-      localStorage.setItem('cids_token_templates', JSON.stringify(updated));
-      if (selectedTemplate?.name === templateName) {
-        setSelectedTemplate(null);
+      try {
+        // Delete from backend
+        await adminService.deleteTokenTemplate(templateName);
+        
+        // Update local state
+        const updated = templates.filter(t => t.name !== templateName);
+        setTemplates(updated);
+        localStorage.setItem('cids_token_templates', JSON.stringify(updated));
+        if (selectedTemplate?.name === templateName) {
+          setSelectedTemplate(null);
+        }
+      } catch (error) {
+        console.error('Failed to delete template:', error);
+        alert('Failed to delete template from backend');
       }
     }
   };

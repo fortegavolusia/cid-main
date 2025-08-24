@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { adminService } from '../services/adminService';
 import './TokenBuilder.css';
 
 interface TokenClaim {
@@ -166,25 +167,49 @@ const TokenBuilder: React.FC<TokenBuilderProps> = ({ templateToLoad }) => {
     return structure;
   };
 
-  const saveTemplate = () => {
+  const saveTemplate = async () => {
     const template = {
       name: templateName || 'Untitled Template',
       claims,
-      savedAt: new Date().toISOString()
+      savedAt: new Date().toISOString(),
+      adGroups: [],
+      priority: 0,
+      enabled: true
     };
-    localStorage.setItem('cids_token_template_current', JSON.stringify(template));
     
-    // Also save to templates list
-    const savedTemplates = JSON.parse(localStorage.getItem('cids_token_templates') || '[]');
-    const existingIndex = savedTemplates.findIndex((t: any) => t.name === template.name);
-    if (existingIndex >= 0) {
-      savedTemplates[existingIndex] = template;
-    } else {
-      savedTemplates.push(template);
+    try {
+      // Save to backend
+      await adminService.saveTokenTemplate(template);
+      
+      // Save to localStorage as well for caching
+      localStorage.setItem('cids_token_template_current', JSON.stringify(template));
+      
+      // Also save to templates list
+      const savedTemplates = JSON.parse(localStorage.getItem('cids_token_templates') || '[]');
+      const existingIndex = savedTemplates.findIndex((t: any) => t.name === template.name);
+      if (existingIndex >= 0) {
+        savedTemplates[existingIndex] = template;
+      } else {
+        savedTemplates.push(template);
+      }
+      localStorage.setItem('cids_token_templates', JSON.stringify(savedTemplates));
+      
+      alert('Template saved successfully!');
+    } catch (error) {
+      console.error('Failed to save template to backend:', error);
+      alert('Failed to save template to backend. Template saved locally.');
+      
+      // Still save locally even if backend fails
+      localStorage.setItem('cids_token_template_current', JSON.stringify(template));
+      const savedTemplates = JSON.parse(localStorage.getItem('cids_token_templates') || '[]');
+      const existingIndex = savedTemplates.findIndex((t: any) => t.name === template.name);
+      if (existingIndex >= 0) {
+        savedTemplates[existingIndex] = template;
+      } else {
+        savedTemplates.push(template);
+      }
+      localStorage.setItem('cids_token_templates', JSON.stringify(savedTemplates));
     }
-    localStorage.setItem('cids_token_templates', JSON.stringify(savedTemplates));
-    
-    alert('Template saved successfully!');
   };
 
   const loadCurrentProductionTemplate = () => {

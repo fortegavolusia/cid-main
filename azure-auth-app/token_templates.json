@@ -40,12 +40,6 @@
     {
       "name": "Admin Token",
       "description": "Extended token for administrators",
-      "adGroups": [
-        "Domain Admins",
-        "Administrators"
-      ],
-      "priority": 10,
-      "enabled": true,
       "claims": [
         {
           "key": "iss",
@@ -103,17 +97,15 @@
           "key": "client_id",
           "include": true
         }
-      ]
+      ],
+      "savedAt": "2025-08-24T19:13:53.149Z",
+      "adGroups": [],
+      "priority": 0,
+      "enabled": true,
+      "isDefault": false
     },
     {
-      "name": "Developer Token",
-      "description": "Token for developers with debug info",
-      "adGroups": [
-        "Developers",
-        "DevOps"
-      ],
-      "priority": 5,
-      "enabled": true,
+      "name": "single test",
       "claims": [
         {
           "key": "iss",
@@ -144,23 +136,15 @@
           "include": true
         },
         {
-          "key": "groups",
-          "include": true
-        },
-        {
-          "key": "preferred_username",
-          "include": true
-        },
-        {
-          "key": "token_version",
-          "include": true
-        },
-        {
-          "key": "ver",
+          "key": "roles",
           "include": true
         }
-      ]
+      ],
+      "savedAt": "2025-08-24T19:13:50.054Z",
+      "adGroups": [],
+      "priority": 0,
+      "enabled": true
     }
   ],
-  "updated_at": "2025-08-23T19:44:01.905465"
+  "updated_at": "2025-08-24T19:15:06.711683"
 }

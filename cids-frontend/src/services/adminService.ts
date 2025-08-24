@@ -167,6 +167,27 @@ class AdminService {
   async getStorageDebug(): Promise<any> {
     return apiService.get('/debug/storage');
   }
+
+  // Token Template Management
+  async getTokenTemplates(): Promise<any> {
+    return apiService.get('/auth/admin/token-templates');
+  }
+
+  async getTokenTemplate(name: string): Promise<any> {
+    return apiService.get(`/auth/admin/token-templates/${encodeURIComponent(name)}`);
+  }
+
+  async saveTokenTemplate(template: any): Promise<any> {
+    return apiService.post('/auth/admin/token-templates', template);
+  }
+
+  async deleteTokenTemplate(name: string): Promise<any> {
+    return apiService.delete(`/auth/admin/token-templates/${encodeURIComponent(name)}`);
+  }
+
+  async importTokenTemplates(templates: any[]): Promise<any> {
+    return apiService.post('/auth/admin/token-templates/import', { templates });
+  }
 }
 
 export const adminService = new AdminService();
