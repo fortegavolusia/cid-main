@@ -278,36 +278,62 @@ const TokenTemplates: React.FC<TokenTemplatesProps> = ({ onLoadTemplate }) => {
     }
   };
 
-  const setDefaultTemplate = (templateName: string) => {
+  const setDefaultTemplate = async (templateName: string) => {
     const template = templates.find(t => t.name === templateName);
     if (!template) return;
     
-    // If already default, remove default status
-    if (template.isDefault) {
-      const updated = templates.map(t => 
-        t.name === templateName ? { ...t, isDefault: false } : t
-      );
-      setTemplates(updated);
-      localStorage.setItem('cids_token_templates', JSON.stringify(updated));
-      
-      if (selectedTemplate?.name === templateName) {
-        setSelectedTemplate({ ...selectedTemplate, isDefault: false });
+    try {
+      // If already default, remove default status
+      if (template.isDefault) {
+        const updatedTemplate = { ...template, isDefault: false };
+        
+        // Save to backend
+        await adminService.saveTokenTemplate(updatedTemplate);
+        
+        // Update local state
+        const updated = templates.map(t => 
+          t.name === templateName ? updatedTemplate : t
+        );
+        setTemplates(updated);
+        localStorage.setItem('cids_token_templates', JSON.stringify(updated));
+        
+        if (selectedTemplate?.name === templateName) {
+          setSelectedTemplate(updatedTemplate);
+        }
+      } else {
+        // Remove default from all other templates and set this one as default
+        const updated = templates.map(t => ({
+          ...t,
+          isDefault: t.name === templateName
+        }));
+        
+        // Save all updated templates to backend
+        // First, save the new default template
+        const newDefaultTemplate = updated.find(t => t.name === templateName);
+        if (newDefaultTemplate) {
+          await adminService.saveTokenTemplate(newDefaultTemplate);
+        }
+        
+        // Then, update any previously default templates to remove their default status
+        const previousDefault = templates.find(t => t.isDefault && t.name !== templateName);
+        if (previousDefault) {
+          await adminService.saveTokenTemplate({ ...previousDefault, isDefault: false });
+        }
+        
+        // Update local state
+        setTemplates(updated);
+        localStorage.setItem('cids_token_templates', JSON.stringify(updated));
+        
+        if (selectedTemplate) {
+          setSelectedTemplate({ 
+            ...selectedTemplate, 
+            isDefault: selectedTemplate.name === templateName 
+          });
+        }
       }
-    } else {
-      // Remove default from all other templates and set this one as default
-      const updated = templates.map(t => ({
-        ...t,
-        isDefault: t.name === templateName
-      }));
-      setTemplates(updated);
-      localStorage.setItem('cids_token_templates', JSON.stringify(updated));
-      
-      if (selectedTemplate) {
-        setSelectedTemplate({ 
-          ...selectedTemplate, 
-          isDefault: selectedTemplate.name === templateName 
-        });
-      }
+    } catch (error) {
+      console.error('Failed to update default template:', error);
+      alert('Failed to save default template setting to backend');
     }
   };
 

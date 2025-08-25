@@ -30,6 +30,7 @@ from audit_logger import audit_logger, AuditAction
 from discovery_service import DiscoveryService
 from enhanced_discovery_service import EnhancedDiscoveryService
 from permission_registry import PermissionRegistry
+from token_templates import TokenTemplateManager
 from api_key_manager import api_key_manager, APIKeyTTL
 from api_key_rotation_scheduler import rotation_scheduler, start_rotation_scheduler
 
@@ -132,6 +133,7 @@ policy_manager = PolicyManager()
 discovery_service = DiscoveryService(jwt_manager, endpoints_registry)
 enhanced_discovery = EnhancedDiscoveryService(jwt_manager, endpoints_registry)
 permission_registry = PermissionRegistry()
+token_template_manager = TokenTemplateManager()
 
 def get_session(session_id: str) -> dict:
     return sessions.get(session_id, {})
@@ -780,7 +782,10 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
         admin_emails = os.getenv('ADMIN_EMAILS', '').split(',')
         is_admin = user_email in admin_emails
         
-        # Create internal CIDS token
+        # Get user's Azure AD groups
+        user_groups = claims.get('groups', [])
+        
+        # Create initial internal CIDS token payload
         internal_token_payload = {
             'sub': claims.get('sub'),
             'email': user_email,
@@ -788,12 +793,17 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
             'given_name': claims.get('given_name'),
             'family_name': claims.get('family_name'),
             'is_admin': is_admin,
-            'azure_groups': claims.get('groups', []),
+            'groups': user_groups,  # Include groups for template application
+            'azure_groups': user_groups,
+            'preferred_username': claims.get('preferred_username'),
             'token_type': 'internal',
-            'token_version': '1.0'
+            'token_version': '2.0'  # Update to 2.0 since we're using templates
         }
         
-        internal_token = jwt_manager.create_token(internal_token_payload)
+        # Apply token template based on user's AD groups
+        filtered_payload = token_template_manager.apply_template(internal_token_payload, user_groups)
+        
+        internal_token = jwt_manager.create_token(filtered_payload)
         
         # Store the internal CIDS token for admin tracking
         import uuid

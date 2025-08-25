@@ -122,23 +122,45 @@ class TokenTemplateManager:
         
         logger.info(f"Applying template: {template['name']}")
         
-        # Build new token with only included claims
+        # Build new token with template-defined claims
         filtered_token = {}
         template_claims = {c['key']: c for c in template.get('claims', [])}
         
         # Always include required JWT claims
         required_claims = ['iss', 'sub', 'aud', 'exp', 'iat', 'nbf', 'jti', 'token_type', 'token_version']
         
-        for key, value in token_data.items():
-            # Include if it's a required claim
-            if key in required_claims:
-                filtered_token[key] = value
-            # Include if template says to include it
-            elif key in template_claims and template_claims[key].get('include', True):
-                filtered_token[key] = value
-            # Skip if template says to exclude it or if not in template at all
-            else:
+        # First, add all claims defined in the template
+        for claim in template.get('claims', []):
+            key = claim.get('key')
+            if not key:
                 continue
+                
+            # Check if this claim exists in the original token data
+            if key in token_data:
+                # Use the value from the original token
+                filtered_token[key] = token_data[key]
+            elif claim.get('value') is not None:
+                # Use the default value from the template if specified
+                filtered_token[key] = claim.get('value')
+            elif claim.get('type') == 'array':
+                # Initialize empty array for array types if not present
+                filtered_token[key] = []
+            elif claim.get('type') == 'object':
+                # Initialize empty object for object types if not present
+                filtered_token[key] = {}
+            # For other types without values, only include if in original token
+        
+        # Ensure all required JWT claims are present
+        for key in required_claims:
+            if key in token_data and key not in filtered_token:
+                filtered_token[key] = token_data[key]
+        
+        # Add any additional required fields from original token
+        # that might not be in the template but are essential
+        if 'email' in token_data and 'email' not in filtered_token:
+            filtered_token['email'] = token_data['email']
+        if 'name' in token_data and 'name' not in filtered_token:
+            filtered_token['name'] = token_data['name']
         
         # Add template metadata
         filtered_token['_template_applied'] = template['name']
