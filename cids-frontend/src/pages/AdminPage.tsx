@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import adminService from '../services/adminService';
 import type { AppInfo } from '../types/admin';
 import RolesModal from '../components/RolesModal';
+import APIKeyModal from '../components/APIKeyModal';
 
 const Container = styled.div`
   background-color: white;
@@ -69,8 +70,21 @@ const AdminPage: React.FC = () => {
     clientId: '',
     appName: ''
   });
+  const [apiKeyModal, setApiKeyModal] = useState<{ isOpen: boolean; clientId: string; appName: string }>({
+    isOpen: false,
+    clientId: '',
+    appName: ''
+  });
   const [registerForm, setRegisterForm] = useState({
-    name: '', description: '', owner_email: '', redirect_uris: [''], allow_discovery: false, discovery_endpoint: ''
+    name: '', 
+    description: '', 
+    owner_email: '', 
+    redirect_uris: [''], 
+    allow_discovery: false, 
+    discovery_endpoint: '',
+    create_api_key: false,
+    api_key_name: '',
+    api_key_permissions: ''
   });
 
 
@@ -107,10 +121,35 @@ const AdminPage: React.FC = () => {
         redirect_uris: registerForm.redirect_uris.filter(u => u && u.trim().length > 0),
         allow_discovery: registerForm.allow_discovery,
         discovery_endpoint: registerForm.discovery_endpoint || null,
+        create_api_key: registerForm.create_api_key,
+        api_key_name: registerForm.api_key_name || undefined,
+        api_key_permissions: registerForm.api_key_permissions ? 
+          registerForm.api_key_permissions.split(',').map(p => p.trim()).filter(p => p) : 
+          undefined
       };
       const result = await adminService.createApp(payload);
-      alert(`App registered. Save the Client Secret now!\nClient ID: ${result.app.client_id}\nClient Secret: ${result.client_secret}`);
-      setRegisterForm({ name: '', description: '', owner_email: '', redirect_uris: [''], allow_discovery: false, discovery_endpoint: '' });
+      
+      // Build alert message
+      let alertMessage = `App registered successfully!\n\nClient ID: ${result.app.client_id}\nClient Secret: ${result.client_secret}`;
+      
+      if (result.api_key) {
+        alertMessage += `\n\n🔑 API Key Created:\n${result.api_key}\n\n⚠️ SAVE BOTH THE CLIENT SECRET AND API KEY NOW!\nThey won't be shown again.`;
+      } else {
+        alertMessage += `\n\n⚠️ SAVE THE CLIENT SECRET NOW!\nIt won't be shown again.`;
+      }
+      
+      alert(alertMessage);
+      setRegisterForm({ 
+        name: '', 
+        description: '', 
+        owner_email: '', 
+        redirect_uris: [''], 
+        allow_discovery: false, 
+        discovery_endpoint: '',
+        create_api_key: false,
+        api_key_name: '',
+        api_key_permissions: ''
+      });
       loadApps();
     } catch (e: any) {
       alert(e.message || 'Failed to register app');
@@ -204,6 +243,48 @@ const AdminPage: React.FC = () => {
                   <label>Discovery Endpoint (optional)</label>
                   <input type="url" value={registerForm.discovery_endpoint} onChange={e => setRegisterForm({ ...registerForm, discovery_endpoint: e.target.value })} style={{ width: '100%' }} />
                 </div>
+                
+                <div style={{ gridColumn: '1 / -1', marginTop: 16, padding: 16, background: '#e8f4fd', borderRadius: 6, border: '1px solid #b3d9f2' }}>
+                  <h4 style={{ marginTop: 0, marginBottom: 12, color: '#0066cc' }}>🔑 Initial API Key (Optional)</h4>
+                  <div style={{ marginBottom: 12 }}>
+                    <label>
+                      <input 
+                        type="checkbox" 
+                        checked={registerForm.create_api_key} 
+                        onChange={e => setRegisterForm({ ...registerForm, create_api_key: e.target.checked })} 
+                      /> 
+                      Create an API key during registration (eliminates chicken-egg problem!)
+                    </label>
+                  </div>
+                  
+                  {registerForm.create_api_key && (
+                    <>
+                      <div style={{ marginBottom: 12 }}>
+                        <label>API Key Name (optional)</label>
+                        <input 
+                          type="text" 
+                          placeholder="e.g., Initial Key, Development Key" 
+                          value={registerForm.api_key_name} 
+                          onChange={e => setRegisterForm({ ...registerForm, api_key_name: e.target.value })} 
+                          style={{ width: '100%' }} 
+                        />
+                        <small style={{ color: '#666' }}>Leave empty for default name</small>
+                      </div>
+                      
+                      <div>
+                        <label>API Key Permissions (comma-separated)</label>
+                        <input 
+                          type="text" 
+                          placeholder="e.g., admin, read:users, write:data" 
+                          value={registerForm.api_key_permissions} 
+                          onChange={e => setRegisterForm({ ...registerForm, api_key_permissions: e.target.value })} 
+                          style={{ width: '100%' }} 
+                        />
+                        <small style={{ color: '#666' }}>Leave empty for 'admin' permission. Use 'admin' for full access during development.</small>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
               <div style={{ marginTop: 12 }}>
                 <button type="submit" className="button">Register App</button>
@@ -243,6 +324,13 @@ const AdminPage: React.FC = () => {
                           if (!data.mappings.length) alert('No role mappings configured for this app.');
                           else alert(`Role Mappings for ${data.app_name}:\n\n${data.mappings.map(m=>`AD Group: ${m.ad_group}  Role: ${m.app_role}`).join('\n')}`);
                         }}>Role Mappings</button>
+                        <button className="button" style={{ backgroundColor: '#17a2b8', color: 'white' }} onClick={() => {
+                          setApiKeyModal({
+                            isOpen: true,
+                            clientId: app.client_id,
+                            appName: app.name
+                          });
+                        }}>API Keys</button>
                         {app.allow_discovery && (
                           <>
                             <button className="button" onClick={async()=>{
@@ -340,6 +428,13 @@ const AdminPage: React.FC = () => {
         onClose={() => setRolesModal({ isOpen: false, clientId: '', appName: '' })}
         clientId={rolesModal.clientId}
         appName={rolesModal.appName}
+      />
+      
+      <APIKeyModal
+        isOpen={apiKeyModal.isOpen}
+        onClose={() => setApiKeyModal({ isOpen: false, clientId: '', appName: '' })}
+        clientId={apiKeyModal.clientId}
+        appName={apiKeyModal.appName}
       />
     </Container>
   );

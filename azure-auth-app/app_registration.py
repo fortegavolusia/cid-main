@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, Any
 from datetime import datetime
 import secrets
 import hashlib
@@ -19,6 +19,9 @@ class RegisterAppRequest(BaseModel):
     owner_email: str
     discovery_endpoint: Optional[str] = None  # URL where app exposes its endpoints
     allow_discovery: bool = False  # Whether to allow endpoint discovery
+    create_api_key: bool = False  # Whether to create an initial API key
+    api_key_name: Optional[str] = None  # Name for the initial API key
+    api_key_permissions: Optional[List[str]] = None  # Permissions for the initial API key
     
 class UpdateAppRequest(BaseModel):
     name: Optional[str] = None
@@ -45,6 +48,8 @@ class AppResponse(BaseModel):
 class AppRegistrationResponse(BaseModel):
     app: AppResponse
     client_secret: str  # Only returned on initial registration
+    api_key: Optional[str] = None  # API key if requested during registration
+    api_key_metadata: Optional[Dict] = None  # Metadata for the created API key
 
 class AppRoleMapping(BaseModel):
     ad_group: str

@@ -168,7 +168,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </NavButton>
           
           <NavButton onClick={() => window.location.href = '/admin'}>
-            Administration
+            App Administration
           </NavButton>
 
           <NavButton onClick={() => window.location.href = '/token-admin'}>

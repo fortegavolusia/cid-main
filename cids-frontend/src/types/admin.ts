@@ -44,6 +44,8 @@ export interface AppInfo {
 export interface AppRegistrationResult {
   app: AppInfo;
   client_secret: string;
+  api_key?: string;
+  api_key_metadata?: any;
 }
 
 export interface RotateSecretResult {

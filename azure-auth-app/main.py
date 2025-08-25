@@ -1224,9 +1224,40 @@ async def register_app(request: RegisterAppRequest, authorization: Optional[str]
     # Log the registration
     logger.info(f"App '{request.name}' registered by {claims.get('email')}")
     
+    # Create initial API key if requested
+    api_key = None
+    api_key_metadata = None
+    if request.create_api_key:
+        try:
+            # Use default name if not provided
+            key_name = request.api_key_name or f"Initial API Key for {request.name}"
+            
+            # Use default permissions if not provided
+            permissions = request.api_key_permissions or ["admin"]
+            
+            # Create the API key
+            new_key, metadata = api_key_manager.create_api_key(
+                app_client_id=app_data["client_id"],
+                name=key_name,
+                permissions=permissions,
+                created_by=claims.get('email', 'admin'),
+                ttl_days=90  # Default 90 days for initial keys
+            )
+            
+            api_key = new_key
+            api_key_metadata = metadata.to_dict()
+            
+            logger.info(f"Initial API key created for app '{request.name}'")
+            
+        except Exception as e:
+            logger.error(f"Failed to create initial API key: {e}")
+            # Don't fail the registration if API key creation fails
+    
     return AppRegistrationResponse(
         app=AppResponse(**app_data),
-        client_secret=client_secret
+        client_secret=client_secret,
+        api_key=api_key,
+        api_key_metadata=api_key_metadata
     )
 
 @app.get("/auth/admin/apps", response_model=List[AppResponse])
