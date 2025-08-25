@@ -75,19 +75,24 @@ python3 azure-auth-app/test_apps/compliant_app_with_ui.py
   - Enable/disable templates
   - Import/export templates as JSON
   - Full backend API integration for persistence
+  - Default template badge display and persistence
 - **Logs Tab**: Token activity monitoring
-  - View active Internal and Azure tokens
+  - View active Internal and Azure tokens with proper storage
   - Filter by user, email, or subject
   - Sort by issue date or expiration
-  - View token details and activity logs
+  - View full decoded token claims in modal
+  - Token details modal with formatted JSON display
+  - Copy raw token to clipboard
   - Revoke tokens
 - **Backend Integration**: Automatic template application
   - Default template applies to all authenticated users
   - AD group templates override based on priority (higher priority wins)
   - Matches templates to user's AD groups
   - Applies highest priority matching template
-  - Filters token claims based on template definition
-  - Only includes explicitly defined claims in template
+  - Includes all template-defined claims with proper defaults
+  - Initializes empty arrays/objects for collection types
+  - Token version 2.0 for templated tokens
+  - Template metadata (_template_applied, _template_priority) included
 
 ## Permission & RLS System
 
@@ -165,6 +170,18 @@ npm run typecheck
 - Backend is authoritative source on page load
 - Fallback to localStorage if backend unavailable
 - Automatic sync of localStorage templates to backend on first load
+- Default template setting persists to backend properly
+
+### Token Storage in Logs
+- Internal and Azure tokens stored during /auth/token/exchange
+- Each token gets unique ID for tracking
+- Token metadata includes user info, timestamps, and type
+
+### Template Application Issues
+- Template manager properly handles frontend claim structure
+- Supports type, description, required fields in claims
+- Initializes empty arrays/objects for collection types
+- Includes default values from template when specified
 
 ### Role Creation 422 Error
 - Backend expects role mappings as Dict[str, Union[str, List[str]]]
