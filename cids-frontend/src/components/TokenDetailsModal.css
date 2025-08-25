@@ -1,0 +1,253 @@
+.token-details-modal .modal-content {
+  max-width: 900px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.token-details-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  text-align: left;
+}
+
+.token-info-section {
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #e1e4e8;
+}
+
+.token-info-section h3 {
+  margin: 0 0 15px 0;
+  color: #24292e;
+  font-size: 18px;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.info-item.full-width {
+  grid-column: span 2;
+}
+
+.info-item .label {
+  font-weight: 600;
+  color: #586069;
+  min-width: 100px;
+}
+
+.info-item .value {
+  color: #24292e;
+  word-break: break-word;
+}
+
+.info-item .value.mono {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 12px;
+}
+
+.info-item .value.revoked {
+  color: #d73a49;
+  font-weight: bold;
+}
+
+.token-type {
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.token-type.internal {
+  background-color: #28a745;
+  color: white;
+}
+
+.token-type.azure {
+  background-color: #0078d4;
+  color: white;
+}
+
+.token-tabs {
+  margin-top: 20px;
+}
+
+.tab-buttons {
+  display: flex;
+  gap: 10px;
+  border-bottom: 2px solid #e1e4e8;
+  margin-bottom: 20px;
+}
+
+.tab-button {
+  padding: 10px 20px;
+  background: none;
+  border: none;
+  color: #586069;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  position: relative;
+  transition: color 0.2s;
+}
+
+.tab-button:hover {
+  color: #24292e;
+}
+
+.tab-button.active {
+  color: #0366d6;
+}
+
+.tab-button.active::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: #0366d6;
+}
+
+.tab-content {
+  min-height: 200px;
+}
+
+.decoded-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.decoded-section {
+  background: #f6f8fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  padding: 15px;
+  text-align: left;
+}
+
+.decoded-section h4 {
+  margin: 0 0 10px 0;
+  color: #24292e;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.json-display {
+  background: white;
+  border: 1px solid #e1e4e8;
+  border-radius: 3px;
+  padding: 10px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  margin: 0;
+  color: #032f62;
+  text-align: left;
+  white-space: pre;
+  word-break: normal;
+  word-wrap: normal;
+}
+
+.signature-display {
+  background: white;
+  border: 1px solid #e1e4e8;
+  border-radius: 3px;
+  padding: 10px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 11px;
+  word-break: break-all;
+  color: #6a737d;
+}
+
+.raw-token-section {
+  background: #f6f8fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  padding: 15px;
+}
+
+.raw-token-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.raw-token-header h4 {
+  margin: 0;
+  color: #24292e;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.copy-button {
+  padding: 6px 12px;
+  background: #0366d6;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.copy-button:hover {
+  background: #0256c7;
+}
+
+.raw-token-display {
+  background: white;
+  border: 1px solid #e1e4e8;
+  border-radius: 3px;
+  padding: 10px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 11px;
+  word-break: break-all;
+  overflow-x: auto;
+  margin: 0;
+  color: #032f62;
+  max-height: 300px;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.error-message {
+  background: #ffeef0;
+  border: 1px solid #ffdce0;
+  border-radius: 3px;
+  padding: 10px;
+  color: #86181d;
+  font-size: 14px;
+}
+
+.no-data {
+  text-align: center;
+  padding: 40px;
+  color: #586069;
+  font-size: 14px;
+}
+
+/* Ensure all pre tags in the modal display properly */
+.token-details-modal pre {
+  margin: 0;
+  padding: 0;
+  white-space: pre;
+  word-wrap: normal;
+  text-align: left;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}

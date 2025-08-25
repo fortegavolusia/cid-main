@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import TokenBuilder from '../components/TokenBuilder';
 import TokenTemplates from '../components/TokenTemplates';
+import TokenDetailsModal from '../components/TokenDetailsModal';
 import adminService from '../services/adminService';
 import type { TokenListResponse, TokenInfo } from '../types/admin';
 import './TokenAdministrationPage.css';
@@ -16,6 +17,10 @@ const TokenAdministrationPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [filterText, setFilterText] = useState('');
   const [sortKey, setSortKey] = useState<'issued_desc' | 'issued_asc' | 'expires_soon' | 'expires_late'>('issued_desc');
+  
+  // Modal state
+  const [selectedToken, setSelectedToken] = useState<TokenInfo | null>(null);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
 
   const handleLoadTemplate = (template: any) => {
     setTemplateToLoad(template);
@@ -92,7 +97,10 @@ const TokenAdministrationPage: React.FC = () => {
             </td>
             <td>
               <div className="token-actions">
-                <button className="button small" onClick={() => alert(JSON.stringify(token, null, 2))}>Details</button>
+                <button className="button small" onClick={() => {
+                  setSelectedToken(token);
+                  setIsDetailsModalOpen(true);
+                }}>Details</button>
                 <button className="button small" onClick={async () => {
                   try {
                     const service = token.type === 'Azure' ? adminService.getAzureTokenActivity(token.id) : adminService.getTokenActivity(token.id);
@@ -229,6 +237,16 @@ const TokenAdministrationPage: React.FC = () => {
           </div>
         )}
       </div>
+      
+      {/* Token Details Modal */}
+      <TokenDetailsModal
+        isOpen={isDetailsModalOpen}
+        onClose={() => {
+          setIsDetailsModalOpen(false);
+          setSelectedToken(null);
+        }}
+        token={selectedToken}
+      />
     </div>
   );
 };

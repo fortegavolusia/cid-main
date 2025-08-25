@@ -795,6 +795,44 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
         
         internal_token = jwt_manager.create_token(internal_token_payload)
         
+        # Store the internal CIDS token for admin tracking
+        import uuid
+        from datetime import datetime, timedelta
+        
+        internal_token_id = str(uuid.uuid4())
+        issued_tokens[internal_token_id] = {
+            'id': internal_token_id,
+            'access_token': internal_token,
+            'user': {
+                'name': claims.get('name', ''),
+                'email': user_email
+            },
+            'subject': claims.get('sub'),
+            'issued_at': datetime.utcnow().isoformat() + 'Z',
+            'expires_at': (datetime.utcnow() + timedelta(seconds=1800)).isoformat() + 'Z',
+            'source': 'oauth_exchange',
+            'revoked': False
+        }
+        logger.info(f"Stored internal token {internal_token_id} for user {user_email}")
+        
+        # Store the Azure token for admin tracking
+        azure_token_id = str(uuid.uuid4())
+        azure_tokens[azure_token_id] = {
+            'id': azure_token_id,
+            'id_token': azure_id_token,
+            'access_token': azure_access_token,
+            'user': {
+                'name': claims.get('name', ''),
+                'email': user_email
+            },
+            'subject': claims.get('sub'),
+            'issued_at': datetime.utcnow().isoformat() + 'Z',
+            'expires_at': (datetime.utcnow() + timedelta(seconds=3600)).isoformat() + 'Z',  # Azure tokens typically expire in 1 hour
+            'issuer': claims.get('iss', 'https://login.microsoftonline.com'),
+            'audience': claims.get('aud', '')
+        }
+        logger.info(f"Stored Azure token {azure_token_id} for user {user_email}")
+        
         # Create refresh token using the RefreshTokenStore
         refresh_token = refresh_token_store.create_refresh_token({
             'user_id': claims.get('sub'),
@@ -805,7 +843,7 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
         
         # Log token activity
         token_activity_logger.log_activity(
-            internal_token,
+            internal_token_id,  # Use the token ID instead of the token itself
             TokenAction.CREATED,
             performed_by={'email': user_email, 'sub': claims.get('sub')},
             details={'auth_method': 'oauth_code_exchange'}
@@ -952,6 +990,8 @@ async def get_all_tokens(authorization: Optional[str] = Header(None), include_re
             'issued_at': token_data['issued_at'],
             'expires_at': token_data['expires_at'],
             'source': token_data['source'],
+            'type': 'Internal',  # Add type field for frontend compatibility
+            'subject': token_data.get('subject', token_data['user'].get('email', '')),  # Add subject field
             'session_id': token_data.get('session_id'),
             'access_token': token_data['access_token'],  # Include full token for admin viewing
             'access_token_preview': token_data['access_token'][:20] + '...' if len(token_data['access_token']) > 20 else token_data['access_token'],
@@ -1178,6 +1218,7 @@ async def get_all_azure_tokens(authorization: Optional[str] = Header(None)):
             'issued_at': token_data['issued_at'],
             'expires_at': token_data['expires_at'],
             'subject': token_data['subject'],
+            'type': 'Azure',  # Add type field for frontend compatibility
             'issuer': token_data['issuer'],
             'audience': token_data['audience'],
             'id_token_preview': id_token_masked,

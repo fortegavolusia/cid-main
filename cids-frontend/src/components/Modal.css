@@ -81,4 +81,5 @@
   padding: 20px;
   overflow-y: auto;
   flex: 1;
+  text-align: left;
 }
