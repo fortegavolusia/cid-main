@@ -24,8 +24,8 @@ DEV_CROSS_ORIGIN=true bash restart_server.sh
 cd cids-frontend
 npm run dev
 
-# Start FastAPI test app
-python3 azure-auth-app/test_apps/fastapi_app/fastapi_test_app.py
+# Start CIDS-compliant test app with UI
+python3 azure-auth-app/test_apps/compliant_app_with_ui.py
 ```
 
 ## Key Components
@@ -144,6 +144,18 @@ npm run typecheck
 - Fallback to localStorage if backend unavailable
 - Automatic sync of localStorage templates to backend on first load
 
+### Role Creation 422 Error
+- Backend expects role mappings as Dict[str, Union[str, List[str]]]
+- Frontend was sending array of objects, now sends dictionary
+- Format: `{"AD Group Name": "Role Name"}` or `{"AD Group": ["Role1", "Role2"]}`
+
+### Discovery Authentication
+- Discovery uses JWT tokens created by CIDS (NOT API keys)
+- API keys are for YOUR app to call OTHER services
+- Discovery endpoints should be publicly accessible or accept JWT tokens
+- JWT tokens for discovery are short-lived (5 minutes)
+- Required fields: `app_name` (not `service_name`), `last_updated`
+
 ## Git Workflow
 - Feature branch: `feature/resource-permissions`
 - Commit messages follow conventional format
@@ -163,6 +175,13 @@ npm run typecheck
 - `POST /auth/admin/token-templates` - Create/update template
 - `DELETE /auth/admin/token-templates/{name}` - Delete template
 - `POST /auth/admin/token-templates/import` - Bulk import templates
+
+### App Registration & Discovery
+- `POST /auth/admin/apps` - Register new app with optional API key creation
+- `POST /discovery/endpoints/{client_id}` - Trigger discovery for app
+- `GET /discovery/v2/permissions/{client_id}` - Get discovered permissions
+- `POST /auth/admin/apps/{client_id}/api-keys` - Create API key for app
+- `POST /auth/admin/apps/{client_id}/role-mappings` - Set AD group to role mappings
 
 ### Azure AD Integration
 - `GET /auth/admin/azure-groups?search={query}` - Search Azure AD groups
