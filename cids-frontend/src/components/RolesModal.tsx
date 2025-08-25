@@ -181,22 +181,40 @@ const RolesModal: React.FC<RolesModalProps> = ({
     }
 
     try {
-      // Create mappings for all AD groups for this role
-      const existingMappings = roles.flatMap(r => 
-        r.ad_groups.map(group => ({
-          ad_group: group,
-          app_role: r.name
-        }))
-      );
+      // Create mappings object - backend expects Dict[str, Union[str, List[str]]]
+      const mappingsDict: Record<string, string | string[]> = {};
       
-      const newMappings = newRole.ad_groups.map(group => ({
-        ad_group: group,
-        app_role: newRole.name
-      }));
+      // Add existing roles to mappings
+      roles.forEach(role => {
+        role.ad_groups.forEach(group => {
+          if (mappingsDict[group]) {
+            // If group already has a role, make it an array
+            if (typeof mappingsDict[group] === 'string') {
+              mappingsDict[group] = [mappingsDict[group] as string, role.name];
+            } else {
+              (mappingsDict[group] as string[]).push(role.name);
+            }
+          } else {
+            mappingsDict[group] = role.name;
+          }
+        });
+      });
       
-      const updatedMappings = [...existingMappings, ...newMappings];
+      // Add new role mappings
+      newRole.ad_groups.forEach(group => {
+        if (mappingsDict[group]) {
+          // If group already has a role, make it an array
+          if (typeof mappingsDict[group] === 'string') {
+            mappingsDict[group] = [mappingsDict[group] as string, newRole.name];
+          } else {
+            (mappingsDict[group] as string[]).push(newRole.name);
+          }
+        } else {
+          mappingsDict[group] = newRole.name;
+        }
+      });
       
-      await adminService.setRoleMappings(clientId, updatedMappings);
+      await adminService.setRoleMappings(clientId, mappingsDict);
       
       // Refresh roles
       await fetchRoles();

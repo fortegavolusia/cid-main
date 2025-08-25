@@ -95,7 +95,7 @@ class AdminService {
     return apiService.get(`/auth/admin/apps/${clientId}/role-mappings`);
   }
 
-  async setRoleMappings(clientId: string, mappings: Array<{ ad_group: string; app_role: string }>): Promise<{ message: string; mappings: Array<{ ad_group: string; app_role: string }> }>{
+  async setRoleMappings(clientId: string, mappings: Record<string, string | string[]>): Promise<{ message: string; mappings: Record<string, string | string[]> }>{
     return apiService.post(`/auth/admin/apps/${clientId}/role-mappings`, { mappings });
   }
 
