@@ -94,7 +94,49 @@ const CallbackPage: React.FC = () => {
         throw new Error(errorDescription || `OAuth error: ${errorParam}`);
       }
 
-      // Check for token in URL fragment (from backend redirect)
+      // Check for authorization code from Azure AD
+      const code = searchParams.get('code');
+      const state = searchParams.get('state');
+
+      if (code) {
+        console.log('Found authorization code in URL');
+        
+        // Verify state parameter
+        const storedState = localStorage.getItem('oauth_state');
+        if (!state || state !== storedState) {
+          throw new Error('Invalid state parameter - possible CSRF attack');
+        }
+        
+        // Clear state from storage
+        localStorage.removeItem('oauth_state');
+        
+        // Exchange code for token
+        const tokenResponse = await authService.exchangeCodeForToken(code);
+        
+        if (tokenResponse.access_token) {
+          console.log('Successfully exchanged code for token');
+          authService.setAuthToken(tokenResponse.access_token);
+          
+          // Clear the URL parameters for security
+          window.history.replaceState({}, document.title, window.location.pathname);
+          
+          // Check authentication status with the new token
+          await checkAuth();
+          
+          setStatus('success');
+          
+          // Redirect to admin page after a brief delay
+          setTimeout(() => {
+            navigate('/admin', { replace: true });
+          }, 1500);
+          
+          return;
+        } else {
+          throw new Error('No access token received from token exchange');
+        }
+      }
+
+      // Check for token in URL fragment (legacy support)
       const fragment = window.location.hash.substring(1);
       const params = new URLSearchParams(fragment);
       const accessToken = params.get('access_token');
@@ -119,26 +161,8 @@ const CallbackPage: React.FC = () => {
         return;
       }
 
-      // Fallback: Try to get a session token from backend
-      try {
-        const tokenResponse = await authService.getSessionToken();
-        if (tokenResponse.access_token) {
-          authService.setAuthToken(tokenResponse.access_token);
-          await checkAuth();
-          setStatus('success');
-
-          setTimeout(() => {
-            navigate('/', { replace: true });
-          }, 1500);
-
-          return;
-        }
-      } catch (tokenError) {
-        console.log('No session token available');
-      }
-
-      // If we get here, no token was found
-      throw new Error('No authentication token received');
+      // If we get here, no token or code was found
+      throw new Error('No authentication code or token received');
 
     } catch (err: any) {
       console.error('Callback handling error:', err);

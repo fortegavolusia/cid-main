@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import fs from 'fs'
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -11,11 +12,40 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '0.0.0.0', // Allow access from any IP
       port: 3000,
+      https: {
+        key: fs.readFileSync('./key.pem'),
+        cert: fs.readFileSync('./cert.pem'),
+      },
       proxy: {
-        '/auth': {
+        '/auth/token': {
           target,
           changeOrigin: true,
           secure: false, // Allow self-signed certificates for development
+        },
+        '/auth/validate': {
+          target,
+          changeOrigin: true,
+          secure: false,
+        },
+        '/auth/whoami': {
+          target,
+          changeOrigin: true,
+          secure: false,
+        },
+        '/auth/logout': {
+          target,
+          changeOrigin: true,
+          secure: false,
+        },
+        '/auth/my-token': {
+          target,
+          changeOrigin: true,
+          secure: false,
+        },
+        '/auth/admin': {
+          target,
+          changeOrigin: true,
+          secure: false,
         },
         '/api': {
           target,

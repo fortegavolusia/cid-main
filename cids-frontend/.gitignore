@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# SSL certificates for local development
+*.pem
+cert.pem
+key.pem

@@ -1,6 +1,6 @@
 import { createContext, useContext, useReducer, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import type { AuthState, User, LoginResponse } from '../types/auth';
+import type { AuthState, User } from '../types/auth';
 import authService from '../services/authService';
 
 // Auth actions
@@ -118,31 +118,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       let token = authService.getAuthToken();
       console.log('🔑 Token from localStorage:', token ? 'Found' : 'Not found');
-
-      // If no token in localStorage, try to get session token
-      if (!token) {
-        console.log('🍪 Trying to get session token...');
-        try {
-          // Add timeout to prevent hanging
-          const sessionTokenResponse = await Promise.race([
-            authService.getSessionToken(),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('Session token request timeout')), 5000)
-            )
-          ]) as LoginResponse;
-
-          if (sessionTokenResponse.access_token) {
-            console.log('✅ Session token obtained');
-            token = sessionTokenResponse.access_token;
-            authService.setAuthToken(token as string);
-          }
-        } catch (sessionError) {
-          console.log('❌ No session token available:', sessionError);
-          // No session available, user needs to login
-          dispatch({ type: 'LOGOUT' });
-          return;
-        }
-      }
 
       if (!token) {
         dispatch({ type: 'LOGOUT' });

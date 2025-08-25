@@ -6,9 +6,43 @@ import type {
 } from '../types/auth';
 
 class AuthService {
-  // Initiate login flow
+  private readonly AZURE_CLIENT_ID = '85d64713-e09e-4ddd-8677-90a2a3b7f668';
+  private readonly AZURE_TENANT_ID = 'ed785c93-cfd5-4daf-a103-4de951a43b70';
+  private readonly AZURE_REDIRECT_URI = 'https://10.1.5.58:3000/auth/callback';
+  private readonly AZURE_SCOPE = 'openid profile email User.Read';
+
+  // Initiate login flow - Direct OAuth with Azure AD
   async login(): Promise<void> {
-    window.location.href = '/auth/login';
+    const state = this.generateRandomString(32);
+    localStorage.setItem('oauth_state', state);
+    
+    const authUrl = new URL(`https://login.microsoftonline.com/${this.AZURE_TENANT_ID}/oauth2/v2.0/authorize`);
+    authUrl.searchParams.append('client_id', this.AZURE_CLIENT_ID);
+    authUrl.searchParams.append('response_type', 'code');
+    authUrl.searchParams.append('redirect_uri', this.AZURE_REDIRECT_URI);
+    authUrl.searchParams.append('scope', this.AZURE_SCOPE);
+    authUrl.searchParams.append('state', state);
+    authUrl.searchParams.append('response_mode', 'query');
+    
+    window.location.href = authUrl.toString();
+  }
+
+  // Generate random string for state parameter
+  private generateRandomString(length: number): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  }
+
+  // Exchange authorization code for token
+  async exchangeCodeForToken(code: string): Promise<LoginResponse> {
+    return apiService.post<LoginResponse>('/auth/token/exchange', {
+      code,
+      redirect_uri: this.AZURE_REDIRECT_URI
+    });
   }
 
   // Handle logout
@@ -23,18 +57,6 @@ class AuthService {
     }
   }
 
-  // Get session token
-  async getSessionToken(): Promise<LoginResponse> {
-    const origin = (import.meta as any).env?.VITE_API_ORIGIN || 'https://10.1.5.58:8000';
-    const res = await fetch(`${origin}/auth/token/session`, {
-      method: 'POST',
-      credentials: 'include',
-    });
-    if (!res.ok) {
-      throw new Error(`Session token error: ${res.status}`);
-    }
-    return res.json();
-  }
 
   // Validate token
   async validateToken(token?: string): Promise<TokenValidationResponse> {

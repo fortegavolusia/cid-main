@@ -8,7 +8,7 @@ class ApiService {
     this.api = axios.create({
       baseURL: '/', // Vite proxy will handle routing to backend
       timeout: 10000,
-      withCredentials: true, // Include cookies for session management
+      withCredentials: false, // No longer need cookies - using JWT tokens
     });
 
     // Request interceptor to add auth token

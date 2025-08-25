@@ -18,15 +18,26 @@ CIDS (Centralized Identity Discovery Service) is a comprehensive authentication 
 ### Starting Services
 ```bash
 # Start backend auth service with DEV CORS
+cd azure-auth-app
 DEV_CROSS_ORIGIN=true bash restart_server.sh
 
-# Start React frontend
+# Start React frontend (HTTPS enabled)
 cd cids-frontend
 npm run dev
+# Access at: https://10.1.5.58:3000
 
-# Start CIDS-compliant test app with UI
+# Start CIDS-compliant test app with UI (optional)
 python3 azure-auth-app/test_apps/compliant_app_with_ui.py
 ```
+
+### Authentication Flow
+- **React OAuth Flow**: Direct Azure AD authentication from React
+  - No dependency on backend session/cookies
+  - React initiates OAuth flow directly with Azure AD
+  - Callback handled by React at `/auth/callback`
+  - Authorization code exchanged for CIDS JWT via `/auth/token/exchange`
+  - Tokens stored in localStorage (not cookies)
+  - Admin status validated against env file during token creation
 
 ## Key Components
 
@@ -128,6 +139,17 @@ npm run typecheck
 
 ## Common Issues & Solutions
 
+### HTTPS Configuration
+- React dev server requires HTTPS for Azure AD redirect
+- Self-signed certificates generated with OpenSSL
+- Vite config updated to use HTTPS with certificates
+- Accept browser certificate warning for development
+
+### OAuth State Management
+- State parameter stored in localStorage (not sessionStorage)
+- Persists across redirects to Azure AD and back
+- Prevents CSRF attacks during OAuth flow
+
 ### React Key Warnings
 - Fixed by using index fallback when field_name is undefined
 - Key format: `${resource}-${action}-${field.field_name || field-${index}}`
@@ -168,6 +190,13 @@ npm run typecheck
 - localStorage for persistence
 
 ## API Endpoints
+
+### Authentication
+- `POST /auth/token/exchange` - Exchange Azure AD auth code for CIDS JWT token
+- `POST /auth/token` - OAuth2 token endpoint for refresh tokens
+- `GET /auth/validate` - Validate JWT token or API key
+- `GET /auth/whoami` - Get current user info
+- `POST /auth/logout` - Logout user
 
 ### Token Template Management
 - `GET /auth/admin/token-templates` - List all templates

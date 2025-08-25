@@ -40,6 +40,10 @@ class TokenRequest(BaseModel):
     grant_type: str
     refresh_token: Optional[str] = None
     
+class TokenExchangeRequest(BaseModel):
+    code: str
+    redirect_uri: str
+    
 class RevokeTokenRequest(BaseModel):
     token: str
     token_type_hint: Optional[str] = "refresh_token"
@@ -723,6 +727,102 @@ async def get_session_token(request: Request):
         response['refresh_token'] = refresh_token
     
     return JSONResponse(response)
+
+@app.post("/auth/token/exchange")
+async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
+    """Exchange Azure AD authorization code for internal CIDS token"""
+    try:
+        # Exchange code with Azure AD
+        token_url = f"https://login.microsoftonline.com/{os.getenv('AZURE_TENANT_ID')}/oauth2/v2.0/token"
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                token_url,
+                data={
+                    'grant_type': 'authorization_code',
+                    'client_id': os.getenv('AZURE_CLIENT_ID'),
+                    'client_secret': os.getenv('AZURE_CLIENT_SECRET'),
+                    'code': exchange_request.code,
+                    'redirect_uri': exchange_request.redirect_uri,
+                    'scope': os.getenv('AZURE_SCOPE', 'openid profile email User.Read')
+                }
+            )
+            
+        if response.status_code != 200:
+            error_data = response.json()
+            logger.error(f"Azure token exchange failed: {error_data}")
+            raise HTTPException(status_code=400, detail=error_data.get('error_description', 'Token exchange failed'))
+            
+        azure_token_data = response.json()
+        azure_access_token = azure_token_data.get('access_token')
+        azure_id_token = azure_token_data.get('id_token')
+        
+        if not azure_access_token:
+            raise HTTPException(status_code=400, detail="No access token received from Azure")
+            
+        # Decode the Azure ID token to get user info (without validation for now)
+        # The token is already validated by Azure, we just need to decode it
+        import base64
+        # Split the JWT and decode the payload
+        parts = azure_id_token.split('.')
+        if len(parts) != 3:
+            raise HTTPException(status_code=400, detail="Invalid ID token format")
+        
+        # Add padding if needed
+        payload = parts[1]
+        payload += '=' * (4 - len(payload) % 4)
+        
+        # Decode the payload
+        claims = json.loads(base64.urlsafe_b64decode(payload))
+        
+        # Get user email and check admin status
+        user_email = claims.get('email') or claims.get('preferred_username')
+        admin_emails = os.getenv('ADMIN_EMAILS', '').split(',')
+        is_admin = user_email in admin_emails
+        
+        # Create internal CIDS token
+        internal_token_payload = {
+            'sub': claims.get('sub'),
+            'email': user_email,
+            'name': claims.get('name'),
+            'given_name': claims.get('given_name'),
+            'family_name': claims.get('family_name'),
+            'is_admin': is_admin,
+            'azure_groups': claims.get('groups', []),
+            'token_type': 'internal',
+            'token_version': '1.0'
+        }
+        
+        internal_token = jwt_manager.create_token(internal_token_payload)
+        
+        # Create refresh token using the RefreshTokenStore
+        refresh_token = refresh_token_store.create_refresh_token({
+            'user_id': claims.get('sub'),
+            'email': user_email,
+            'name': claims.get('name'),
+            'is_admin': is_admin
+        })
+        
+        # Log token activity
+        token_activity_logger.log_activity(
+            internal_token,
+            TokenAction.CREATED,
+            performed_by={'email': user_email, 'sub': claims.get('sub')},
+            details={'auth_method': 'oauth_code_exchange'}
+        )
+        
+        return JSONResponse({
+            'access_token': internal_token,
+            'refresh_token': refresh_token,
+            'token_type': 'Bearer',
+            'expires_in': 1800
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Token exchange error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error during token exchange")
 
 @app.get("/auth/validate")
 async def validate_token(authorization: Optional[str] = Header(None)):
