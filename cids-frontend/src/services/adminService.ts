@@ -99,6 +99,15 @@ class AdminService {
     return apiService.post(`/auth/admin/apps/${clientId}/role-mappings`, { mappings });
   }
 
+  // Permission Management
+  async createRolePermissions(clientId: string, roleData: { role_name: string; permissions: string[]; description?: string }): Promise<any> {
+    return apiService.post(`/permissions/${clientId}/roles`, roleData);
+  }
+
+  async updateRolePermissions(clientId: string, roleName: string, permissionData: { permissions: string[]; description?: string }): Promise<any> {
+    return apiService.put(`/permissions/${clientId}/roles/${roleName}`, permissionData);
+  }
+
   async triggerDiscovery(clientId: string): Promise<any> {
     return apiService.post(`/discovery/endpoints/${clientId}`);
   }

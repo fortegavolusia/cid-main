@@ -932,7 +932,7 @@ async def discover_endpoints(
     
     return {
         "version": "2.0",
-        "app_id": "compliant_app",
+        "app_id": "app_fe80739ff4e547fb",  # Must match CIDS registration
         "app_name": CIDS_CONFIG["app_name"],  # Changed from service_name to app_name
         "description": "CIDS-compliant test application with web UI",
         "base_url": "http://localhost:8005",
@@ -946,10 +946,12 @@ async def discover_endpoints(
                 "resource": "users",
                 "action": "read",
                 "response_fields": {
-                    "users": {
-                        "type": "array",
-                        "description": "List of users"
-                    }
+                    "id": {"type": "string", "description": "User ID"},
+                    "email": {"type": "string", "description": "User email", "pii": True},
+                    "name": {"type": "string", "description": "Full name", "pii": True},
+                    "department": {"type": "object", "description": "Department info"},
+                    "is_active": {"type": "boolean", "description": "Active status"},
+                    "created_at": {"type": "datetime", "description": "Creation date"}
                 }
             },
             {
@@ -966,7 +968,24 @@ async def discover_endpoints(
                         "type": "string",
                         "required": True
                     }
-                ]
+                ],
+                "response_fields": {
+                    "id": {"type": "string", "description": "User ID"},
+                    "email": {"type": "string", "description": "User email", "pii": True},
+                    "name": {"type": "string", "description": "Full name", "pii": True},
+                    "salary": {"type": "number", "description": "Annual salary", "sensitive": True},
+                    "ssn": {"type": "string", "description": "Social Security Number", "pii": True, "sensitive": True},
+                    "phone": {"type": "string", "description": "Phone number", "pii": True},
+                    "address": {"type": "string", "description": "Home address", "pii": True},
+                    "department": {"type": "object", "description": "Department info"},
+                    "medical_records": {"type": "object", "description": "Medical history", "phi": True},
+                    "performance_rating": {"type": "number", "description": "Performance score"},
+                    "hire_date": {"type": "datetime", "description": "Hire date"},
+                    "is_active": {"type": "boolean", "description": "Active status"},
+                    "roles": {"type": "array", "description": "User roles"},
+                    "created_at": {"type": "datetime", "description": "Creation date"},
+                    "updated_at": {"type": "datetime", "description": "Last update date"}
+                }
             }
         ]
     }

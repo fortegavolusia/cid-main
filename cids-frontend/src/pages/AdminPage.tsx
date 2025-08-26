@@ -319,12 +319,24 @@ const AdminPage: React.FC = () => {
                           });
                         }}>Roles & Permissions</button>
                         <button className="button secondary" onClick={async()=>{
-                          alert('Running discovery...');
-                          const res = await adminService.triggerDiscovery(app.client_id);
-                          if (res.status === 'success') alert(`Discovery completed! Found ${res.endpoints_discovered} endpoints, stored ${res.endpoints_stored}.`);
-                          else if (res.status === 'skipped') alert(res.message);
-                          else alert(`Discovery failed: ${res.error || 'unknown error'}`);
-                          loadApps();
+                          try {
+                            alert('Running discovery...');
+                            const res = await adminService.triggerDiscovery(app.client_id);
+                            console.log('Discovery response:', res);
+                            if (res && res.status === 'success') {
+                              alert(`Discovery completed! Found ${res.endpoints_discovered} endpoints, stored ${res.endpoints_stored}.\n\nPermissions generated: ${res.permissions_generated || 0}`);
+                            } else if (res && res.status === 'cached') {
+                              alert(res.message || 'Using cached discovery data');
+                            } else if (res && res.status === 'error') {
+                              alert(`Discovery failed: ${res.error}`);
+                            } else {
+                              alert(`Discovery response: ${JSON.stringify(res)}`);
+                            }
+                            await loadApps();
+                          } catch (error) {
+                            console.error('Discovery error:', error);
+                            alert(`Discovery failed: ${error.message || 'unknown error'}`);
+                          }
                         }}>Run Discovery</button>
                       </>
                     )}

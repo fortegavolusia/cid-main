@@ -66,6 +66,11 @@ export default defineConfig(({ mode }) => {
           target,
           changeOrigin: true,
           secure: false,
+        },
+        '/permissions': {
+          target,
+          changeOrigin: true,
+          secure: false,
         }
       }
     }

@@ -216,6 +216,23 @@ const RolesModal: React.FC<RolesModalProps> = ({
       
       await adminService.setRoleMappings(clientId, mappingsDict);
       
+      // Create the role in the backend permission registry with empty permissions
+      // This ensures the role exists in the backend for later permission updates
+      try {
+        const token = localStorage.getItem('access_token');
+        if (token) {
+          await adminService.createRolePermissions(clientId, {
+            role_name: newRole.name,
+            permissions: [],  // Start with empty permissions
+            description: newRole.description || `Role for ${newRole.ad_groups.join(', ')}`
+          });
+          console.log(`Role ${newRole.name} created in backend permission registry`);
+        }
+      } catch (error) {
+        console.error('Error creating role in permission registry:', error);
+        // Don't fail the whole operation if this fails
+      }
+      
       // Refresh roles
       await fetchRoles();
       setCreateMode(false);
@@ -374,7 +391,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
     }
   };
 
-  const handlePermissionsUpdate = (permissions: string[], resourceScopes: string[]) => {
+  const handlePermissionsUpdate = async (permissions: string[], resourceScopes: string[]) => {
     if (selectedRole) {
       // Update the role's permissions
       const updatedRole = {
@@ -383,11 +400,41 @@ const RolesModal: React.FC<RolesModalProps> = ({
         resource_scopes: resourceScopes
       };
       
-      // In production, save to backend
-      console.log('Updated role permissions:', updatedRole);
-      
-      // Update local state
-      setRoles(roles.map(r => r.id === selectedRole.id ? updatedRole : r));
+      try {
+        // Save permissions to backend
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+          throw new Error('No access token found');
+        }
+
+        // Format permissions for backend API - add app prefix
+        const formattedPermissions = permissions.map(perm => {
+          // If permission doesn't already have the app prefix, add it
+          if (!perm.startsWith(clientId)) {
+            return `${clientId}.${perm}`;
+          }
+          return perm;
+        });
+
+        // Use adminService to save permissions to backend
+        const result = await adminService.updateRolePermissions(clientId, selectedRole.name, {
+          permissions: formattedPermissions,
+          description: selectedRole.description || `Role with ${permissions.length} permissions`
+        });
+
+        console.log('Permissions saved to backend:', result);
+        
+        // Update local state
+        setRoles(roles.map(r => r.id === selectedRole.id ? updatedRole : r));
+        
+        alert(`Permissions saved successfully! ${result.valid_permissions} permissions were saved to the backend.`);
+      } catch (error) {
+        console.error('Error saving permissions to backend:', error);
+        alert(`Failed to save permissions to backend: ${error.message}\n\nThe permissions have been saved locally but may not be reflected in your token until saved to the backend.`);
+        
+        // Still update local state even if backend save fails
+        setRoles(roles.map(r => r.id === selectedRole.id ? updatedRole : r));
+      }
     }
   };
   
