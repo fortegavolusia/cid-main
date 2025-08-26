@@ -117,6 +117,15 @@ const CallbackPage: React.FC = () => {
           console.log('Successfully exchanged code for token');
           authService.setAuthToken(tokenResponse.access_token);
           
+          // Store refresh token if provided
+          if (tokenResponse.refresh_token) {
+            localStorage.setItem('refresh_token', tokenResponse.refresh_token);
+          }
+          
+          // Initialize token manager for automatic refresh
+          const { tokenManager } = await import('../services/tokenManager');
+          tokenManager.initialize(tokenResponse.access_token, tokenResponse.refresh_token);
+          
           // Clear the URL parameters for security
           window.history.replaceState({}, document.title, window.location.pathname);
           

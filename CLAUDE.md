@@ -31,13 +31,18 @@ python3 azure-auth-app/test_apps/compliant_app_with_ui.py
 ```
 
 ### Authentication Flow
-- **React OAuth Flow**: Direct Azure AD authentication from React
+- **React OAuth Flow**: Direct Azure AD authentication from React (Primary)
   - No dependency on backend session/cookies
   - React initiates OAuth flow directly with Azure AD
   - Callback handled by React at `/auth/callback`
   - Authorization code exchanged for CIDS JWT via `/auth/token/exchange`
+  - **NEW**: Fetches AD groups via Microsoft Graph API
+  - **NEW**: Resolves app-specific roles based on AD group mappings
   - Tokens stored in localStorage (not cookies)
   - Admin status validated against env file during token creation
+- **Legacy HTML/JS Flow**: Commented out, replaced by React flow
+  - Previously used `/auth/login` and `/auth/callback` endpoints
+  - Server-side OAuth flow with session management
 
 ## Key Components
 
@@ -60,6 +65,13 @@ python3 azure-auth-app/test_apps/compliant_app_with_ui.py
 - Export individual role configurations
 - Export all roles for an application
 - Database-ready JSON export format
+
+### AdminPage (React)
+- **NEW**: Registered Applications section displays first (always visible)
+- **NEW**: App Registration section is collapsible below
+- Apps load automatically on page mount
+- Manage registered apps, API keys, role mappings
+- Trigger endpoint discovery for apps
 
 ### Token Administration (React)
 - **Token Builder**: Visual JWT token structure editor
@@ -87,12 +99,14 @@ python3 azure-auth-app/test_apps/compliant_app_with_ui.py
 - **Backend Integration**: Automatic template application
   - Default template applies to all authenticated users
   - AD group templates override based on priority (higher priority wins)
-  - Matches templates to user's AD groups
+  - Matches templates to user's AD groups (by display name)
   - Applies highest priority matching template
   - Includes all template-defined claims with proper defaults
   - Initializes empty arrays/objects for collection types
   - Token version 2.0 for templated tokens
   - Template metadata (_template_applied, _template_priority) included
+  - **NEW**: App-specific roles resolved from AD group → role mappings
+  - **NEW**: Roles aggregated across all registered apps for user
 
 ## Permission & RLS System
 
@@ -194,6 +208,14 @@ npm run typecheck
 - Discovery endpoints should be publicly accessible or accept JWT tokens
 - JWT tokens for discovery are short-lived (5 minutes)
 - Required fields: `app_name` (not `service_name`), `last_updated`
+
+### AD Groups and Role Resolution
+- **NEW**: `/auth/token/exchange` fetches AD groups from Microsoft Graph
+- Groups stored as objects with `id` and `displayName`
+- Role mappings stored in `app_role_mappings.json`
+- Roles resolved by matching user's AD group display names to mappings
+- Multiple apps can map the same AD group to different roles
+- Token includes all resolved roles across registered apps
 
 ## Git Workflow
 - Feature branch: `feature/resource-permissions`

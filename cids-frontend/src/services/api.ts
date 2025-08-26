@@ -1,8 +1,14 @@
 import axios from 'axios';
-import type { AxiosInstance, AxiosResponse } from 'axios';
+import type { AxiosInstance, AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios';
+import { tokenManager } from './tokenManager';
 
 class ApiService {
   private api: AxiosInstance;
+  private isRefreshing = false;
+  private failedQueue: Array<{
+    resolve: (value?: any) => void;
+    reject: (reason?: any) => void;
+  }> = [];
 
   constructor() {
     this.api = axios.create({
@@ -13,8 +19,16 @@ class ApiService {
 
     // Request interceptor to add auth token
     this.api.interceptors.request.use(
-      (config) => {
-        const token = localStorage.getItem('access_token');
+      async (config) => {
+        // Skip token for auth endpoints
+        if (config.url?.includes('/auth/token') || 
+            config.url?.includes('/auth/login') ||
+            config.url?.includes('/auth/logout')) {
+          return config;
+        }
+
+        // Ensure we have a valid token
+        const token = await tokenManager.ensureValidToken();
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }
@@ -25,18 +39,80 @@ class ApiService {
       }
     );
 
-    // Response interceptor for error handling
+    // Response interceptor for error handling and token refresh
     this.api.interceptors.response.use(
       (response) => response,
-      (error) => {
-        if (error.response?.status === 401) {
-          // Clear token and redirect to login
-          localStorage.removeItem('access_token');
-          window.location.href = '/login';
+      async (error: AxiosError) => {
+        const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+
+        // If 401 and not already retried
+        if (error.response?.status === 401 && !originalRequest._retry) {
+          // Skip retry for auth endpoints
+          if (originalRequest.url?.includes('/auth/')) {
+            tokenManager.clearTokens();
+            window.location.href = '/login';
+            return Promise.reject(error);
+          }
+
+          originalRequest._retry = true;
+
+          // If already refreshing, queue this request
+          if (this.isRefreshing) {
+            return new Promise((resolve, reject) => {
+              this.failedQueue.push({ resolve, reject });
+            }).then(token => {
+              originalRequest.headers.Authorization = `Bearer ${token}`;
+              return this.api(originalRequest);
+            }).catch(err => {
+              return Promise.reject(err);
+            });
+          }
+
+          this.isRefreshing = true;
+
+          try {
+            // Try to refresh token
+            await tokenManager.refreshToken();
+            const newToken = tokenManager.getAccessToken();
+
+            if (newToken) {
+              // Process queued requests
+              this.processQueue(null, newToken);
+
+              // Retry original request
+              originalRequest.headers.Authorization = `Bearer ${newToken}`;
+              return this.api(originalRequest);
+            } else {
+              throw new Error('No token after refresh');
+            }
+          } catch (refreshError) {
+            // Refresh failed, process queue with error
+            this.processQueue(refreshError, null);
+            
+            // Clear tokens and redirect to login
+            tokenManager.clearTokens();
+            window.location.href = '/login';
+            return Promise.reject(refreshError);
+          } finally {
+            this.isRefreshing = false;
+          }
         }
+
         return Promise.reject(error);
       }
     );
+  }
+
+  private processQueue(error: any, token: string | null = null) {
+    this.failedQueue.forEach(prom => {
+      if (error) {
+        prom.reject(error);
+      } else {
+        prom.resolve(token);
+      }
+    });
+    
+    this.failedQueue = [];
   }
 
   // Generic request method

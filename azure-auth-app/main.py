@@ -265,299 +265,301 @@ async def get_azure_signing_keys():
         return jwks_response.json()
 
 
-@app.get("/auth/login")
-async def auth_login(request: Request, response: Response, return_url: Optional[str] = None, client_id: Optional[str] = None, app_redirect_uri: Optional[str] = None, state: Optional[str] = None):
-    """Initiate Azure AD OAuth flow"""
-    # Azure redirect URI - NEVER change this, it's configured in Azure AD
-    azure_redirect_uri = os.getenv('REDIRECT_URI', 'https://10.1.5.58:8000/auth/callback')
-    
-    # Create session
-    session_id = str(uuid.uuid4())
-    oauth_state = state or secrets.token_urlsafe(32)
-    
-    # Validate client_id and app_redirect_uri if provided (for app-specific flows)
-    if client_id:
-        app_data = app_store.get_app(client_id)
-        if not app_data:
-            raise HTTPException(status_code=400, detail="Invalid client_id")
-        if not app_data.get('is_active'):
-            raise HTTPException(status_code=400, detail="Application is not active")
-        
-        # Validate app_redirect_uri if provided
-        if app_redirect_uri:
-            if not app_store.validate_redirect_uri(client_id, app_redirect_uri):
-                raise HTTPException(status_code=400, detail="Invalid redirect_uri for this client")
-        
-        # Store app-specific data in session
-        session_data = {
-            'oauth_state': oauth_state,
-            'return_url': return_url or '/',
-            'client_id': client_id,
-            'app_redirect_uri': app_redirect_uri,  # Where to redirect AFTER auth
-            'app_state': state  # App's state parameter for CSRF
-        }
-    else:
-        # Standard flow without app registration
-        session_data = {
-            'oauth_state': oauth_state,
-            'return_url': return_url or '/'
-        }
-    
-    set_session(session_id, session_data)
-    
-    # Construct authorization URL - ALWAYS use Azure redirect URI
-    authorize_url = (
-        f"https://login.microsoftonline.com/{os.getenv('AZURE_TENANT_ID')}/oauth2/v2.0/authorize"
-        f"?client_id={os.getenv('AZURE_CLIENT_ID')}"
-        f"&response_type=code"
-        f"&redirect_uri={azure_redirect_uri}"
-        f"&scope={os.getenv('AZURE_SCOPE', 'openid profile email groups')}"
-        f"&state={oauth_state}"
-        f"&nonce={secrets.token_urlsafe(16)}"
-    )
-    
-    # Set session cookie
-    response = RedirectResponse(url=authorize_url)
-    response.set_cookie(key="auth_session_id", value=session_id, httponly=True, samesite=SAMESITE_POLICY, secure=True)
-    return response
+# LEGACY FLOW - Commented out in favor of React UI flow (/auth/token/exchange)
+# @app.get("/auth/login")
+# async def auth_login(request: Request, response: Response, return_url: Optional[str] = None, client_id: Optional[str] = None, app_redirect_uri: Optional[str] = None, state: Optional[str] = None):
+#     """Initiate Azure AD OAuth flow"""
+#     # Azure redirect URI - NEVER change this, it's configured in Azure AD
+#     azure_redirect_uri = os.getenv('REDIRECT_URI', 'https://10.1.5.58:8000/auth/callback')
+#     
+#     # Create session
+#     session_id = str(uuid.uuid4())
+#     oauth_state = state or secrets.token_urlsafe(32)
+#     
+#     # Validate client_id and app_redirect_uri if provided (for app-specific flows)
+#     if client_id:
+#         app_data = app_store.get_app(client_id)
+#         if not app_data:
+#             raise HTTPException(status_code=400, detail="Invalid client_id")
+#         if not app_data.get('is_active'):
+#             raise HTTPException(status_code=400, detail="Application is not active")
+#         
+#         # Validate app_redirect_uri if provided
+#         if app_redirect_uri:
+#             if not app_store.validate_redirect_uri(client_id, app_redirect_uri):
+#                 raise HTTPException(status_code=400, detail="Invalid redirect_uri for this client")
+#         
+#         # Store app-specific data in session
+#         session_data = {
+#             'oauth_state': oauth_state,
+#             'return_url': return_url or '/',
+#             'client_id': client_id,
+#             'app_redirect_uri': app_redirect_uri,  # Where to redirect AFTER auth
+#             'app_state': state  # App's state parameter for CSRF
+#         }
+#     else:
+#         # Standard flow without app registration
+#         session_data = {
+#             'oauth_state': oauth_state,
+#             'return_url': return_url or '/'
+#         }
+#     
+#     set_session(session_id, session_data)
+#     
+#     # Construct authorization URL - ALWAYS use Azure redirect URI
+#     authorize_url = (
+#         f"https://login.microsoftonline.com/{os.getenv('AZURE_TENANT_ID')}/oauth2/v2.0/authorize"
+#         f"?client_id={os.getenv('AZURE_CLIENT_ID')}"
+#         f"&response_type=code"
+#         f"&redirect_uri={azure_redirect_uri}"
+#         f"&scope={os.getenv('AZURE_SCOPE', 'openid profile email groups')}"
+#         f"&state={oauth_state}"
+#         f"&nonce={secrets.token_urlsafe(16)}"
+#     )
+#     
+#     # Set session cookie
+#     response = RedirectResponse(url=authorize_url)
+#     response.set_cookie(key="auth_session_id", value=session_id, httponly=True, samesite=SAMESITE_POLICY, secure=True)
+#     return response
 
-@app.get("/auth/callback")
-async def auth_callback(request: Request, response: Response):
-    """Handle Azure AD callback and issue internal token"""
-    try:
-        # Get session
-        session_id = request.cookies.get('auth_session_id')
-        if not session_id:
-            raise HTTPException(status_code=400, detail="No session found")
-        
-        session_data = get_session(session_id)
-        
-        # Get code and state from query params
-        code = request.query_params.get('code')
-        state = request.query_params.get('state')
-        
-        # Verify state
-        stored_state = session_data.get('oauth_state')
-        if not stored_state or stored_state != state:
-            raise HTTPException(status_code=400, detail="Invalid state parameter")
-        
-        # Exchange code for token
-        redirect_uri = os.getenv('REDIRECT_URI', 'https://10.1.5.58:8000/auth/callback')
-        
-        async with httpx.AsyncClient() as client:
-            token_response = await client.post(
-                f"https://login.microsoftonline.com/{os.getenv('AZURE_TENANT_ID')}/oauth2/v2.0/token",
-                data={
-                    'client_id': os.getenv('AZURE_CLIENT_ID'),
-                    'client_secret': os.getenv('AZURE_CLIENT_SECRET'),
-                    'code': code,
-                    'redirect_uri': redirect_uri,
-                    'grant_type': 'authorization_code'
-                }
-            )
-            
-            if token_response.status_code != 200:
-                raise HTTPException(status_code=400, detail=f"Token exchange failed: {token_response.text}")
-            
-            token_data = token_response.json()
-        
-        id_token_data = token_data.get('id_token')
-        access_token = token_data.get('access_token')
-        
-        # Get signing keys and validate token
-        jwks = await get_azure_signing_keys()
-        
-        # Decode and validate ID token
-        claims = jwt.decode(
-            id_token_data,
-            jwks,
-            claims_options={
-                "aud": {"essential": True, "value": os.getenv('AZURE_CLIENT_ID')},
-                "iss": {"essential": True, "value": f"https://login.microsoftonline.com/{os.getenv('AZURE_TENANT_ID')}/v2.0"}
-            }
-        )
-        
-        # Extract user information
-        user_info = {
-            'name': claims.get('name', 'Unknown'),
-            'email': claims.get('email', claims.get('preferred_username', 'Unknown')),
-            'sub': claims.get('sub'),
-            'groups': []
-        }
-        
-        # Store Azure tokens for admin tracking
-        azure_token_id = str(uuid.uuid4())
-        azure_issued_at = datetime.utcnow()
-        
-        # Extract Azure token expiry from claims
-        azure_expires_at = datetime.fromtimestamp(claims.get('exp', 0))
-        
-        logger.info(f"Storing Azure tokens for user: {user_info['email']}")
-        
-        azure_token_info = {
-            'id': azure_token_id,
-            'id_token': id_token_data,
-            'access_token': access_token,
-            'user': {
-                'name': user_info['name'],
-                'email': user_info['email']
-            },
-            'issued_at': azure_issued_at.isoformat() + 'Z',
-            'expires_at': azure_expires_at.isoformat() + 'Z',
-            'subject': user_info['sub'],
-            'issuer': claims.get('iss', 'Unknown'),
-            'audience': claims.get('aud', 'Unknown'),
-            'claims': claims
-        }
-        
-        # Store Azure token
-        azure_tokens[azure_token_id] = azure_token_info
-        logger.info(f"Azure token stored successfully. Current azure_tokens count: {len(azure_tokens)}")
-        
-        # Log Azure token creation activity
-        token_activity_logger.log_activity(
-            token_id=azure_token_id,
-            action=TokenAction.CREATED,
-            performed_by=user_info,
-            details={
-                'token_type': 'azure_token',
-                'issuer': claims.get('iss', 'Unknown'),
-                'audience': claims.get('aud', 'Unknown')
-            },
-            ip_address=request.client.host if request.client else None,
-            user_agent=request.headers.get('user-agent')
-        )
-        
-        # Get groups from Microsoft Graph if we have access token
-        if access_token:
-            async with httpx.AsyncClient() as client:
-                headers = {'Authorization': f'Bearer {access_token}'}
-                try:
-                    groups_response = await client.get(
-                        'https://graph.microsoft.com/v1.0/me/memberOf?$select=id,displayName',
-                        headers=headers
-                    )
-                    if groups_response.status_code == 200:
-                        groups_data = groups_response.json()
-                        logger.debug(f"Groups data from Microsoft Graph: {json.dumps(groups_data, indent=2)}")
-                        
-                        # Process groups, handling both dict and other formats
-                        processed_groups = []
-                        for g in groups_data.get('value', []):
-                            if isinstance(g, dict):
-                                processed_groups.append({
-                                    'id': g.get('id', ''),
-                                    'displayName': g.get('displayName', f"Group {g.get('id', '')[:8]}...")
-                                })
-                            else:
-                                logger.warning(f"Unexpected group format: {type(g)} - {g}")
-                                
-                        user_info['groups'] = processed_groups
-                except Exception as e:
-                    logger.error(f"Failed to fetch groups: {e}")
-        
-        # Create our internal tokens with IAM claims
-        access_token = generate_token_with_iam_claims(user_info)
-        refresh_token = refresh_token_store.create_refresh_token(user_info, lifetime_days=30)
-        
-        # Store tokens in issued_tokens for admin tracking
-        token_id = str(uuid.uuid4())
-        now_utc = datetime.utcnow()
-        expires_utc = now_utc + timedelta(minutes=10)  # 10 minutes for IAM tokens
-        
-        # Debug logging
-        logger.debug(f"Token timestamp debug:")
-        logger.debug(f"  now_utc: {now_utc}")
-        logger.debug(f"  now_utc.isoformat(): {now_utc.isoformat()}")
-        logger.debug(f"  expires_utc: {expires_utc}")
-        logger.debug(f"  expires_utc.isoformat(): {expires_utc.isoformat()}")
-        
-        issued_tokens[token_id] = {
-            'id': token_id,
-            'access_token': access_token,
-            'refresh_token': refresh_token,
-            'user': user_info,
-            'issued_at': now_utc.isoformat() + 'Z',  # Explicitly add Z for UTC
-            'expires_at': expires_utc.isoformat() + 'Z',  # Explicitly add Z for UTC
-            'source': 'azure_callback',
-            'session_id': session_id
-        }
-        
-        # Log token creation activity
-        token_activity_logger.log_activity(
-            token_id=token_id,
-            action=TokenAction.CREATED,
-            performed_by=user_info,
-            details={
-                'source': 'azure_callback',
-                'session_id': session_id
-            },
-            ip_address=request.client.host if request.client else None,
-            user_agent=request.headers.get('user-agent')
-        )
-        
-        # Store tokens in session
-        session_data['internal_token'] = access_token  # Keep backward compatibility
-        session_data['access_token'] = access_token
-        session_data['refresh_token'] = refresh_token
-        session_data['azure_id_token'] = id_token_data  # Store Azure token for comparison
-        session_data['azure_claims'] = claims  # Store Azure claims
-        session_data['user'] = user_info
-        session_data['token_id'] = token_id  # Store reference to issued_tokens
-        set_session(session_id, session_data)
-        
-        logger.info(f"User authenticated: {user_info['name']}")
-        
-        # Check if this is an app-specific flow
-        if session_data.get('client_id'):
-            # Add app-specific roles to the token
-            client_id = session_data['client_id']
-            # Extract group names handling both dict and string formats
-            groups_raw = user_info.get('groups', [])
-            user_groups = []
-            for g in groups_raw:
-                if isinstance(g, dict):
-                    user_groups.append(g.get('displayName', ''))
-                else:
-                    user_groups.append(str(g))
-            app_roles = app_store.get_user_roles_for_app(client_id, user_groups)
-            
-            # Recreate token with app-specific claims
-            token_claims = user_info.copy()
-            token_claims['client_id'] = client_id
-            token_claims['app_roles'] = app_roles
-            
-            access_token = generate_token_with_iam_claims(token_claims, client_id)
-            
-            # Update stored token
-            issued_tokens[token_id]['access_token'] = access_token
-            session_data['access_token'] = access_token
-            
-            # Redirect back to app with token
-            app_redirect_uri = session_data.get('app_redirect_uri')
-            app_state = session_data.get('app_state')
-            
-            if app_redirect_uri:
-                # Build redirect URL with token and state
-                redirect_params = {
-                    'access_token': access_token,
-                    'state': app_state
-                }
-                redirect_url = f"{app_redirect_uri}?{urllib.parse.urlencode(redirect_params)}"
-                return RedirectResponse(url=redirect_url, status_code=303)
-        
-        # Standard flow - redirect to home page
-        response = RedirectResponse(url='/', status_code=303)
-        response.set_cookie(key="auth_session_id", value=session_id, httponly=True, samesite=SAMESITE_POLICY, secure=True)
-        return response
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        import traceback
-        logger.error(f"Authentication error: {str(e)}")
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}")
+# LEGACY FLOW - Commented out in favor of React UI flow (/auth/token/exchange)
+# @app.get("/auth/callback")
+# async def auth_callback(request: Request, response: Response):
+#     """Handle Azure AD callback and issue internal token"""
+#     try:
+#         # Get session
+#         session_id = request.cookies.get('auth_session_id')
+#         if not session_id:
+#             raise HTTPException(status_code=400, detail="No session found")
+#         
+#         session_data = get_session(session_id)
+#         
+#         # Get code and state from query params
+#         code = request.query_params.get('code')
+#         state = request.query_params.get('state')
+#         
+#         # Verify state
+#         stored_state = session_data.get('oauth_state')
+#         if not stored_state or stored_state != state:
+#             raise HTTPException(status_code=400, detail="Invalid state parameter")
+#         
+#         # Exchange code for token
+#         redirect_uri = os.getenv('REDIRECT_URI', 'https://10.1.5.58:8000/auth/callback')
+#         
+#         async with httpx.AsyncClient() as client:
+#             token_response = await client.post(
+#                 f"https://login.microsoftonline.com/{os.getenv('AZURE_TENANT_ID')}/oauth2/v2.0/token",
+#                 data={
+#                     'client_id': os.getenv('AZURE_CLIENT_ID'),
+#                     'client_secret': os.getenv('AZURE_CLIENT_SECRET'),
+#                     'code': code,
+#                     'redirect_uri': redirect_uri,
+#                     'grant_type': 'authorization_code'
+#                 }
+#             )
+#             
+#             if token_response.status_code != 200:
+#                 raise HTTPException(status_code=400, detail=f"Token exchange failed: {token_response.text}")
+#             
+#             token_data = token_response.json()
+#         
+#         id_token_data = token_data.get('id_token')
+#         access_token = token_data.get('access_token')
+#         
+#         # Get signing keys and validate token
+#         jwks = await get_azure_signing_keys()
+#         
+#         # Decode and validate ID token
+#         claims = jwt.decode(
+#             id_token_data,
+#             jwks,
+#             claims_options={
+#                 "aud": {"essential": True, "value": os.getenv('AZURE_CLIENT_ID')},
+#                 "iss": {"essential": True, "value": f"https://login.microsoftonline.com/{os.getenv('AZURE_TENANT_ID')}/v2.0"}
+#             }
+#         )
+#         
+#         # Extract user information
+#         user_info = {
+#             'name': claims.get('name', 'Unknown'),
+#             'email': claims.get('email', claims.get('preferred_username', 'Unknown')),
+#             'sub': claims.get('sub'),
+#             'groups': []
+#         }
+#         
+#         # Store Azure tokens for admin tracking
+#         azure_token_id = str(uuid.uuid4())
+#         azure_issued_at = datetime.utcnow()
+#         
+#         # Extract Azure token expiry from claims
+#         azure_expires_at = datetime.fromtimestamp(claims.get('exp', 0))
+#         
+#         logger.info(f"Storing Azure tokens for user: {user_info['email']}")
+#         
+#         azure_token_info = {
+#             'id': azure_token_id,
+#             'id_token': id_token_data,
+#             'access_token': access_token,
+#             'user': {
+#                 'name': user_info['name'],
+#                 'email': user_info['email']
+#             },
+#             'issued_at': azure_issued_at.isoformat() + 'Z',
+#             'expires_at': azure_expires_at.isoformat() + 'Z',
+#             'subject': user_info['sub'],
+#             'issuer': claims.get('iss', 'Unknown'),
+#             'audience': claims.get('aud', 'Unknown'),
+#             'claims': claims
+#         }
+#         
+#         # Store Azure token
+#         azure_tokens[azure_token_id] = azure_token_info
+#         logger.info(f"Azure token stored successfully. Current azure_tokens count: {len(azure_tokens)}")
+#         
+#         # Log Azure token creation activity
+#         token_activity_logger.log_activity(
+#             token_id=azure_token_id,
+#             action=TokenAction.CREATED,
+#             performed_by=user_info,
+#             details={
+#                 'token_type': 'azure_token',
+#                 'issuer': claims.get('iss', 'Unknown'),
+#                 'audience': claims.get('aud', 'Unknown')
+#             },
+#             ip_address=request.client.host if request.client else None,
+#             user_agent=request.headers.get('user-agent')
+#         )
+#         
+#         # Get groups from Microsoft Graph if we have access token
+#         if access_token:
+#             async with httpx.AsyncClient() as client:
+#                 headers = {'Authorization': f'Bearer {access_token}'}
+#                 try:
+#                     groups_response = await client.get(
+#                         'https://graph.microsoft.com/v1.0/me/memberOf?$select=id,displayName',
+#                         headers=headers
+#                     )
+#                     if groups_response.status_code == 200:
+#                         groups_data = groups_response.json()
+#                         logger.debug(f"Groups data from Microsoft Graph: {json.dumps(groups_data, indent=2)}")
+#                         
+#                         # Process groups, handling both dict and other formats
+#                         processed_groups = []
+#                         for g in groups_data.get('value', []):
+#                             if isinstance(g, dict):
+#                                 processed_groups.append({
+#                                     'id': g.get('id', ''),
+#                                     'displayName': g.get('displayName', f"Group {g.get('id', '')[:8]}...")
+#                                 })
+#                             else:
+#                                 logger.warning(f"Unexpected group format: {type(g)} - {g}")
+#                                 
+#                         user_info['groups'] = processed_groups
+#                 except Exception as e:
+#                     logger.error(f"Failed to fetch groups: {e}")
+#         
+#         # Create our internal tokens with IAM claims
+#         access_token = generate_token_with_iam_claims(user_info)
+#         refresh_token = refresh_token_store.create_refresh_token(user_info, lifetime_days=30)
+#         
+#         # Store tokens in issued_tokens for admin tracking
+#         token_id = str(uuid.uuid4())
+#         now_utc = datetime.utcnow()
+#         expires_utc = now_utc + timedelta(minutes=10)  # 10 minutes for IAM tokens
+#         
+#         # Debug logging
+#         logger.debug(f"Token timestamp debug:")
+#         logger.debug(f"  now_utc: {now_utc}")
+#         logger.debug(f"  now_utc.isoformat(): {now_utc.isoformat()}")
+#         logger.debug(f"  expires_utc: {expires_utc}")
+#         logger.debug(f"  expires_utc.isoformat(): {expires_utc.isoformat()}")
+#         
+#         issued_tokens[token_id] = {
+#             'id': token_id,
+#             'access_token': access_token,
+#             'refresh_token': refresh_token,
+#             'user': user_info,
+#             'issued_at': now_utc.isoformat() + 'Z',  # Explicitly add Z for UTC
+#             'expires_at': expires_utc.isoformat() + 'Z',  # Explicitly add Z for UTC
+#             'source': 'azure_callback',
+#             'session_id': session_id
+#         }
+#         
+#         # Log token creation activity
+#         token_activity_logger.log_activity(
+#             token_id=token_id,
+#             action=TokenAction.CREATED,
+#             performed_by=user_info,
+#             details={
+#                 'source': 'azure_callback',
+#                 'session_id': session_id
+#             },
+#             ip_address=request.client.host if request.client else None,
+#             user_agent=request.headers.get('user-agent')
+#         )
+#         
+#         # Store tokens in session
+#         session_data['internal_token'] = access_token  # Keep backward compatibility
+#         session_data['access_token'] = access_token
+#         session_data['refresh_token'] = refresh_token
+#         session_data['azure_id_token'] = id_token_data  # Store Azure token for comparison
+#         session_data['azure_claims'] = claims  # Store Azure claims
+#         session_data['user'] = user_info
+#         session_data['token_id'] = token_id  # Store reference to issued_tokens
+#         set_session(session_id, session_data)
+#         
+#         logger.info(f"User authenticated: {user_info['name']}")
+#         
+#         # Check if this is an app-specific flow
+#         if session_data.get('client_id'):
+#             # Add app-specific roles to the token
+#             client_id = session_data['client_id']
+#             # Extract group names handling both dict and string formats
+#             groups_raw = user_info.get('groups', [])
+#             user_groups = []
+#             for g in groups_raw:
+#                 if isinstance(g, dict):
+#                     user_groups.append(g.get('displayName', ''))
+#                 else:
+#                     user_groups.append(str(g))
+#             app_roles = app_store.get_user_roles_for_app(client_id, user_groups)
+#             
+#             # Recreate token with app-specific claims
+#             token_claims = user_info.copy()
+#             token_claims['client_id'] = client_id
+#             token_claims['app_roles'] = app_roles
+#             
+#             access_token = generate_token_with_iam_claims(token_claims, client_id)
+#             
+#             # Update stored token
+#             issued_tokens[token_id]['access_token'] = access_token
+#             session_data['access_token'] = access_token
+#             
+#             # Redirect back to app with token
+#             app_redirect_uri = session_data.get('app_redirect_uri')
+#             app_state = session_data.get('app_state')
+#             
+#             if app_redirect_uri:
+#                 # Build redirect URL with token and state
+#                 redirect_params = {
+#                     'access_token': access_token,
+#                     'state': app_state
+#                 }
+#                 redirect_url = f"{app_redirect_uri}?{urllib.parse.urlencode(redirect_params)}"
+#                 return RedirectResponse(url=redirect_url, status_code=303)
+#         
+#         # Standard flow - redirect to home page
+#         response = RedirectResponse(url='/', status_code=303)
+#         response.set_cookie(key="auth_session_id", value=session_id, httponly=True, samesite=SAMESITE_POLICY, secure=True)
+#         return response
+#         
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         import traceback
+#         logger.error(f"Authentication error: {str(e)}")
+#         logger.error(f"Traceback: {traceback.format_exc()}")
+#         raise HTTPException(status_code=400, detail=f"Authentication failed: {str(e)}")
 
 @app.post("/auth/token")
 async def token_endpoint(token_request: TokenRequest):
@@ -577,7 +579,42 @@ async def token_endpoint(token_request: TokenRequest):
         if not user_info:
             raise HTTPException(status_code=401, detail="Invalid refresh token")
         
-        # Create new access token with IAM claims
+        # If we have a stored Azure access token, fetch fresh AD groups
+        # Note: In production, you might want to cache this for a short period
+        if 'azure_access_token' in user_info:
+            azure_access_token = user_info.get('azure_access_token')
+            user_groups = []
+            group_names = []
+            
+            async with httpx.AsyncClient() as client:
+                headers = {'Authorization': f'Bearer {azure_access_token}'}
+                try:
+                    groups_response = await client.get(
+                        'https://graph.microsoft.com/v1.0/me/memberOf?$select=id,displayName',
+                        headers=headers
+                    )
+                    if groups_response.status_code == 200:
+                        groups_data = groups_response.json()
+                        logger.debug(f"Refresh: Groups data from Microsoft Graph: {json.dumps(groups_data, indent=2)}")
+                        
+                        # Process groups - store both full objects and display names
+                        for g in groups_data.get('value', []):
+                            if isinstance(g, dict):
+                                user_groups.append({
+                                    'id': g.get('id', ''),
+                                    'displayName': g.get('displayName', f"Group {g.get('id', '')[:8]}...")
+                                })
+                                group_names.append(g.get('displayName', ''))
+                        
+                        # Update user_info with fresh groups
+                        user_info['groups'] = user_groups
+                        logger.info(f"Refresh: Updated user groups: {[g.get('displayName') for g in user_groups]}")
+                    else:
+                        logger.warning(f"Refresh: Failed to fetch groups from Graph API: {groups_response.status_code}")
+                except Exception as e:
+                    logger.error(f"Refresh: Failed to fetch groups from Graph API: {e}")
+        
+        # Create new access token with IAM claims (will use fresh groups if available)
         access_token = generate_token_with_iam_claims(user_info)
         
         # Store tokens in issued_tokens for admin tracking
@@ -642,6 +679,33 @@ async def oauth_token(request: Request, response: Response):
             
             if not user_info:
                 raise HTTPException(status_code=401, detail="Invalid refresh token")
+            
+            # If we have a stored Azure access token, fetch fresh AD groups
+            if 'azure_access_token' in user_info:
+                azure_access_token = user_info.get('azure_access_token')
+                user_groups = []
+                
+                async with httpx.AsyncClient() as client:
+                    headers = {'Authorization': f'Bearer {azure_access_token}'}
+                    try:
+                        groups_response = await client.get(
+                            'https://graph.microsoft.com/v1.0/me/memberOf?$select=id,displayName',
+                            headers=headers
+                        )
+                        if groups_response.status_code == 200:
+                            groups_data = groups_response.json()
+                            # Process groups
+                            for g in groups_data.get('value', []):
+                                if isinstance(g, dict):
+                                    user_groups.append({
+                                        'id': g.get('id', ''),
+                                        'displayName': g.get('displayName', '')
+                                    })
+                            # Update user_info with fresh groups
+                            user_info['groups'] = user_groups
+                            logger.info(f"OAuth refresh: Updated user groups")
+                    except Exception as e:
+                        logger.error(f"OAuth refresh: Failed to fetch groups: {e}")
             
             # Generate new access token
             client_id = form_data.get('client_id')
@@ -782,8 +846,59 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
         admin_emails = os.getenv('ADMIN_EMAILS', '').split(',')
         is_admin = user_email in admin_emails
         
-        # Get user's Azure AD groups
-        user_groups = claims.get('groups', [])
+        # Get user's Azure AD groups from Microsoft Graph API
+        user_groups = []
+        group_names = []  # List of display names for template matching
+        
+        if azure_access_token:
+            async with httpx.AsyncClient() as client:
+                headers = {'Authorization': f'Bearer {azure_access_token}'}
+                try:
+                    groups_response = await client.get(
+                        'https://graph.microsoft.com/v1.0/me/memberOf?$select=id,displayName',
+                        headers=headers
+                    )
+                    if groups_response.status_code == 200:
+                        groups_data = groups_response.json()
+                        logger.debug(f"Groups data from Microsoft Graph: {json.dumps(groups_data, indent=2)}")
+                        
+                        # Process groups - store both full objects and display names
+                        for g in groups_data.get('value', []):
+                            if isinstance(g, dict):
+                                user_groups.append({
+                                    'id': g.get('id', ''),
+                                    'displayName': g.get('displayName', f"Group {g.get('id', '')[:8]}...")
+                                })
+                                group_names.append(g.get('displayName', ''))
+                            else:
+                                logger.warning(f"Unexpected group format: {type(g)} - {g}")
+                    else:
+                        logger.warning(f"Failed to fetch groups from Graph API: {groups_response.status_code}")
+                        # Fallback to groups from ID token if available
+                        user_groups = claims.get('groups', [])
+                        group_names = user_groups if isinstance(user_groups, list) else []
+                except Exception as e:
+                    logger.error(f"Failed to fetch groups from Graph API: {e}")
+                    # Fallback to groups from ID token if available
+                    user_groups = claims.get('groups', [])
+                    group_names = user_groups if isinstance(user_groups, list) else []
+        else:
+            # Fallback to groups from ID token if available
+            user_groups = claims.get('groups', [])
+            group_names = user_groups if isinstance(user_groups, list) else []
+        
+        # Get app-specific roles based on AD group memberships
+        # Note: We don't have a specific client_id in this flow since it's for React frontend
+        # The React app will need to handle app-specific permissions separately
+        app_roles = []
+        
+        # If we want to get roles for a specific app, we'd need the client_id
+        # For now, we'll include all roles from all apps the user has access to
+        for client_id in registered_apps.keys():
+            user_app_roles = app_store.get_user_roles_for_app(client_id, group_names)
+            for role in user_app_roles:
+                if role not in app_roles:
+                    app_roles.append(role)
         
         # Create initial internal CIDS token payload
         internal_token_payload = {
@@ -793,15 +908,17 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
             'given_name': claims.get('given_name'),
             'family_name': claims.get('family_name'),
             'is_admin': is_admin,
-            'groups': user_groups,  # Include groups for template application
-            'azure_groups': user_groups,
+            'groups': user_groups,  # Include full group objects
+            'azure_groups': user_groups,  # Duplicate for backward compatibility
+            'group_names': group_names,  # Just the display names for easy checking
+            'roles': app_roles,  # Include aggregated roles from all apps
             'preferred_username': claims.get('preferred_username'),
             'token_type': 'internal',
             'token_version': '2.0'  # Update to 2.0 since we're using templates
         }
         
-        # Apply token template based on user's AD groups
-        filtered_payload = token_template_manager.apply_template(internal_token_payload, user_groups)
+        # Apply token template based on user's AD group display names
+        filtered_payload = token_template_manager.apply_template(internal_token_payload, group_names)
         
         internal_token = jwt_manager.create_token(filtered_payload)
         
@@ -844,11 +961,15 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
         logger.info(f"Stored Azure token {azure_token_id} for user {user_email}")
         
         # Create refresh token using the RefreshTokenStore
+        # Include Azure access token and groups for future refreshes
         refresh_token = refresh_token_store.create_refresh_token({
             'user_id': claims.get('sub'),
             'email': user_email,
             'name': claims.get('name'),
-            'is_admin': is_admin
+            'is_admin': is_admin,
+            'azure_access_token': azure_access_token,  # Store for future Graph API calls
+            'groups': user_groups,  # Store current groups as fallback
+            'sub': claims.get('sub')  # Needed for generate_token_with_iam_claims
         })
         
         # Log token activity

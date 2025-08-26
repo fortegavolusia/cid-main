@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useAuth } from '../contexts/AuthContext';
 import adminService from '../services/adminService';
@@ -62,7 +62,7 @@ const AdminPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Apps state
-  const [appsOpen, setAppsOpen] = useState(true);
+  const [registrationOpen, setRegistrationOpen] = useState(false);
   const [apps, setApps] = useState<AppInfo[] | null>(null);
   const [appLoading, setAppLoading] = useState(false);
   const [rolesModal, setRolesModal] = useState<{ isOpen: boolean; clientId: string; appName: string }>({
@@ -87,6 +87,10 @@ const AdminPage: React.FC = () => {
     api_key_permissions: ''
   });
 
+  // Load apps when component mounts
+  useEffect(() => {
+    loadApps();
+  }, []);
 
   const formatDate = (dateString?: string) => {
     try {
@@ -200,14 +204,148 @@ const AdminPage: React.FC = () => {
         <ErrorMessage>{error}</ErrorMessage>
       )}
 
+      {/* Registered Apps Section */}
       <InfoSection>
-        <SectionHeader onClick={() => { setAppsOpen(!appsOpen); if (!apps) loadApps(); }}>
-          <h2 style={{ margin: 0 }}>App Management</h2>
-          <span style={{ transform: appsOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s ease', color: 'var(--text-secondary)' }}>▼</span>
+        <SectionHeader style={{ cursor: 'default', borderBottom: '1px solid var(--border-color)' }}>
+          <h2 style={{ margin: 0 }}>Registered Applications</h2>
         </SectionHeader>
-        {appsOpen && (
+        <SectionContent>
+          {appLoading && <p>Loading apps...</p>}
+          {!appLoading && apps && apps.length === 0 && <p>No apps registered yet.</p>}
+          {!appLoading && apps && apps.length > 0 && (
+            <div style={{ display: 'grid', gap: 16 }}>
+              {apps.map(app => (
+                <div key={app.client_id} style={{ border: '1px solid var(--border-color)', borderRadius: 6, padding: 16, background: '#fafafa' }}>
+                  <h4 style={{ marginTop: 0 }}>{app.name}</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 8 }}>
+                    <div>Client ID:</div><div style={{ wordBreak: 'break-all' }}>{app.client_id}</div>
+                    <div>Description:</div><div>{app.description || '—'}</div>
+                    <div>Owner:</div><div>{app.owner_email || '—'}</div>
+                    <div>Status:</div><div>{app.is_active ? 'Active' : 'Inactive'}</div>
+                    <div>Redirect URIs:</div><div>{(app.redirect_uris || []).join(', ') || '—'}</div>
+                    <div>Created:</div><div>{formatDate(app.created_at)}</div>
+                    {app.allow_discovery && (
+                      <>
+                        <div>Discovery:</div><div>Enabled {app.discovery_endpoint ? `(Endpoint: ${app.discovery_endpoint})` : ''}</div>
+                        {app.last_discovery_at && (
+                          <>
+                            <div>Last Discovery:</div><div>{formatDate(app.last_discovery_at)}{app.discovery_status ? ` (${app.discovery_status})` : ''}</div>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  <div className="app-actions" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                    <button className="button" onClick={async()=>{
+                      const data = await adminService.getRoleMappings(app.client_id);
+                      if (!data.mappings.length) alert('No role mappings configured for this app.');
+                      else alert(`Role Mappings for ${data.app_name}:\n\n${data.mappings.map(m=>`AD Group: ${m.ad_group}  Role: ${m.app_role}`).join('\n')}`);
+                    }}>Role Mappings</button>
+                    <button className="button" style={{ backgroundColor: '#17a2b8', color: 'white' }} onClick={() => {
+                      setApiKeyModal({
+                        isOpen: true,
+                        clientId: app.client_id,
+                        appName: app.name
+                      });
+                    }}>API Keys</button>
+                    {app.allow_discovery && (
+                      <>
+                        <button className="button" onClick={async()=>{
+                          try {
+                            // Try to get permission tree first for detailed view
+                            const permTree = await adminService.getAppPermissionTree(app.client_id);
+                            if (permTree && permTree.permission_tree && Object.keys(permTree.permission_tree).length > 0) {
+                              // Format permission tree for display
+                              let output = `Discovered Resources for ${app.client_id}:\n\n`;
+                              const tree = permTree.permission_tree;
+                              
+                              for (const [resource, actions] of Object.entries(tree as any)) {
+                                output += `${resource}\n`;
+                                for (const [action, details] of Object.entries(actions as any)) {
+                                  const fields = details.fields || [];
+                                  const sensitiveFields = fields.filter((f: any) => f.sensitive || f.pii || f.phi);
+                                  const hasWildcard = fields.some((f: any) => f.field_name === '*');
+                                  
+                                  output += `  ${action}`;
+                                  if (hasWildcard) output += ' (has wildcard *)';
+                                  if (sensitiveFields.length > 0) output += ` (${sensitiveFields.length} sensitive fields)`;
+                                  output += '\n';
+                                  
+                                  // Show fields with details
+                                  for (const field of fields) {
+                                    if (field.field_name !== '*') {
+                                      output += `    ${field.field_name}`;
+                                      if (field.sensitive || field.pii || field.phi) {
+                                        output += 'SENSITIVE';
+                                      }
+                                      output += '\n';
+                                      if (field.description) {
+                                        output += `      ${field.description}\n`;
+                                      }
+                                    }
+                                  }
+                                }
+                                output += '\n';
+                              }
+                              alert(output);
+                            } else {
+                              // Fallback to basic endpoints
+                              const ep = await adminService.getAppEndpoints(app.client_id);
+                              if (!ep || !ep.endpoints || ep.endpoints.length === 0) {
+                                alert('No endpoints registered for this app.');
+                              } else {
+                                alert(`Endpoints for ${app.client_id}:\n\n${ep.endpoints.map((e:any)=>`${e.method} ${e.path} - ${e.description || ''}${e.discovered ? ' (discovered)' : ''}`).join('\n')}`);
+                              }
+                            }
+                          } catch (error) {
+                            // Fallback to basic endpoints on error
+                            try {
+                              const ep = await adminService.getAppEndpoints(app.client_id);
+                              if (!ep || !ep.endpoints || ep.endpoints.length === 0) {
+                                alert('No endpoints registered for this app.');
+                              } else {
+                                alert(`Endpoints for ${app.client_id}:\n\n${ep.endpoints.map((e:any)=>`${e.method} ${e.path} - ${e.description || ''}${e.discovered ? ' (discovered)' : ''}`).join('\n')}`);
+                              }
+                            } catch (fallbackError) {
+                              alert('Error fetching endpoint information.');
+                            }
+                          }
+                        }}>View Endpoints</button>
+                        <button className="button" onClick={() => {
+                          setRolesModal({
+                            isOpen: true,
+                            clientId: app.client_id,
+                            appName: app.name
+                          });
+                        }}>Roles & Permissions</button>
+                        <button className="button secondary" onClick={async()=>{
+                          alert('Running discovery...');
+                          const res = await adminService.triggerDiscovery(app.client_id);
+                          if (res.status === 'success') alert(`Discovery completed! Found ${res.endpoints_discovered} endpoints, stored ${res.endpoints_stored}.`);
+                          else if (res.status === 'skipped') alert(res.message);
+                          else alert(`Discovery failed: ${res.error || 'unknown error'}`);
+                          loadApps();
+                        }}>Run Discovery</button>
+                      </>
+                    )}
+                    <button className="button secondary" onClick={()=>handleRotateSecret(app.client_id)}>Rotate Secret</button>
+                    <button className="button danger" onClick={()=>handleDeleteApp(app.client_id)}>Delete</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionContent>
+      </InfoSection>
+
+      {/* App Registration Section */}
+      <InfoSection>
+        <SectionHeader onClick={() => setRegistrationOpen(!registrationOpen)}>
+          <h2 style={{ margin: 0 }}>App Registration</h2>
+          <span style={{ transform: registrationOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s ease', color: 'var(--text-secondary)' }}>▼</span>
+        </SectionHeader>
+        {registrationOpen && (
           <SectionContent>
-            <h3 style={{ marginTop: 0 }}>Register New App</h3>
             <form onSubmit={handleRegister} style={{ background: '#f8f9fa', padding: 16, borderRadius: 6, border: '1px solid var(--border-color)' }}>
               <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr' }}>
                 <div>
@@ -290,135 +428,6 @@ const AdminPage: React.FC = () => {
                 <button type="submit" className="button">Register App</button>
               </div>
             </form>
-
-            <h3>Registered Apps</h3>
-            <div>
-              {appLoading && <p>Loading apps...</p>}
-              {!appLoading && apps && apps.length === 0 && <p>No apps registered yet.</p>}
-              {!appLoading && apps && apps.length > 0 && (
-                <div style={{ display: 'grid', gap: 16 }}>
-                  {apps.map(app => (
-                    <div key={app.client_id} style={{ border: '1px solid var(--border-color)', borderRadius: 6, padding: 16, background: '#fafafa' }}>
-                      <h4 style={{ marginTop: 0 }}>{app.name}</h4>
-                      <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 8 }}>
-                        <div>Client ID:</div><div style={{ wordBreak: 'break-all' }}>{app.client_id}</div>
-                        <div>Description:</div><div>{app.description || '—'}</div>
-                        <div>Owner:</div><div>{app.owner_email || '—'}</div>
-                        <div>Status:</div><div>{app.is_active ? 'Active' : 'Inactive'}</div>
-                        <div>Redirect URIs:</div><div>{(app.redirect_uris || []).join(', ') || '—'}</div>
-                        <div>Created:</div><div>{formatDate(app.created_at)}</div>
-                        {app.allow_discovery && (
-                          <>
-                            <div>Discovery:</div><div>Enabled {app.discovery_endpoint ? `(Endpoint: ${app.discovery_endpoint})` : ''}</div>
-                            {app.last_discovery_at && (
-                              <>
-                                <div>Last Discovery:</div><div>{formatDate(app.last_discovery_at)}{app.discovery_status ? ` (${app.discovery_status})` : ''}</div>
-                              </>
-                            )}
-                          </>
-                        )}
-                      </div>
-                      <div className="app-actions" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-                        <button className="button" onClick={async()=>{
-                          const data = await adminService.getRoleMappings(app.client_id);
-                          if (!data.mappings.length) alert('No role mappings configured for this app.');
-                          else alert(`Role Mappings for ${data.app_name}:\n\n${data.mappings.map(m=>`AD Group: ${m.ad_group}  Role: ${m.app_role}`).join('\n')}`);
-                        }}>Role Mappings</button>
-                        <button className="button" style={{ backgroundColor: '#17a2b8', color: 'white' }} onClick={() => {
-                          setApiKeyModal({
-                            isOpen: true,
-                            clientId: app.client_id,
-                            appName: app.name
-                          });
-                        }}>API Keys</button>
-                        {app.allow_discovery && (
-                          <>
-                            <button className="button" onClick={async()=>{
-                              try {
-                                // Try to get permission tree first for detailed view
-                                const permTree = await adminService.getAppPermissionTree(app.client_id);
-                                if (permTree && permTree.permission_tree && Object.keys(permTree.permission_tree).length > 0) {
-                                  // Format permission tree for display
-                                  let output = `Discovered Resources for ${app.client_id}:\n\n`;
-                                  const tree = permTree.permission_tree;
-                                  
-                                  for (const [resource, actions] of Object.entries(tree as any)) {
-                                    output += `${resource}\n`;
-                                    for (const [action, details] of Object.entries(actions as any)) {
-                                      const fields = details.fields || [];
-                                      const sensitiveFields = fields.filter((f: any) => f.sensitive || f.pii || f.phi);
-                                      const hasWildcard = fields.some((f: any) => f.field_name === '*');
-                                      
-                                      output += `  ${action}`;
-                                      if (hasWildcard) output += ' (has wildcard *)';
-                                      if (sensitiveFields.length > 0) output += ` (${sensitiveFields.length} sensitive fields)`;
-                                      output += '\n';
-                                      
-                                      // Show fields with details
-                                      for (const field of fields) {
-                                        if (field.field_name !== '*') {
-                                          output += `    ${field.field_name}`;
-                                          if (field.sensitive || field.pii || field.phi) {
-                                            output += 'SENSITIVE';
-                                          }
-                                          output += '\n';
-                                          if (field.description) {
-                                            output += `      ${field.description}\n`;
-                                          }
-                                        }
-                                      }
-                                    }
-                                    output += '\n';
-                                  }
-                                  alert(output);
-                                } else {
-                                  // Fallback to basic endpoints
-                                  const ep = await adminService.getAppEndpoints(app.client_id);
-                                  if (!ep || !ep.endpoints || ep.endpoints.length === 0) {
-                                    alert('No endpoints registered for this app.');
-                                  } else {
-                                    alert(`Endpoints for ${app.client_id}:\n\n${ep.endpoints.map((e:any)=>`${e.method} ${e.path} - ${e.description || ''}${e.discovered ? ' (discovered)' : ''}`).join('\n')}`);
-                                  }
-                                }
-                              } catch (error) {
-                                // Fallback to basic endpoints on error
-                                try {
-                                  const ep = await adminService.getAppEndpoints(app.client_id);
-                                  if (!ep || !ep.endpoints || ep.endpoints.length === 0) {
-                                    alert('No endpoints registered for this app.');
-                                  } else {
-                                    alert(`Endpoints for ${app.client_id}:\n\n${ep.endpoints.map((e:any)=>`${e.method} ${e.path} - ${e.description || ''}${e.discovered ? ' (discovered)' : ''}`).join('\n')}`);
-                                  }
-                                } catch (fallbackError) {
-                                  alert('Error fetching endpoint information.');
-                                }
-                              }
-                            }}>View Endpoints</button>
-                            <button className="button" onClick={() => {
-                              setRolesModal({
-                                isOpen: true,
-                                clientId: app.client_id,
-                                appName: app.name
-                              });
-                            }}>Roles & Permissions</button>
-                            <button className="button secondary" onClick={async()=>{
-                              alert('Running discovery...');
-                              const res = await adminService.triggerDiscovery(app.client_id);
-                              if (res.status === 'success') alert(`Discovery completed! Found ${res.endpoints_discovered} endpoints, stored ${res.endpoints_stored}.`);
-                              else if (res.status === 'skipped') alert(res.message);
-                              else alert(`Discovery failed: ${res.error || 'unknown error'}`);
-                              loadApps();
-                            }}>Run Discovery</button>
-                          </>
-                        )}
-                        <button className="button secondary" onClick={()=>handleRotateSecret(app.client_id)}>Rotate Secret</button>
-                        <button className="button danger" onClick={()=>handleDeleteApp(app.client_id)}>Delete</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </SectionContent>
         )}
       </InfoSection>

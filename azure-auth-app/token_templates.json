@@ -1,150 +1,274 @@
 {
   "templates": [
     {
-      "name": "Default Token",
-      "description": "Standard token for all users",
-      "adGroups": [],
-      "priority": 0,
-      "enabled": true,
+      "name": "Current CIDS Token Structure",
       "claims": [
         {
+          "id": "iss_current",
           "key": "iss",
-          "include": true
+          "type": "string",
+          "description": "Issuer (internal-auth-service)",
+          "required": true,
+          "value": "internal-auth-service"
         },
         {
+          "id": "sub_current",
           "key": "sub",
-          "include": true
+          "type": "string",
+          "description": "Subject (User ID)",
+          "required": true
         },
         {
+          "id": "aud_current",
           "key": "aud",
-          "include": true
+          "type": "string",
+          "description": "Audience (internal-services)",
+          "required": true,
+          "value": "internal-services"
         },
         {
+          "id": "exp_current",
           "key": "exp",
-          "include": true
+          "type": "number",
+          "description": "Expiration Time",
+          "required": true
         },
         {
-          "key": "iat",
-          "include": true
-        },
-        {
-          "key": "email",
-          "include": true
-        },
-        {
-          "key": "name",
-          "include": true
-        }
-      ]
-    },
-    {
-      "name": "Admin Token",
-      "description": "Extended token for administrators",
-      "claims": [
-        {
-          "key": "iss",
-          "include": true
-        },
-        {
-          "key": "sub",
-          "include": true
-        },
-        {
-          "key": "aud",
-          "include": true
-        },
-        {
-          "key": "exp",
-          "include": true
-        },
-        {
-          "key": "iat",
-          "include": true
-        },
-        {
+          "id": "nbf_current",
           "key": "nbf",
-          "include": true
+          "type": "number",
+          "description": "Not Before",
+          "required": true
         },
         {
-          "key": "jti",
-          "include": true
-        },
-        {
-          "key": "email",
-          "include": true
-        },
-        {
-          "key": "name",
-          "include": true
-        },
-        {
-          "key": "groups",
-          "include": true
-        },
-        {
-          "key": "roles",
-          "include": true
-        },
-        {
-          "key": "permissions",
-          "include": true
-        },
-        {
-          "key": "tenant_id",
-          "include": true
-        },
-        {
-          "key": "client_id",
-          "include": true
-        }
-      ],
-      "savedAt": "2025-08-24T19:13:53.149Z",
-      "adGroups": [],
-      "priority": 0,
-      "enabled": true,
-      "isDefault": false
-    },
-    {
-      "name": "single test",
-      "claims": [
-        {
-          "key": "iss",
-          "include": true
-        },
-        {
-          "key": "sub",
-          "include": true
-        },
-        {
-          "key": "aud",
-          "include": true
-        },
-        {
-          "key": "exp",
-          "include": true
-        },
-        {
+          "id": "iat_current",
           "key": "iat",
-          "include": true
+          "type": "number",
+          "description": "Issued At",
+          "required": true
         },
         {
+          "id": "jti_current",
+          "key": "jti",
+          "type": "string",
+          "description": "JWT ID (Unique token identifier)",
+          "required": true
+        },
+        {
+          "id": "token_type",
+          "key": "token_type",
+          "type": "string",
+          "description": "Type of token (access/refresh/service)",
+          "required": true
+        },
+        {
+          "id": "token_version",
+          "key": "token_version",
+          "type": "string",
+          "description": "Token version (2.0 or 3.0)",
+          "required": true
+        },
+        {
+          "id": "email",
           "key": "email",
-          "include": true
+          "type": "string",
+          "description": "User email address",
+          "required": false
         },
         {
+          "id": "name",
           "key": "name",
-          "include": true
+          "type": "string",
+          "description": "User full name",
+          "required": false
         },
         {
+          "id": "preferred_username",
+          "key": "preferred_username",
+          "type": "string",
+          "description": "Preferred username",
+          "required": false
+        },
+        {
+          "id": "ver",
+          "key": "ver",
+          "type": "string",
+          "description": "Token schema version",
+          "required": false
+        },
+        {
+          "id": "tenant_id",
+          "key": "tenant_id",
+          "type": "string",
+          "description": "Azure AD Tenant ID",
+          "required": false
+        },
+        {
+          "id": "client_id",
+          "key": "client_id",
+          "type": "string",
+          "description": "Application Client ID",
+          "required": false
+        },
+        {
+          "id": "roles",
           "key": "roles",
-          "include": true
+          "type": "array",
+          "description": "User roles",
+          "required": false
         }
       ],
-      "savedAt": "2025-08-24T19:13:50.054Z",
+      "savedAt": "2025-08-26T01:03:43.439Z",
       "adGroups": [],
       "priority": 0,
       "enabled": true
+    },
+    {
+      "name": "test 2",
+      "claims": [
+        {
+          "id": "iss_current",
+          "key": "iss",
+          "type": "string",
+          "description": "Issuer (internal-auth-service)",
+          "required": true,
+          "value": "internal-auth-service"
+        },
+        {
+          "id": "sub_current",
+          "key": "sub",
+          "type": "string",
+          "description": "Subject (User ID)",
+          "required": true
+        },
+        {
+          "id": "aud_current",
+          "key": "aud",
+          "type": "string",
+          "description": "Audience (internal-services)",
+          "required": true,
+          "value": "internal-services"
+        },
+        {
+          "id": "exp_current",
+          "key": "exp",
+          "type": "number",
+          "description": "Expiration Time",
+          "required": true
+        },
+        {
+          "id": "nbf_current",
+          "key": "nbf",
+          "type": "number",
+          "description": "Not Before",
+          "required": true
+        },
+        {
+          "id": "iat_current",
+          "key": "iat",
+          "type": "number",
+          "description": "Issued At",
+          "required": true
+        },
+        {
+          "id": "jti_current",
+          "key": "jti",
+          "type": "string",
+          "description": "JWT ID (Unique token identifier)",
+          "required": true
+        },
+        {
+          "id": "token_type",
+          "key": "token_type",
+          "type": "string",
+          "description": "Type of token (access/refresh/service)",
+          "required": true
+        },
+        {
+          "id": "token_version",
+          "key": "token_version",
+          "type": "string",
+          "description": "Token version (2.0 or 3.0)",
+          "required": true
+        },
+        {
+          "id": "email",
+          "key": "email",
+          "type": "string",
+          "description": "User email address",
+          "required": false
+        },
+        {
+          "id": "name",
+          "key": "name",
+          "type": "string",
+          "description": "User full name",
+          "required": false
+        },
+        {
+          "id": "groups",
+          "key": "groups",
+          "type": "array",
+          "description": "User AD groups",
+          "required": false
+        },
+        {
+          "id": "preferred_username",
+          "key": "preferred_username",
+          "type": "string",
+          "description": "Preferred username",
+          "required": false
+        },
+        {
+          "id": "ver",
+          "key": "ver",
+          "type": "string",
+          "description": "Token schema version",
+          "required": false
+        },
+        {
+          "id": "tenant_id",
+          "key": "tenant_id",
+          "type": "string",
+          "description": "Azure AD Tenant ID",
+          "required": false
+        },
+        {
+          "id": "client_id",
+          "key": "client_id",
+          "type": "string",
+          "description": "Application Client ID",
+          "required": false
+        },
+        {
+          "id": "roles",
+          "key": "roles",
+          "type": "array",
+          "description": "User roles",
+          "required": false
+        },
+        {
+          "id": "permissions",
+          "key": "permissions",
+          "type": "array",
+          "description": "User permissions",
+          "required": false
+        },
+        {
+          "id": "metadata_1756195489920",
+          "key": "metadata",
+          "type": "object",
+          "description": "Additional metadata"
+        }
+      ],
+      "savedAt": "2025-08-26T08:04:55.656Z",
+      "adGroups": [
+        "Information Technology Division"
+      ],
+      "priority": 0,
+      "enabled": true,
+      "isDefault": false
     }
   ],
-  "updated_at": "2025-08-24T19:15:06.711683"
+  "updated_at": "2025-08-26T08:05:16.218031"
 }
