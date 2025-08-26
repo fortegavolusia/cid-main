@@ -72,6 +72,8 @@ python3 azure-auth-app/test_apps/compliant_app_with_ui.py
 - Export individual role configurations
 - Export all roles for an application
 - Database-ready JSON export format
+- **NEW**: Automatic backend synchronization when saving permissions
+- **NEW**: Creates empty role in permission registry when new role added
 
 ### AdminPage (React)
 - **NEW**: Registered Applications section displays first (always visible)
@@ -218,6 +220,13 @@ npm run typecheck
 - JWT tokens for discovery are short-lived (5 minutes)
 - Required fields: `app_name` (not `service_name`), `last_updated`
 
+### Discovery Format Requirements
+- **CRITICAL**: Discovery response `app_id` must match CIDS registration `client_id`
+- Discovery v2.0 format required for field-level permissions
+- `response_fields` must be Dict[str, FieldMetadata] format
+- FieldMetadata supports: type, description, sensitive, pii, phi flags
+- Permissions only generated for apps with proper discovery response
+
 ### AD Groups and Role Resolution
 - `/auth/token/exchange` fetches AD groups from Microsoft Graph
 - Groups stored as objects with `id` and `displayName`
@@ -226,6 +235,13 @@ npm run typecheck
 - Multiple apps can map the same AD group to different roles
 - Token includes all resolved roles across registered apps
 - Refresh tokens also fetch fresh AD groups to maintain current roles
+
+### Role Permission Synchronization
+- Permissions must be saved to backend (`role_permissions.json`) to appear in tokens
+- Frontend saves to localStorage AND syncs to backend via `/permissions/{client_id}/roles/{role_name}`
+- New roles automatically create empty permission entry in backend
+- Discovery must complete successfully before permissions can be assigned
+- Permissions validated against `permissions_registry.json` during save
 
 ## Git Workflow
 - Feature branch: `feature/resource-permissions`
@@ -260,6 +276,10 @@ npm run typecheck
 - `GET /discovery/v2/permissions/{client_id}` - Get discovered permissions
 - `POST /auth/admin/apps/{client_id}/api-keys` - Create API key for app
 - `POST /auth/admin/apps/{client_id}/role-mappings` - Set AD group to role mappings
+
+### Permission Management
+- `POST /permissions/{client_id}/roles` - Create role with permissions
+- `PUT /permissions/{client_id}/roles/{role_name}` - Update role permissions
 
 ### Azure AD Integration
 - `GET /auth/admin/azure-groups?search={query}` - Search Azure AD groups
