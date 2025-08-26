@@ -124,7 +124,7 @@
       "enabled": true
     },
     {
-      "name": "test 2",
+      "name": "test 3",
       "claims": [
         {
           "id": "iss_current",
@@ -261,7 +261,7 @@
           "description": "Additional metadata"
         }
       ],
-      "savedAt": "2025-08-26T08:04:55.656Z",
+      "savedAt": "2025-08-26T08:18:47.646Z",
       "adGroups": [
         "Information Technology Division"
       ],
@@ -270,5 +270,5 @@
       "isDefault": false
     }
   ],
-  "updated_at": "2025-08-26T08:05:16.218031"
+  "updated_at": "2025-08-26T08:19:04.251905"
 }

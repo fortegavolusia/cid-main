@@ -79,29 +79,41 @@ class TokenTemplateManager:
         # Filter enabled templates
         enabled_templates = [t for t in self.templates if t.get('enabled', True)]
         
-        # Find templates that match user's groups
-        matching_templates = []
+        # Separate templates into group-specific and default
+        group_templates = []
+        default_template = None
+        
         for template in enabled_templates:
             template_groups = template.get('adGroups', [])
             
             # If template has no groups, it's a default/fallback
             if not template_groups:
-                # Use the template's actual priority for defaults
-                matching_templates.append((template, template.get('priority', 0)))
+                # Keep track of the default template (use highest priority if multiple)
+                if default_template is None or template.get('priority', 0) > default_template.get('priority', 0):
+                    default_template = template
                 continue
             
             # Check if user has any of the template's groups
             for group in template_groups:
                 if group in user_groups:
-                    matching_templates.append((template, template.get('priority', 0)))
+                    group_templates.append((template, template.get('priority', 0)))
                     break
         
-        if not matching_templates:
-            return None
+        # If we have group-specific matches, use the highest priority one
+        if group_templates:
+            # Sort by priority (highest first)
+            group_templates.sort(key=lambda x: x[1], reverse=True)
+            selected = group_templates[0][0]
+            logger.info(f"Selected group-specific template: {selected['name']} (priority: {selected.get('priority', 0)})")
+            return selected
         
-        # Sort by priority (highest first) and return best match
-        matching_templates.sort(key=lambda x: x[1], reverse=True)
-        return matching_templates[0][0]
+        # Otherwise fall back to default template
+        if default_template:
+            logger.info(f"Using default template: {default_template['name']}")
+            return default_template
+        
+        logger.info("No matching template found")
+        return None
     
     def apply_template(self, token_data: Dict, user_groups: List[str]) -> Dict:
         """
@@ -114,13 +126,16 @@ class TokenTemplateManager:
         Returns:
             Modified token data based on template
         """
+        logger.info(f"Applying template for user with groups: {user_groups}")
+        logger.info(f"Available templates: {[t['name'] for t in self.templates if t.get('enabled', True)]}")
+        
         template = self.find_matching_template(user_groups)
         
         if not template:
             logger.info("No matching template found, using all claims")
             return token_data
         
-        logger.info(f"Applying template: {template['name']}")
+        logger.info(f"Applying template: {template['name']} (has groups: {template.get('adGroups', [])})")
         
         # Build new token with template-defined claims
         filtered_token = {}
