@@ -383,6 +383,15 @@ const RolesModal: React.FC<RolesModalProps> = ({
     }
 
     try {
+      // First, delete the role's permissions from the backend
+      try {
+        await adminService.deleteRolePermissions(clientId, role.name);
+        console.log(`Deleted permissions for role: ${role.name}`);
+      } catch (err) {
+        console.error('Error deleting role permissions:', err);
+        // Continue with role deletion even if permission deletion fails
+      }
+      
       // Remove this role from mappings - convert to dictionary format
       const mappingsDict: Record<string, string | string[]> = {};
       roles
@@ -403,14 +412,20 @@ const RolesModal: React.FC<RolesModalProps> = ({
         });
       
       await adminService.setRoleMappings(clientId, mappingsDict);
+      
+      // Also remove from localStorage
+      const unifiedKey = `cids_unified_role_${clientId}_${role.name}`;
+      localStorage.removeItem(unifiedKey);
+      
       await fetchRoles();
+      alert(`Role "${role.name}" has been deleted successfully`);
     } catch (err) {
       console.error('Error deleting role:', err);
       alert('Failed to delete role');
     }
   };
 
-  const handlePermissionsUpdate = async (permissions: string[], resourceScopes: string[]) => {
+  const handlePermissionsUpdate = async (permissions: string[], resourceScopes: string[], savedFilters: Record<string, Array<{ id: string; expression: string; timestamp: string }>>) => {
     if (selectedRole) {
       // Update the role's permissions
       const updatedRole = {
@@ -456,10 +471,11 @@ const RolesModal: React.FC<RolesModalProps> = ({
         
         const allPermissions = Array.from(fieldPermissions);
 
-        // Use adminService to save permissions to backend
+        // Use adminService to save permissions to backend with RLS filters
         const result = await adminService.updateRolePermissions(clientId, selectedRole.name, {
           permissions: allPermissions,
-          description: selectedRole.description || `Role with ${permissions.length} permissions and ${resourceScopes.length} RLS filters`
+          description: selectedRole.description || `Role with ${permissions.length} permissions and ${resourceScopes.length} RLS filters`,
+          rls_filters: savedFilters
         });
 
         console.log('Permissions saved to backend:', result);

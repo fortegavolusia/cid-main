@@ -121,7 +121,8 @@
       "savedAt": "2025-08-26T01:03:43.439Z",
       "adGroups": [],
       "priority": 0,
-      "enabled": true
+      "enabled": true,
+      "isDefault": true
     },
     {
       "name": "test 3",
@@ -259,9 +260,15 @@
           "key": "metadata",
           "type": "object",
           "description": "Additional metadata"
+        },
+        {
+          "id": "rls_filters_1756317237722",
+          "key": "rls_filters",
+          "type": "object",
+          "description": "Row-level security filters for data access"
         }
       ],
-      "savedAt": "2025-08-26T08:18:47.646Z",
+      "savedAt": "2025-08-27T17:54:06.813Z",
       "adGroups": [
         "Information Technology Division"
       ],
@@ -270,5 +277,5 @@
       "isDefault": false
     }
   ],
-  "updated_at": "2025-08-26T08:19:04.251905"
+  "updated_at": "2025-08-27T17:55:16.438408"
 }

@@ -891,6 +891,8 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
         # Note: We don't have a specific client_id in this flow since it's for React frontend
         # The React app will need to handle app-specific permissions separately
         app_roles = []
+        app_permissions = {}
+        app_rls_filters = {}
         
         # If we want to get roles for a specific app, we'd need the client_id
         # For now, we'll include all roles from all apps the user has access to
@@ -899,6 +901,27 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
             for role in user_app_roles:
                 if role not in app_roles:
                     app_roles.append(role)
+            
+            # Get permissions and RLS filters for this app's roles
+            if user_app_roles:
+                all_perms = set()
+                all_rls = {}
+                for role_name in user_app_roles:
+                    # Get permissions
+                    role_perms = permission_registry.get_role_permissions(client_id, role_name)
+                    all_perms.update(role_perms)
+                    
+                    # Get RLS filters
+                    role_rls = permission_registry.get_role_rls_filters(client_id, role_name)
+                    for filter_key, filter_list in role_rls.items():
+                        if filter_key not in all_rls:
+                            all_rls[filter_key] = []
+                        all_rls[filter_key].extend(filter_list)
+                
+                if all_perms:
+                    app_permissions[client_id] = list(all_perms)
+                if all_rls:
+                    app_rls_filters[client_id] = all_rls
         
         # Create initial internal CIDS token payload
         internal_token_payload = {
@@ -912,6 +935,8 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
             'azure_groups': user_groups,  # Duplicate for backward compatibility
             'group_names': group_names,  # Just the display names for easy checking
             'roles': app_roles,  # Include aggregated roles from all apps
+            'permissions': app_permissions,  # Include permissions by app
+            'rls_filters': app_rls_filters,  # Include RLS filters by app
             'preferred_username': claims.get('preferred_username'),
             'token_type': 'internal',
             'token_version': '2.0'  # Update to 2.0 since we're using templates
@@ -2578,16 +2603,19 @@ async def create_permission_role(
     authorization: Optional[str] = Header(None),
     role_name: str = Body(...),
     permissions: List[str] = Body(...),
-    description: Optional[str] = Body(None)
+    description: Optional[str] = Body(None),
+    rls_filters: Optional[Dict[str, List[Dict[str, str]]]] = Body(None)
 ):
-    """Create a role with specific field-level permissions (admin only)"""
+    """Create a role with specific field-level permissions and RLS filters (admin only)"""
     is_admin, claims = check_admin_access(authorization)
     
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     
-    # Create role in permission registry
-    valid_perms = permission_registry.create_role(client_id, role_name, set(permissions), description)
+    # Create role in permission registry with RLS filters
+    valid_perms = permission_registry.create_role_with_rls(
+        client_id, role_name, set(permissions), description, rls_filters
+    )
     
     # Log the action
     audit_logger.log_action(
@@ -2596,6 +2624,7 @@ async def create_permission_role(
             'app_client_id': client_id,
             'role_name': role_name,
             'permissions_count': len(valid_perms),
+            'rls_filters_count': len(rls_filters) if rls_filters else 0,
             'created_by': claims.get('email')
         }
     )
@@ -2605,7 +2634,8 @@ async def create_permission_role(
         "role_name": role_name,
         "permissions": list(valid_perms),
         "valid_count": len(valid_perms),
-        "invalid_count": len(permissions) - len(valid_perms)
+        "invalid_count": len(permissions) - len(valid_perms),
+        "rls_filters_saved": len(rls_filters) if rls_filters else 0
     })
 
 @app.get("/permissions/{client_id}/roles/{role_name}")
@@ -2620,16 +2650,18 @@ async def get_role_permissions(
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     
-    permissions = permission_registry.get_role_permissions(client_id, role_name)
+    role_config = permission_registry.get_role_full_config(client_id, role_name)
     
-    if not permissions:
+    if not role_config['permissions'] and not role_config['rls_filters']:
         raise HTTPException(status_code=404, detail="Role not found")
     
     return JSONResponse({
         "app_id": client_id,
         "role_name": role_name,
-        "permissions": list(permissions),
-        "count": len(permissions)
+        "permissions": role_config['permissions'],
+        "rls_filters": role_config['rls_filters'],
+        "metadata": role_config['metadata'],
+        "count": len(role_config['permissions'])
     })
 
 @app.get("/permissions/{client_id}/roles")
@@ -2666,9 +2698,10 @@ async def update_permission_role(
     role_name: str,
     authorization: Optional[str] = Header(None),
     permissions: List[str] = Body(...),
-    description: Optional[str] = Body(None)
+    description: Optional[str] = Body(None),
+    rls_filters: Optional[Dict[str, List[Dict[str, str]]]] = Body(None)
 ):
-    """Update an existing role's permissions (admin only)"""
+    """Update an existing role's permissions and RLS filters (admin only)"""
     is_admin, claims = check_admin_access(authorization)
     
     if not is_admin:
@@ -2679,8 +2712,10 @@ async def update_permission_role(
        role_name not in permission_registry.role_permissions[client_id]:
         raise HTTPException(status_code=404, detail="Role not found")
     
-    # Update role in permission registry (create_role method handles updates)
-    valid_perms = permission_registry.create_role(client_id, role_name, set(permissions), description)
+    # Update role in permission registry with RLS filters
+    valid_perms = permission_registry.update_role_with_rls(
+        client_id, role_name, set(permissions), description, rls_filters
+    )
     
     # Log the action
     audit_logger.log_action(
@@ -2689,6 +2724,7 @@ async def update_permission_role(
             'app_client_id': client_id,
             'role_name': role_name,
             'permissions_count': len(valid_perms),
+            'rls_filters_count': len(rls_filters) if rls_filters else 0,
             'updated_by': claims.get('email')
         }
     )
@@ -2698,7 +2734,8 @@ async def update_permission_role(
         "role_name": role_name,
         "permissions": list(valid_perms),
         "valid_count": len(valid_perms),
-        "invalid_count": len(permissions) - len(valid_perms)
+        "invalid_count": len(permissions) - len(valid_perms),
+        "rls_filters_saved": len(rls_filters) if rls_filters else 0
     })
 
 @app.delete("/permissions/{client_id}/roles/{role_name}")
@@ -2848,32 +2885,57 @@ def generate_token_with_iam_claims(user_info: dict, client_id: Optional[str] = N
     
     logger.info(f"Final user_roles dict: {user_roles}")
     
-    # Get field-level permissions if client_id is specified
+    # Get field-level permissions and RLS filters if client_id is specified
     permissions = {}
+    rls_filters = {}
     if client_id:
         # Get all roles for this user in this app
         app_roles_list = user_roles.get(client_id, [])
         
-        # Get permissions for each role
+        # Get permissions and RLS filters for each role
         all_perms = set()
+        all_rls = {}
         for role_name in app_roles_list:
             role_perms = permission_registry.get_role_permissions(client_id, role_name)
             all_perms.update(role_perms)
+            
+            # Get RLS filters for this role
+            role_rls = permission_registry.get_role_rls_filters(client_id, role_name)
+            # Merge RLS filters (combine filters for same fields)
+            for filter_key, filter_list in role_rls.items():
+                if filter_key not in all_rls:
+                    all_rls[filter_key] = []
+                all_rls[filter_key].extend(filter_list)
         
         if all_perms:
             permissions[client_id] = list(all_perms)
             logger.info(f"Added {len(all_perms)} permissions for {client_id}")
+        if all_rls:
+            rls_filters[client_id] = all_rls
+            logger.info(f"Added RLS filters for {client_id}: {len(all_rls)} fields")
     else:
-        # Get permissions for all apps where user has roles
+        # Get permissions and RLS filters for all apps where user has roles
         for app_id, app_roles_list in user_roles.items():
             all_perms = set()
+            all_rls = {}
             for role_name in app_roles_list:
                 role_perms = permission_registry.get_role_permissions(app_id, role_name)
                 all_perms.update(role_perms)
+                
+                # Get RLS filters for this role
+                role_rls = permission_registry.get_role_rls_filters(app_id, role_name)
+                # Merge RLS filters (combine filters for same fields)
+                for filter_key, filter_list in role_rls.items():
+                    if filter_key not in all_rls:
+                        all_rls[filter_key] = []
+                    all_rls[filter_key].extend(filter_list)
             
             if all_perms:
                 permissions[app_id] = list(all_perms)
                 logger.info(f"Added {len(all_perms)} permissions for {app_id}")
+            if all_rls:
+                rls_filters[app_id] = all_rls
+                logger.info(f"Added RLS filters for {app_id}: {len(all_rls)} fields")
     
     # Build claims from scratch to avoid any dict/string confusion
     claims = {
@@ -2886,6 +2948,7 @@ def generate_token_with_iam_claims(user_info: dict, client_id: Optional[str] = N
         'scope': 'openid profile email',
         'roles': user_roles,
         'permissions': permissions,  # Field-level permissions
+        'rls_filters': rls_filters,  # Row-level security filters
         'attrs': {
             'tenant': user_info.get('tenant_id')
         },

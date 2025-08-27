@@ -28,6 +28,7 @@ class PermissionRegistry:
         self.permissions: Dict[str, Dict[str, PermissionMetadata]] = {}  # app_id -> permission_key -> metadata
         self.role_permissions: Dict[str, Dict[str, Set[str]]] = {}  # app_id -> role_name -> permission_keys
         self.role_metadata: Dict[str, Dict[str, Dict]] = {}  # app_id -> role_name -> metadata (description, created_at, etc.)
+        self.role_rls_filters: Dict[str, Dict[str, Dict]] = {}  # app_id -> role_name -> rls_filters
         self._load_registry()
     
     def _load_registry(self):
@@ -50,14 +51,23 @@ class PermissionRegistry:
                             k: PermissionMetadata(**v) for k, v in perms.items()
                         }
             
-            # Load role permissions
+            # Load role permissions and RLS filters (new format only)
             if ROLE_PERMISSIONS_DB.exists():
                 with open(ROLE_PERMISSIONS_DB, 'r') as f:
                     data = json.load(f)
                     for app_id, roles in data.items():
-                        self.role_permissions[app_id] = {
-                            role: set(perms) for role, perms in roles.items()
-                        }
+                        self.role_permissions[app_id] = {}
+                        self.role_rls_filters[app_id] = {}
+                        for role, role_data in roles.items():
+                            # Only support new format - dict with permissions and rls_filters
+                            if isinstance(role_data, dict):
+                                self.role_permissions[app_id][role] = set(role_data.get('permissions', []))
+                                self.role_rls_filters[app_id][role] = role_data.get('rls_filters', {})
+                            else:
+                                # If not dict format, initialize as empty (data will be migrated on next save)
+                                logger.warning(f"Role {role} in app {app_id} has invalid format, initializing as empty")
+                                self.role_permissions[app_id][role] = set()
+                                self.role_rls_filters[app_id][role] = {}
             
             # Load role metadata
             if ROLE_METADATA_DB.exists():
@@ -95,12 +105,16 @@ class PermissionRegistry:
             with open(PERMISSIONS_DB, 'w') as f:
                 json.dump(existing_data, f, indent=2, default=str)
             
-            # Save role permissions
+            # Save role permissions with RLS filters in new format
             role_data = {}
             for app_id, roles in self.role_permissions.items():
-                role_data[app_id] = {
-                    role: list(perms) for role, perms in roles.items()
-                }
+                role_data[app_id] = {}
+                for role, perms in roles.items():
+                    # Save in new format with both permissions and RLS filters
+                    role_data[app_id][role] = {
+                        'permissions': list(perms),
+                        'rls_filters': self.role_rls_filters.get(app_id, {}).get(role, {})
+                    }
             
             with open(ROLE_PERMISSIONS_DB, 'w') as f:
                 json.dump(role_data, f, indent=2)
@@ -126,13 +140,16 @@ class PermissionRegistry:
         """Get all permissions for an app"""
         return self.permissions.get(app_id, {})
     
-    def create_role(self, app_id: str, role_name: str, permissions: Set[str], description: str = None):
-        """Create or update a role with specific permissions and metadata"""
+    def create_role_with_rls(self, app_id: str, role_name: str, permissions: Set[str], description: str = None, rls_filters: Dict = None):
+        """Create or update a role with specific permissions, metadata, and RLS filters"""
         if app_id not in self.role_permissions:
             self.role_permissions[app_id] = {}
         
         if app_id not in self.role_metadata:
             self.role_metadata[app_id] = {}
+        
+        if app_id not in self.role_rls_filters:
+            self.role_rls_filters[app_id] = {}
         
         # Validate permissions exist
         valid_perms = set()
@@ -150,7 +167,11 @@ class PermissionRegistry:
             else:
                 logger.warning(f"Permission {perm} not found for app {app_id}")
         
+        # Store permissions
         self.role_permissions[app_id][role_name] = valid_perms
+        
+        # Store RLS filters for the role
+        self.role_rls_filters[app_id][role_name] = rls_filters or {}
         
         # Store or update metadata
         if role_name not in self.role_metadata[app_id]:
@@ -164,14 +185,37 @@ class PermissionRegistry:
             if description is not None:
                 self.role_metadata[app_id][role_name]['description'] = description
         
+        # Save everything in new format
         self._save_registry()
         
-        logger.info(f"Created/updated role {role_name} with {len(valid_perms)} permissions for app {app_id}")
+        logger.info(f"Created/updated role {role_name} with {len(valid_perms)} permissions and {len(rls_filters) if rls_filters else 0} RLS filters for app {app_id}")
         return valid_perms
+    
+    # Alias for backward compatibility
+    def create_role(self, app_id: str, role_name: str, permissions: Set[str], description: str = None):
+        """Legacy method - redirects to create_role_with_rls"""
+        return self.create_role_with_rls(app_id, role_name, permissions, description, None)
+    
+    def update_role_with_rls(self, app_id: str, role_name: str, permissions: Set[str], description: str = None, rls_filters: Dict = None):
+        """Update an existing role's permissions and RLS filters"""
+        # Use create_role_with_rls since it handles both create and update
+        return self.create_role_with_rls(app_id, role_name, permissions, description, rls_filters)
     
     def get_role_permissions(self, app_id: str, role_name: str) -> Set[str]:
         """Get permissions for a specific role"""
         return self.role_permissions.get(app_id, {}).get(role_name, set())
+    
+    def get_role_rls_filters(self, app_id: str, role_name: str) -> Dict:
+        """Get RLS filters for a specific role"""
+        return self.role_rls_filters.get(app_id, {}).get(role_name, {})
+    
+    def get_role_full_config(self, app_id: str, role_name: str) -> Dict:
+        """Get complete role configuration including permissions and RLS filters"""
+        return {
+            'permissions': list(self.get_role_permissions(app_id, role_name)),
+            'rls_filters': self.get_role_rls_filters(app_id, role_name),
+            'metadata': self.get_role_metadata(app_id, role_name)
+        }
     
     def get_role_metadata(self, app_id: str, role_name: str) -> Dict:
         """Get metadata for a specific role"""

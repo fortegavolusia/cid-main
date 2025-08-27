@@ -100,12 +100,16 @@ class AdminService {
   }
 
   // Permission Management
-  async createRolePermissions(clientId: string, roleData: { role_name: string; permissions: string[]; description?: string }): Promise<any> {
+  async createRolePermissions(clientId: string, roleData: { role_name: string; permissions: string[]; description?: string; rls_filters?: any }): Promise<any> {
     return apiService.post(`/permissions/${clientId}/roles`, roleData);
   }
 
-  async updateRolePermissions(clientId: string, roleName: string, permissionData: { permissions: string[]; description?: string }): Promise<any> {
+  async updateRolePermissions(clientId: string, roleName: string, permissionData: { permissions: string[]; description?: string; rls_filters?: any }): Promise<any> {
     return apiService.put(`/permissions/${clientId}/roles/${roleName}`, permissionData);
+  }
+
+  async deleteRolePermissions(clientId: string, roleName: string): Promise<any> {
+    return apiService.delete(`/permissions/${clientId}/roles/${roleName}`);
   }
 
   async triggerDiscovery(clientId: string): Promise<any> {

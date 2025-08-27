@@ -27,6 +27,7 @@ const customClaimTemplates: TokenClaim[] = [
   { id: 'name', key: 'name', type: 'string', description: 'User full name' },
   { id: 'roles', key: 'roles', type: 'array', description: 'User roles' },
   { id: 'permissions', key: 'permissions', type: 'array', description: 'User permissions' },
+  { id: 'rls_filters', key: 'rls_filters', type: 'object', description: 'Row-level security filters for data access' },
   { id: 'department', key: 'department', type: 'string', description: 'User department' },
   { id: 'groups', key: 'groups', type: 'array', description: 'User groups' },
   { id: 'metadata', key: 'metadata', type: 'object', description: 'Additional metadata' },
@@ -78,6 +79,7 @@ const TokenBuilder: React.FC<TokenBuilderProps> = ({ templateToLoad }) => {
       { id: 'client_id', key: 'client_id', type: 'string', description: 'Application Client ID', required: false },
       { id: 'roles', key: 'roles', type: 'array', description: 'User roles', required: false },
       { id: 'permissions', key: 'permissions', type: 'array', description: 'User permissions', required: false },
+      { id: 'rls_filters', key: 'rls_filters', type: 'object', description: 'Row-level security filters for data access', required: false },
     ];
 
     // Check if there's a saved custom template
@@ -235,6 +237,7 @@ const TokenBuilder: React.FC<TokenBuilderProps> = ({ templateToLoad }) => {
       { id: 'client_id', key: 'client_id', type: 'string', description: 'Application Client ID', required: false },
       { id: 'roles', key: 'roles', type: 'array', description: 'User roles', required: false },
       { id: 'permissions', key: 'permissions', type: 'array', description: 'User permissions', required: false },
+      { id: 'rls_filters', key: 'rls_filters', type: 'object', description: 'Row-level security filters for data access', required: false },
     ];
     
     setClaims(currentTokenStructure);

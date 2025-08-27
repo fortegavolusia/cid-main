@@ -38,6 +38,8 @@ python3 azure-auth-app/test_apps/compliant_app_with_ui.py
   - Authorization code exchanged for CIDS JWT via `/auth/token/exchange`
   - Fetches AD groups via Microsoft Graph API
   - Resolves app-specific roles based on AD group mappings
+  - Retrieves permissions and RLS filters from role_permissions.json
+  - Includes `rls_filters` claim in generated tokens
   - Access tokens stored in localStorage
   - Refresh tokens stored in localStorage for automatic renewal
   - Admin status validated against env file during token creation
@@ -85,7 +87,7 @@ python3 azure-auth-app/test_apps/compliant_app_with_ui.py
 ### Token Administration (React)
 - **Token Builder**: Visual JWT token structure editor
   - Drag-and-drop claim management
-  - Standard and custom JWT claims
+  - Standard and custom JWT claims including `rls_filters`
   - Real-time JSON structure preview
   - Save/load token templates
   - Backend synchronization for templates
@@ -123,16 +125,37 @@ python3 azure-auth-app/test_apps/compliant_app_with_ui.py
 - **Permissions**: Endpoint allow/deny states (e.g., `products.read`)
 - **Resource Scopes**: SQL WHERE clauses for RLS filtering
 - **Field Permissions**: Automatically created for fields with RLS filters
+- **Backend Persistence**: RLS filters now stored in `role_permissions.json` alongside permissions
 - Storage keys: 
   - `cids_unified_role_{clientId}_{roleName}` - Complete role config in localStorage
   - `discovered_permissions.json` - Single source of truth for valid permissions
-  - `role_permissions.json` - Role to permission assignments
+  - `role_permissions.json` - Role permissions AND RLS filters (stateless backend storage)
 
 ### Filter Management Features
 - **Multiple filters per field**: Unlimited SQL WHERE clauses
 - **CRUD operations**: Add, view, edit, delete individual filters  
 - **Filter count badges**: Visual indicators showing total filters
 - **Persistence**: Both permissions and filters saved together
+
+### Backend Storage Format (role_permissions.json)
+```json
+{
+  "app_id": {
+    "role_name": {
+      "permissions": ["permission1", "permission2"],
+      "rls_filters": {
+        "field:resource.action.field": [
+          {
+            "id": "unique-id",
+            "expression": "SQL WHERE clause",
+            "timestamp": "ISO timestamp"
+          }
+        ]
+      }
+    }
+  }
+}
+```
 
 ### Export Format
 ```json
@@ -245,11 +268,12 @@ npm run typecheck
 - Refresh tokens also fetch fresh AD groups to maintain current roles
 
 ### Role Permission Synchronization
-- Permissions must be saved to backend (`role_permissions.json`) to appear in tokens
+- Permissions and RLS filters saved to backend (`role_permissions.json`) to appear in tokens
 - Frontend saves to localStorage AND syncs to backend via `/permissions/{client_id}/roles/{role_name}`
 - New roles automatically create empty permission entry in backend
 - Discovery must complete successfully before permissions can be assigned
-- Permissions validated against `permissions_registry.json` during save
+- Permissions validated against `discovered_permissions.json` during save
+- Backend stores both permissions and RLS filters in new unified format
 
 ## Git Workflow
 - Feature branch: `feature/resource-permissions`
@@ -286,8 +310,10 @@ npm run typecheck
 - `POST /auth/admin/apps/{client_id}/role-mappings` - Set AD group to role mappings
 
 ### Permission Management
-- `POST /permissions/{client_id}/roles` - Create role with permissions
-- `PUT /permissions/{client_id}/roles/{role_name}` - Update role permissions
+- `POST /permissions/{client_id}/roles` - Create role with permissions and RLS filters
+- `PUT /permissions/{client_id}/roles/{role_name}` - Update role permissions and RLS filters
+- `GET /permissions/{client_id}/roles/{role_name}` - Get role permissions and RLS filters
+- `DELETE /permissions/{client_id}/roles/{role_name}` - Delete role
 
 ### Azure AD Integration
 - `GET /auth/admin/azure-groups?search={query}` - Search Azure AD groups

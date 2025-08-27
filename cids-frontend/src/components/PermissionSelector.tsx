@@ -12,7 +12,7 @@ interface PermissionSelectorProps {
   roleName: string;
   currentPermissions: string[];
   currentResourceScopes: string[];
-  onSave: (permissions: string[], resourceScopes: string[]) => void;
+  onSave: (permissions: string[], resourceScopes: string[], savedFilters: Record<string, Array<{ id: string; expression: string; timestamp: string }>>) => void;
 }
 
 interface FieldInfo {
@@ -720,8 +720,8 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
               
               console.log('Saved role configuration:', roleConfig);
               
-              // Call the onSave callback with collected permissions
-              onSave(permissions, resourceScopes);
+              // Call the onSave callback with collected permissions and filters
+              onSave(permissions, resourceScopes, savedFilters);
               alert(`Permissions saved successfully!\nPermissions: ${permissions.length}\nResource Scopes (RLS Filters): ${resourceScopes.length}`);
             }}
           >
