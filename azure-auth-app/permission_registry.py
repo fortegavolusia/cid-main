@@ -15,8 +15,8 @@ from discovery_models import PermissionMetadata, generate_permission_key
 
 logger = logging.getLogger(__name__)
 
-# Storage paths
-PERMISSIONS_DB = Path("app_data/permissions_registry.json")
+# Storage paths - Using discovered_permissions.json as single source of truth
+PERMISSIONS_DB = Path("app_data/discovered_permissions.json")  # Single source of truth for permissions
 ROLE_PERMISSIONS_DB = Path("app_data/role_permissions.json")
 ROLE_METADATA_DB = Path("app_data/role_metadata.json")
 
@@ -33,11 +33,19 @@ class PermissionRegistry:
     def _load_registry(self):
         """Load permissions from storage"""
         try:
-            # Load permissions
+            # Load permissions from discovered_permissions.json
+            # Structure: {app_id: {"permissions": {permission_key: metadata}}}
             if PERMISSIONS_DB.exists():
                 with open(PERMISSIONS_DB, 'r') as f:
                     data = json.load(f)
-                    for app_id, perms in data.items():
+                    for app_id, app_data in data.items():
+                        # Handle the nested structure of discovered_permissions.json
+                        if isinstance(app_data, dict) and "permissions" in app_data:
+                            perms = app_data["permissions"]
+                        else:
+                            # Fallback for old format
+                            perms = app_data
+                        
                         self.permissions[app_id] = {
                             k: PermissionMetadata(**v) for k, v in perms.items()
                         }
@@ -70,15 +78,22 @@ class PermissionRegistry:
             # Ensure directory exists
             PERMISSIONS_DB.parent.mkdir(exist_ok=True)
             
-            # Save permissions
-            perm_data = {}
+            # Load existing discovered_permissions to preserve extra metadata
+            existing_data = {}
+            if PERMISSIONS_DB.exists():
+                with open(PERMISSIONS_DB, 'r') as f:
+                    existing_data = json.load(f)
+            
+            # Update permissions while preserving the discovered_permissions.json structure
             for app_id, perms in self.permissions.items():
-                perm_data[app_id] = {
+                if app_id not in existing_data:
+                    existing_data[app_id] = {}
+                existing_data[app_id]["permissions"] = {
                     k: v.dict() for k, v in perms.items()
                 }
             
             with open(PERMISSIONS_DB, 'w') as f:
-                json.dump(perm_data, f, indent=2, default=str)
+                json.dump(existing_data, f, indent=2, default=str)
             
             # Save role permissions
             role_data = {}

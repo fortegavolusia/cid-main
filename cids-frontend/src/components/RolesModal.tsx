@@ -312,21 +312,25 @@ const RolesModal: React.FC<RolesModalProps> = ({
         ad_groups: [...role.ad_groups, groupToAdd]
       };
       
-      // Update all mappings
-      const allMappings = roles.flatMap(r => {
-        if (r.id === role.id) {
-          return updatedRole.ad_groups.map(group => ({
-            ad_group: group,
-            app_role: r.name
-          }));
-        }
-        return r.ad_groups.map(group => ({
-          ad_group: group,
-          app_role: r.name
-        }));
+      // Update all mappings - convert to dictionary format
+      const mappingsDict: Record<string, string | string[]> = {};
+      roles.forEach(r => {
+        const groupList = r.id === role.id ? updatedRole.ad_groups : r.ad_groups;
+        groupList.forEach(group => {
+          if (mappingsDict[group]) {
+            // If group already exists, make it an array
+            if (Array.isArray(mappingsDict[group])) {
+              (mappingsDict[group] as string[]).push(r.name);
+            } else {
+              mappingsDict[group] = [mappingsDict[group] as string, r.name];
+            }
+          } else {
+            mappingsDict[group] = r.name;
+          }
+        });
       });
       
-      await adminService.setRoleMappings(clientId, allMappings);
+      await adminService.setRoleMappings(clientId, mappingsDict);
       await fetchRoles();
       setGroupInput('');
     } catch (err) {
@@ -347,21 +351,25 @@ const RolesModal: React.FC<RolesModalProps> = ({
         ad_groups: role.ad_groups.filter(g => g !== groupToRemove)
       };
       
-      // Update all mappings
-      const allMappings = roles.flatMap(r => {
-        if (r.id === role.id) {
-          return updatedRole.ad_groups.map(group => ({
-            ad_group: group,
-            app_role: r.name
-          }));
-        }
-        return r.ad_groups.map(group => ({
-          ad_group: group,
-          app_role: r.name
-        }));
+      // Update all mappings - convert to dictionary format
+      const mappingsDict: Record<string, string | string[]> = {};
+      roles.forEach(r => {
+        const groupList = r.id === role.id ? updatedRole.ad_groups : r.ad_groups;
+        groupList.forEach(group => {
+          if (mappingsDict[group]) {
+            // If group already exists, make it an array
+            if (Array.isArray(mappingsDict[group])) {
+              (mappingsDict[group] as string[]).push(r.name);
+            } else {
+              mappingsDict[group] = [mappingsDict[group] as string, r.name];
+            }
+          } else {
+            mappingsDict[group] = r.name;
+          }
+        });
       });
       
-      await adminService.setRoleMappings(clientId, allMappings);
+      await adminService.setRoleMappings(clientId, mappingsDict);
       await fetchRoles();
     } catch (err) {
       console.error('Error removing AD group:', err);
@@ -375,15 +383,26 @@ const RolesModal: React.FC<RolesModalProps> = ({
     }
 
     try {
-      // Remove this role from mappings
-      const updatedMappings = roles
+      // Remove this role from mappings - convert to dictionary format
+      const mappingsDict: Record<string, string | string[]> = {};
+      roles
         .filter(r => r.id !== role.id)
-        .flatMap(r => r.ad_groups.map(group => ({
-          ad_group: group,
-          app_role: r.name
-        })));
+        .forEach(r => {
+          r.ad_groups.forEach(group => {
+            if (mappingsDict[group]) {
+              // If group already exists, make it an array
+              if (Array.isArray(mappingsDict[group])) {
+                (mappingsDict[group] as string[]).push(r.name);
+              } else {
+                mappingsDict[group] = [mappingsDict[group] as string, r.name];
+              }
+            } else {
+              mappingsDict[group] = r.name;
+            }
+          });
+        });
       
-      await adminService.setRoleMappings(clientId, updatedMappings);
+      await adminService.setRoleMappings(clientId, mappingsDict);
       await fetchRoles();
     } catch (err) {
       console.error('Error deleting role:', err);
@@ -415,11 +434,32 @@ const RolesModal: React.FC<RolesModalProps> = ({
           }
           return perm;
         });
+        
+        // Also add field-level permissions for fields that have RLS filters
+        // Parse resource scopes to extract field permissions
+        const fieldPermissions = new Set(formattedPermissions);
+        resourceScopes.forEach(scope => {
+          // Format: "field:resource.action.field:expression" or "resource.action.field:expression"
+          // Find the last colon to get the expression separator
+          const lastColonIndex = scope.lastIndexOf(':');
+          if (lastColonIndex > -1) {
+            let fieldPath = scope.substring(0, lastColonIndex);
+            // Remove "field:" prefix if present
+            if (fieldPath.startsWith('field:')) {
+              fieldPath = fieldPath.substring(6);
+            }
+            // Add the field permission with app prefix
+            const fieldPerm = fieldPath.startsWith(clientId) ? fieldPath : `${clientId}.${fieldPath}`;
+            fieldPermissions.add(fieldPerm);
+          }
+        });
+        
+        const allPermissions = Array.from(fieldPermissions);
 
         // Use adminService to save permissions to backend
         const result = await adminService.updateRolePermissions(clientId, selectedRole.name, {
-          permissions: formattedPermissions,
-          description: selectedRole.description || `Role with ${permissions.length} permissions`
+          permissions: allPermissions,
+          description: selectedRole.description || `Role with ${permissions.length} permissions and ${resourceScopes.length} RLS filters`
         });
 
         console.log('Permissions saved to backend:', result);
