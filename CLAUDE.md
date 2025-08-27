@@ -122,9 +122,11 @@ python3 azure-auth-app/test_apps/compliant_app_with_ui.py
 ### Unified Storage Structure
 - **Permissions**: Endpoint allow/deny states (e.g., `products.read`)
 - **Resource Scopes**: SQL WHERE clauses for RLS filtering
+- **Field Permissions**: Automatically created for fields with RLS filters
 - Storage keys: 
-  - `cids_unified_role_{clientId}_{roleName}` - Complete role config
-  - `cids_filters_{clientId}_{roleName}` - RLS filters only
+  - `cids_unified_role_{clientId}_{roleName}` - Complete role config in localStorage
+  - `discovered_permissions.json` - Single source of truth for valid permissions
+  - `role_permissions.json` - Role to permission assignments
 
 ### Filter Management Features
 - **Multiple filters per field**: Unlimited SQL WHERE clauses
@@ -212,6 +214,12 @@ npm run typecheck
 - Backend expects role mappings as Dict[str, Union[str, List[str]]]
 - Frontend was sending array of objects, now sends dictionary
 - Format: `{"AD Group Name": "Role Name"}` or `{"AD Group": ["Role1", "Role2"]}`
+
+### Permission Storage Architecture
+- **Single source of truth**: `discovered_permissions.json` for all valid permissions
+- Discovery process populates permissions automatically
+- Role assignments stored separately in `role_permissions.json`
+- Field-level permissions automatically added for fields with RLS filters
 
 ### Discovery Authentication
 - Discovery uses JWT tokens created by CIDS (NOT API keys)
