@@ -274,6 +274,7 @@ npm run typecheck
 - Discovery must complete successfully before permissions can be assigned
 - Permissions validated against `discovered_permissions.json` during save
 - Backend stores both permissions and RLS filters in new unified format
+- Role deletion properly removes entries from all registries (permissions, metadata, RLS filters)
 
 ## Git Workflow
 - Feature branch: `feature/resource-permissions`
