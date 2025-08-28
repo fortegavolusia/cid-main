@@ -2755,8 +2755,19 @@ async def delete_role(
        role_name not in permission_registry.role_permissions[client_id]:
         raise HTTPException(status_code=404, detail="Role not found")
     
-    # Delete the role
+    # Delete the role from all registries
     del permission_registry.role_permissions[client_id][role_name]
+    
+    # Delete from role_metadata if exists
+    if client_id in permission_registry.role_metadata and \
+       role_name in permission_registry.role_metadata[client_id]:
+        del permission_registry.role_metadata[client_id][role_name]
+    
+    # Delete from role_rls_filters if exists
+    if client_id in permission_registry.role_rls_filters and \
+       role_name in permission_registry.role_rls_filters[client_id]:
+        del permission_registry.role_rls_filters[client_id][role_name]
+    
     permission_registry._save_registry()
     
     # Log the action
