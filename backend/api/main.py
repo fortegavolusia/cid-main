@@ -120,6 +120,13 @@ if DEV_CROSS_ORIGIN:
         allow_headers=["*"],
     )
 
+# Access log middleware (enabled by default via config)
+try:
+    from backend.middleware.access_log import access_log_middleware
+    app.middleware("http")(access_log_middleware)
+except Exception:
+    logging.getLogger(__name__).warning("Access log middleware not loaded")
+
 # Add custom Jinja2 filter for datetime conversion
 
 def datetime_filter(timestamp):
@@ -1080,6 +1087,90 @@ async def update_logging_configuration(request: LoggingConfigUpdate, authorizati
 
 
 @app.get("/auth/admin/logs/app")
+
+@app.get("/auth/admin/logs/audit")
+async def get_audit_logs(authorization: Optional[str] = Header(None), start: Optional[str] = None, end: Optional[str] = None, action: Optional[str] = None, user_email: Optional[str] = None, resource_id: Optional[str] = None, limit: int = 100):
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    # Reuse existing audit reader utility
+    from backend.services.audit import audit_logger, AuditAction
+    # audit_logger.query_audit_logs supports start/end datetime objects
+    from datetime import datetime
+
+    def parse_ts(s: Optional[str]):
+        if not s:
+            return None
+        try:
+            if s.endswith('Z'):
+                s = s[:-1]
+            # Try with microseconds then without
+            for fmt in ("%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+                try:
+                    return datetime.strptime(s, fmt)
+                except Exception:
+                    continue
+        except Exception:
+            return None
+
+    start_dt = parse_ts(start)
+    end_dt = parse_ts(end)
+    action_enum = AuditAction(action) if action in [a.value for a in AuditAction] else None
+    items = audit_logger.query_audit_logs(start_date=start_dt, end_date=end_dt, action=action_enum, user_email=user_email, resource_id=resource_id, limit=limit)
+    return JSONResponse({"items": items, "count": len(items)})
+
+
+@app.get("/auth/admin/logs/token-activity")
+async def get_token_activity_logs(authorization: Optional[str] = Header(None), start: Optional[str] = None, end: Optional[str] = None, action: Optional[str] = None, user_email: Optional[str] = None, token_id: Optional[str] = None, limit: int = 100):
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    # Read persisted JSONL files
+    from pathlib import Path
+    from backend.libs.logging_config import get_logging_config
+    import json
+
+    cfg = get_logging_config()
+    dir_path = Path(cfg.get("token_activity", {}).get("path"))
+    items = []
+
+    def parse_ts(v: str):
+        try:
+            from datetime import datetime
+            if v.endswith('Z') and '.' not in v:
+                return datetime.strptime(v, "%Y-%m-%dT%H:%M:%SZ")
+            return datetime.strptime(v, "%Y-%m-%dT%H:%M:%S.%fZ")
+        except Exception:
+            return None
+
+    start_dt = parse_ts(start) if start else None
+    end_dt = parse_ts(end) if end else None
+
+    if dir_path.exists():
+        for p in sorted(dir_path.glob('token_activity_*.jsonl'), reverse=True):
+            try:
+                with p.open('r') as fh:
+                    for line in fh:
+                        if not line.strip():
+                            continue
+                        obj = json.loads(line)
+                        ts = parse_ts(obj.get('timestamp', ''))
+                        if start_dt and (not ts or ts < start_dt):
+                            continue
+                        if end_dt and (not ts or ts > end_dt):
+                            continue
+                        if action and obj.get('action') != action:
+                            continue
+                        if user_email and (obj.get('performed_by', {}) or {}).get('email') != user_email:
+                            continue
+                        if token_id and obj.get('token_id') != token_id:
+                            continue
+                        items.append(obj)
+            except Exception:
+                continue
+    items.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+    return JSONResponse({"items": items[: max(1, min(limit, 1000))], "count": min(len(items), max(1, min(limit, 1000)))})
+
 async def get_app_logs(authorization: Optional[str] = Header(None), start: Optional[str] = None, end: Optional[str] = None, level: Optional[str] = None, logger_prefix: Optional[str] = None, q: Optional[str] = None, limit: int = 100):
     is_admin, _ = check_admin_access(authorization)
     if not is_admin:

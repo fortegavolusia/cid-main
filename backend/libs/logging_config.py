@@ -38,7 +38,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "retention_days": 60,
     },
     "access": {
-        "enabled": False,
+        "enabled": True,
         "path": str(logs_path("access")),
         "retention_days": 30,
     },
