@@ -46,10 +46,16 @@ const TokenBuilder: React.FC<TokenBuilderProps> = ({ templateToLoad }) => {
   const [newClaimDescription, setNewClaimDescription] = useState('');
   const [templateName, setTemplateName] = useState('Current CIDS Token Structure');
 
+  const ensureClaimIds = (list: TokenClaim[] = []): TokenClaim[] =>
+    (list || []).map((c, idx) => ({
+      ...c,
+      id: c.id || `${c.key || 'claim'}_${idx}_${Date.now()}`
+    }));
+
   useEffect(() => {
     // Check if a template was passed from the Templates tab
     if (templateToLoad) {
-      setClaims(templateToLoad.claims);
+      setClaims(ensureClaimIds(templateToLoad.claims || []));
       setTemplateName(templateToLoad.name);
       setSelectedClaim(null);
       return;
@@ -89,11 +95,11 @@ const TokenBuilder: React.FC<TokenBuilderProps> = ({ templateToLoad }) => {
         const parsed = JSON.parse(saved);
         // If it's a user-saved template, use it
         if (parsed.name !== 'Current CIDS Token Structure') {
-          setClaims(parsed.claims || []);
+          setClaims(ensureClaimIds(parsed.claims || []));
           setTemplateName(parsed.name || '');
         } else {
           // Otherwise use the current production structure
-          setClaims(currentTokenStructure);
+          setClaims(ensureClaimIds(currentTokenStructure));
         }
       } catch (e) {
         // Fall back to current structure
@@ -101,7 +107,7 @@ const TokenBuilder: React.FC<TokenBuilderProps> = ({ templateToLoad }) => {
       }
     } else {
       // Load current production structure by default
-      setClaims(currentTokenStructure);
+      setClaims(ensureClaimIds(currentTokenStructure));
     }
   }, [templateToLoad]);
 
@@ -173,19 +179,17 @@ const TokenBuilder: React.FC<TokenBuilderProps> = ({ templateToLoad }) => {
     const template = {
       name: templateName || 'Untitled Template',
       claims,
-      savedAt: new Date().toISOString(),
-      adGroups: [],
-      priority: 0,
-      enabled: true
+      savedAt: new Date().toISOString()
+      // Intentionally omit adGroups/priority/enabled so existing mappings persist
     };
-    
+
     try {
       // Save to backend
       await adminService.saveTokenTemplate(template);
-      
+
       // Save to localStorage as well for caching
       localStorage.setItem('cids_token_template_current', JSON.stringify(template));
-      
+
       // Also save to templates list
       const savedTemplates = JSON.parse(localStorage.getItem('cids_token_templates') || '[]');
       const existingIndex = savedTemplates.findIndex((t: any) => t.name === template.name);

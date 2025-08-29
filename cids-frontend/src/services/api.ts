@@ -47,8 +47,9 @@ class ApiService {
 
         // If 401 and not already retried
         if (error.response?.status === 401 && !originalRequest._retry) {
-          // Skip retry for auth endpoints
-          if (originalRequest.url?.includes('/auth/')) {
+          // Only skip retry for login/logout/token endpoints; allow refresh for admin endpoints
+          const path = originalRequest.url || '';
+          if (/^\/?auth\/(login|logout|token)/.test(path)) {
             tokenManager.clearTokens();
             window.location.href = '/login';
             return Promise.reject(error);

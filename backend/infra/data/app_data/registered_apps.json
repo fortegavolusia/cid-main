@@ -1,0 +1,137 @@
+{
+  "app_d5b4429c099c415e": {
+    "client_id": "app_d5b4429c099c415e",
+    "name": "FastAPI application with field-level permissions demo",
+    "description": "TEstFASTApI APP.",
+    "redirect_uris": [
+      "http://localhost:5001/auth/callback",
+      "http://10.1.5.58:5001/auth/callback"
+    ],
+    "owner_email": "jnbailey@volusia.org",
+    "is_active": false,
+    "created_at": "2025-08-18T12:11:31.116295",
+    "updated_at": "2025-08-18T12:26:04.051728",
+    "discovery_endpoint": "http://localhost:5001/discovery/endpoints",
+    "allow_discovery": true,
+    "last_discovery_at": null,
+    "discovery_status": null
+  },
+  "app_8ec3f3b76304433e": {
+    "client_id": "app_8ec3f3b76304433e",
+    "name": "TEstFASTApI APP.",
+    "description": "jnbailey@volusia.org",
+    "redirect_uris": [
+      "http://localhost:5001/auth/callback",
+      "http://10.1.5.58:5001/auth/callback"
+    ],
+    "owner_email": "jnbailey@volusia.org",
+    "is_active": false,
+    "created_at": "2025-08-18T12:12:53.765343",
+    "updated_at": "2025-08-18T12:26:10.258953",
+    "discovery_endpoint": "http://localhost:5001/discovery/endpoints",
+    "allow_discovery": true,
+    "last_discovery_at": null,
+    "discovery_status": null
+  },
+  "app_c0f495a1bd0d4ba2": {
+    "client_id": "app_c0f495a1bd0d4ba2",
+    "name": "FastAPI application with field-level permissions demo",
+    "description": "Test",
+    "redirect_uris": [
+      "http://localhost:5001/auth/callback",
+      "http://10.1.5.58:5001/auth/callback"
+    ],
+    "owner_email": "jnbailey@volusia.org",
+    "is_active": false,
+    "created_at": "2025-08-18T12:26:48.482035",
+    "updated_at": "2025-08-18T12:38:19.282100",
+    "discovery_endpoint": "http://localhost:5001/discovery/endpoints",
+    "allow_discovery": true,
+    "last_discovery_at": null,
+    "discovery_status": null
+  },
+  "app_00c4df01bbed47fc": {
+    "client_id": "app_00c4df01bbed47fc",
+    "name": "TEstFASTApI APP.",
+    "description": "http://localhost:5001/auth/callback\nhttp://10.1.5.58:5001/auth/callback",
+    "redirect_uris": [
+      "http://localhost:5001/auth/callback",
+      "http://10.1.5.58:5001/auth/callback"
+    ],
+    "owner_email": "jnbailey@volusia.org",
+    "is_active": false,
+    "created_at": "2025-08-18T12:38:52.271307",
+    "updated_at": "2025-08-18T12:39:59.371446",
+    "discovery_endpoint": "http://localhost:5001/discovery/endpoints",
+    "allow_discovery": true,
+    "last_discovery_at": null,
+    "discovery_status": null
+  },
+  "app_8f777f620aac48d1": {
+    "client_id": "app_8f777f620aac48d1",
+    "name": "FastAPI application with field-level permissions demo",
+    "description": "test",
+    "redirect_uris": [
+      "http://localhost:5001/auth/callback",
+      "http://10.1.5.58:5001/auth/callback"
+    ],
+    "owner_email": "jnbailey@volusia.org",
+    "is_active": true,
+    "created_at": "2025-08-18T12:43:55.822712",
+    "updated_at": "2025-08-18T12:43:55.822719",
+    "discovery_endpoint": "http://localhost:5001/discovery/endpoints",
+    "allow_discovery": true,
+    "last_discovery_at": "2025-08-24T20:52:15.040274",
+    "discovery_status": "success",
+    "discovery_version": "2.0"
+  },
+  "app_fe80739ff4e547fb": {
+    "client_id": "app_fe80739ff4e547fb",
+    "name": "test2",
+    "description": "testing 2",
+    "redirect_uris": [
+      "http://localhost:8005/callback"
+    ],
+    "owner_email": "jnbailey@volusia.org",
+    "is_active": true,
+    "created_at": "2025-08-25T12:22:29.992208",
+    "updated_at": "2025-08-25T12:22:29.992221",
+    "discovery_endpoint": "http://localhost:8005/discovery/endpoints",
+    "allow_discovery": true,
+    "last_discovery_at": "2025-08-27T11:26:25.948246",
+    "discovery_status": "success",
+    "discovery_version": "2.0"
+  },
+  "app_affa35367c004335": {
+    "client_id": "app_affa35367c004335",
+    "name": "HR Management Demo",
+    "description": "HR Management Demo - Fernando",
+    "redirect_uris": [
+      "http://localhost:8080/callback.html"
+    ],
+    "owner_email": "fortega@volusia.gov",
+    "is_active": true,
+    "created_at": "2025-08-26T12:08:40.647816",
+    "updated_at": "2025-08-26T12:08:40.647825",
+    "discovery_endpoint": "http://localhost:3001/discovery/endpoints",
+    "allow_discovery": true,
+    "last_discovery_at": null,
+    "discovery_status": "connection_error"
+  },
+  "app_8ef57501ac4445fb": {
+    "client_id": "app_8ef57501ac4445fb",
+    "name": "orders-service",
+    "description": "Order management microservice with CIDS integration",
+    "redirect_uris": [
+      "http://localhost:8080/callback.html"
+    ],
+    "owner_email": "fortega@volusia.gov",
+    "is_active": true,
+    "created_at": "2025-08-27T14:34:32.013962",
+    "updated_at": "2025-08-27T14:34:32.013974",
+    "discovery_endpoint": "http://localhost:3002/discovery/endpoints",
+    "allow_discovery": true,
+    "last_discovery_at": null,
+    "discovery_status": "connection_error"
+  }
+}

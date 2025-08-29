@@ -1,0 +1,207 @@
+{
+  "templates": [
+    {
+      "name": "Default Token",
+      "claims": [
+        {
+          "key": "iss",
+          "include": true,
+          "id": "iss_0_1756429793205"
+        },
+        {
+          "key": "sub",
+          "include": true,
+          "id": "sub_1_1756429793205"
+        },
+        {
+          "key": "aud",
+          "include": true,
+          "id": "aud_2_1756429793205"
+        },
+        {
+          "key": "exp",
+          "include": true,
+          "id": "exp_3_1756429793205"
+        },
+        {
+          "key": "iat",
+          "include": true,
+          "id": "iat_4_1756429793205"
+        },
+        {
+          "key": "email",
+          "include": true,
+          "id": "email_5_1756429793205"
+        },
+        {
+          "key": "name",
+          "include": true,
+          "id": "name_6_1756429793205"
+        },
+        {
+          "id": "roles_1756429109865",
+          "key": "roles",
+          "type": "array",
+          "description": "User roles"
+        },
+        {
+          "id": "rls_filters_1756429111067",
+          "key": "rls_filters",
+          "type": "object",
+          "description": "Row-level security filters for data access"
+        }
+      ],
+      "savedAt": "2025-08-29T01:17:39.503Z",
+      "adGroups": [],
+      "priority": 0,
+      "enabled": true,
+      "isDefault": true
+    },
+    {
+      "name": "test 3",
+      "claims": [
+        {
+          "id": "iss_current",
+          "key": "iss",
+          "type": "string",
+          "description": "Issuer (internal-auth-service)",
+          "required": true,
+          "value": "internal-auth-service"
+        },
+        {
+          "id": "sub_current",
+          "key": "sub",
+          "type": "string",
+          "description": "Subject (User ID)",
+          "required": true
+        },
+        {
+          "id": "aud_current",
+          "key": "aud",
+          "type": "string",
+          "description": "Audience (internal-services)",
+          "required": true,
+          "value": "internal-services"
+        },
+        {
+          "id": "exp_current",
+          "key": "exp",
+          "type": "number",
+          "description": "Expiration Time",
+          "required": true
+        },
+        {
+          "id": "nbf_current",
+          "key": "nbf",
+          "type": "number",
+          "description": "Not Before",
+          "required": true
+        },
+        {
+          "id": "iat_current",
+          "key": "iat",
+          "type": "number",
+          "description": "Issued At",
+          "required": true
+        },
+        {
+          "id": "jti_current",
+          "key": "jti",
+          "type": "string",
+          "description": "JWT ID (Unique token identifier)",
+          "required": true
+        },
+        {
+          "id": "token_type",
+          "key": "token_type",
+          "type": "string",
+          "description": "Type of token (access/refresh/service)",
+          "required": true
+        },
+        {
+          "id": "token_version",
+          "key": "token_version",
+          "type": "string",
+          "description": "Token version (2.0 or 3.0)",
+          "required": true
+        },
+        {
+          "id": "email",
+          "key": "email",
+          "type": "string",
+          "description": "User email address",
+          "required": false
+        },
+        {
+          "id": "name",
+          "key": "name",
+          "type": "string",
+          "description": "User full name",
+          "required": false
+        },
+        {
+          "id": "preferred_username",
+          "key": "preferred_username",
+          "type": "string",
+          "description": "Preferred username",
+          "required": false
+        },
+        {
+          "id": "ver",
+          "key": "ver",
+          "type": "string",
+          "description": "Token schema version",
+          "required": false
+        },
+        {
+          "id": "tenant_id",
+          "key": "tenant_id",
+          "type": "string",
+          "description": "Azure AD Tenant ID",
+          "required": false
+        },
+        {
+          "id": "client_id",
+          "key": "client_id",
+          "type": "string",
+          "description": "Application Client ID",
+          "required": false
+        },
+        {
+          "id": "roles",
+          "key": "roles",
+          "type": "array",
+          "description": "User roles",
+          "required": false
+        },
+        {
+          "id": "permissions",
+          "key": "permissions",
+          "type": "array",
+          "description": "User permissions",
+          "required": false
+        },
+        {
+          "id": "rls_filters_1756317237722",
+          "key": "rls_filters",
+          "type": "object",
+          "description": "Row-level security filters for data access"
+        },
+        {
+          "id": "groups_1756430335958",
+          "key": "groups",
+          "type": "array",
+          "description": "User groups"
+        }
+      ],
+      "savedAt": "2025-08-29T01:18:59.858Z",
+      "adGroups": [
+        "Information Technology Division"
+      ],
+      "priority": 0,
+      "enabled": true,
+      "isDefault": false
+    }
+  ],
+  "updated_at": "2025-08-29T01:19:11.333932"
+}

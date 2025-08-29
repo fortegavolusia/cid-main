@@ -1,0 +1,148 @@
+{
+  "app_8173364316bf4910": {
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/",
+        "description": "Home page",
+        "discovered": true,
+        "discovered_at": "2025-08-16T12:00:16.509758",
+        "required_permissions": [],
+        "required_roles": [],
+        "tags": [
+          "ui"
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/profile",
+        "description": "Get user profile - requires authentication",
+        "discovered": true,
+        "discovered_at": "2025-08-16T12:00:16.509773",
+        "required_permissions": [
+          "profile.read"
+        ],
+        "required_roles": [],
+        "tags": [
+          "api",
+          "user"
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin",
+        "description": "Admin dashboard - requires admin role",
+        "discovered": true,
+        "discovered_at": "2025-08-16T12:00:16.509779",
+        "required_permissions": [
+          "admin.read"
+        ],
+        "required_roles": [
+          "admin"
+        ],
+        "tags": [
+          "api",
+          "admin"
+        ]
+      }
+    ],
+    "version": "20250816120016",
+    "updated_at": "2025-08-16T12:00:16.509817",
+    "updated_by": "discovery-service",
+    "has_discovered": true
+  },
+  "app_8f777f620aac48d1": {
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/api/products",
+        "description": "List all products with filtering",
+        "discovered": true,
+        "discovered_at": "2025-08-24T20:52:15.046025",
+        "required_permissions": [],
+        "required_roles": [],
+        "tags": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/products/{id}",
+        "description": "Get detailed product information",
+        "discovered": true,
+        "discovered_at": "2025-08-24T20:52:15.046055",
+        "required_permissions": [],
+        "required_roles": [],
+        "tags": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/products",
+        "description": "Create a new product",
+        "discovered": true,
+        "discovered_at": "2025-08-24T20:52:15.046069",
+        "required_permissions": [],
+        "required_roles": [],
+        "tags": []
+      }
+    ],
+    "version": "20250824205215",
+    "updated_at": "2025-08-24T20:52:15.046106",
+    "updated_by": "discovery-service",
+    "has_discovered": true
+  },
+  "app_dd8c554784594b11": {
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/api/users",
+        "description": "List all users",
+        "discovered": true,
+        "discovered_at": "2025-08-25T12:08:37.775090",
+        "required_permissions": [],
+        "required_roles": [],
+        "tags": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/users/{user_id}",
+        "description": "Get specific user details",
+        "discovered": true,
+        "discovered_at": "2025-08-25T12:08:37.775113",
+        "required_permissions": [],
+        "required_roles": [],
+        "tags": []
+      }
+    ],
+    "version": "20250825120837",
+    "updated_at": "2025-08-25T12:08:37.775140",
+    "updated_by": "discovery-service",
+    "has_discovered": true
+  },
+  "app_fe80739ff4e547fb": {
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/api/users",
+        "description": "List all users",
+        "discovered": true,
+        "discovered_at": "2025-08-27T11:26:25.952183",
+        "required_permissions": [],
+        "required_roles": [],
+        "tags": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/users/{user_id}",
+        "description": "Get specific user details",
+        "discovered": true,
+        "discovered_at": "2025-08-27T11:26:25.952209",
+        "required_permissions": [],
+        "required_roles": [],
+        "tags": []
+      }
+    ],
+    "version": "20250827112625",
+    "updated_at": "2025-08-27T11:26:25.952242",
+    "updated_by": "discovery-service",
+    "has_discovered": true
+  }
+}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
 import './TokenDetailsModal.css';
+import adminService from '../services/adminService';
 
 interface TokenDetailsModalProps {
   isOpen: boolean;
@@ -12,65 +13,74 @@ const TokenDetailsModal: React.FC<TokenDetailsModalProps> = ({ isOpen, onClose, 
   const [decodedClaims, setDecodedClaims] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'raw' | 'decoded'>('decoded');
   const [error, setError] = useState<string | null>(null);
+  const [rawToken, setRawToken] = useState<string>('');
 
   useEffect(() => {
-    if (token && isOpen) {
+    let cancelled = false;
+    const run = async () => {
+      if (!token || !isOpen) return;
+      setError(null);
+      setDecodedClaims(null);
+      setRawToken('');
       try {
-        // Try to decode JWT tokens
-        if (token.access_token || token.full_access_token) {
-          const tokenToDecode = token.full_access_token || token.access_token;
-          const decoded = decodeJWT(tokenToDecode);
+        // Prefer token fields already present in the table row
+        let tokenToDecode: string | null = token.full_access_token || token.access_token || token.full_id_token || token.id_token || null;
+        // If not present, fetch full token data from backend activities endpoint
+        if (!tokenToDecode && token.id) {
+          try {
+            const activity = await adminService.getTokenActivity(token.id);
+            const td = activity?.token_data || {};
+            tokenToDecode = td.full_access_token || td.access_token || td.full_id_token || td.id_token || null;
+          } catch (fetchErr) {
+            // Swallow and fallback to error below
+          }
+        }
+        if (!tokenToDecode) {
+          if (!cancelled) {
+            setError('No JWT token available to decode');
+          }
+          return;
+        }
+        const decoded = decodeJWT(tokenToDecode);
+        if (!cancelled) {
           setDecodedClaims(decoded);
+          setRawToken(tokenToDecode);
           setError(null);
-        } else if (token.id_token || token.full_id_token) {
-          const tokenToDecode = token.full_id_token || token.id_token;
-          const decoded = decodeJWT(tokenToDecode);
-          setDecodedClaims(decoded);
-          setError(null);
-        } else {
-          setDecodedClaims(null);
-          setError('No JWT token available to decode');
         }
       } catch (err) {
-        setError('Failed to decode token');
-        setDecodedClaims(null);
+        if (!cancelled) {
+          setError('Failed to decode token');
+          setDecodedClaims(null);
+          setRawToken('');
+        }
       }
-    }
+    };
+    run();
+    return () => { cancelled = true; };
   }, [token, isOpen]);
 
   const decodeJWT = (jwt: string) => {
     try {
       // Remove 'Bearer ' prefix if present
       const cleanToken = jwt.replace(/^Bearer\s+/i, '');
-      
       // Split the JWT
       const parts = cleanToken.split('.');
       if (parts.length !== 3) {
         throw new Error('Invalid JWT format');
       }
-
-      // Decode header
-      const header = JSON.parse(atob(parts[0]));
-      
-      // Decode payload
-      const payload = JSON.parse(atob(parts[1]));
-      
-      // Format timestamps if present
-      if (payload.exp) {
-        payload.exp_formatted = new Date(payload.exp * 1000).toLocaleString();
-      }
-      if (payload.iat) {
-        payload.iat_formatted = new Date(payload.iat * 1000).toLocaleString();
-      }
-      if (payload.nbf) {
-        payload.nbf_formatted = new Date(payload.nbf * 1000).toLocaleString();
-      }
-
-      return {
-        header,
-        payload,
-        signature: parts[2]
+      const b64urlToB64 = (s: string) => {
+        const pad = s.length % 4 === 2 ? '==' : s.length % 4 === 3 ? '=' : s.length % 4 === 1 ? '===' : '';
+        return s.replace(/-/g, '+').replace(/_/g, '/') + pad;
       };
+      // Decode header
+      const header = JSON.parse(atob(b64urlToB64(parts[0])));
+      // Decode payload
+      const payload = JSON.parse(atob(b64urlToB64(parts[1])));
+      // Format timestamps if present
+      if (payload.exp) payload.exp_formatted = new Date(payload.exp * 1000).toLocaleString();
+      if (payload.iat) payload.iat_formatted = new Date(payload.iat * 1000).toLocaleString();
+      if (payload.nbf) payload.nbf_formatted = new Date(payload.nbf * 1000).toLocaleString();
+      return { header, payload, signature: parts[2] };
     } catch (err) {
       console.error('Failed to decode JWT:', err);
       throw err;
@@ -179,28 +189,24 @@ const TokenDetailsModal: React.FC<TokenDetailsModalProps> = ({ isOpen, onClose, 
   };
 
   const renderRawToken = () => {
-    const rawToken = token?.full_access_token || token?.access_token || 
-                     token?.full_id_token || token?.id_token || '';
-    
-    if (!rawToken) {
+    const raw = rawToken || token?.full_access_token || token?.access_token || token?.full_id_token || token?.id_token || '';
+    if (!raw) {
       return <div className="no-data">No raw token available</div>;
     }
-
     return (
       <div className="raw-token-section">
         <div className="raw-token-header">
           <h4>Raw Token</h4>
-          <button 
+          <button
             className="copy-button"
             onClick={() => {
-              navigator.clipboard.writeText(rawToken);
-              // You could add a toast notification here
+              navigator.clipboard.writeText(raw);
             }}
           >
             Copy to Clipboard
           </button>
         </div>
-        <pre className="raw-token-display">{rawToken}</pre>
+        <pre className="raw-token-display">{raw}</pre>
       </div>
     );
   };

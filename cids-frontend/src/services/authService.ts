@@ -11,11 +11,29 @@ class AuthService {
   private readonly AZURE_REDIRECT_URI = 'https://10.1.5.58:3000/auth/callback';
   private readonly AZURE_SCOPE = 'openid profile email User.Read';
 
+	  // Decode JWT to read expiry (client-side, no verification)
+	  private parseJWT(token: string): any | null {
+	    try {
+	      const base64Url = token.split('.')[1];
+	      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+	      const jsonPayload = decodeURIComponent(
+	        atob(base64)
+	          .split('')
+	          .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+	          .join('')
+	      );
+	      return JSON.parse(jsonPayload);
+	    } catch {
+	      return null;
+	    }
+	  }
+
+
   // Initiate login flow - Direct OAuth with Azure AD
   async login(): Promise<void> {
     const state = this.generateRandomString(32);
     localStorage.setItem('oauth_state', state);
-    
+
     const authUrl = new URL(`https://login.microsoftonline.com/${this.AZURE_TENANT_ID}/oauth2/v2.0/authorize`);
     authUrl.searchParams.append('client_id', this.AZURE_CLIENT_ID);
     authUrl.searchParams.append('response_type', 'code');
@@ -23,7 +41,7 @@ class AuthService {
     authUrl.searchParams.append('scope', this.AZURE_SCOPE);
     authUrl.searchParams.append('state', state);
     authUrl.searchParams.append('response_mode', 'query');
-    
+
     window.location.href = authUrl.toString();
   }
 
@@ -120,6 +138,26 @@ class AuthService {
   }
 
   // Clear auth token
+
+	  // Get session token bundle (access + refresh + derived metadata)
+	  async getSessionToken(): Promise<any> {
+	    const accessToken = apiService.getAuthToken();
+	    const refreshToken = localStorage.getItem('refresh_token');
+	    if (!accessToken) {
+	      throw new Error('No access token');
+	    }
+	    const payload = this.parseJWT(accessToken) || {};
+	    return {
+	      access_token: accessToken,
+	      refresh_token: refreshToken,
+	      exp: payload.exp,
+	      iat: payload.iat,
+	      sub: payload.sub,
+	      email: payload.email,
+	      name: payload.name,
+	    };
+	  }
+
   clearAuthToken(): void {
     apiService.clearAuthToken();
   }

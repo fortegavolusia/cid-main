@@ -63,7 +63,7 @@ const InfoItem = styled.div`
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
-  
+
   &:last-child {
     margin-bottom: 0;
   }
@@ -117,6 +117,21 @@ const TokenDisplay = styled.div`
   border: 1px solid var(--border-color);
 `;
 
+
+
+const JSONBlock = styled.pre`
+  background: #f6f8fa;
+  padding: 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  margin: 0;
+  font-family: 'SF Mono', Monaco, 'Cascadia Mono', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 13px;
+`;
 
 const LoadingSpinner = styled.div`
   display: flex;
@@ -280,9 +295,9 @@ const HomePage: React.FC = () => {
             <TokenDisplay>{authService.getAuthToken() || ''}</TokenDisplay>
             <h3>Decoded Token Claims:</h3>
             <p>These are the claims contained in your internal JWT token:</p>
-            <pre style={{ background: '#f6f8fa', padding: 16, borderRadius: 6, border: '1px solid var(--border-color)' }}>
+            <JSONBlock>
               {JSON.stringify(myToken?.claims || user?.raw_claims || {}, null, 2)}
-            </pre>
+            </JSONBlock>
           </SectionContent>
         )}
       </InfoSection>
@@ -294,9 +309,9 @@ const HomePage: React.FC = () => {
             <span style={{ color: 'var(--text-secondary)' }}>▼</span>
           </SectionHeader>
           <SectionContent>
-            <pre style={{ background: '#f6f8fa', padding: 16, borderRadius: 6, border: '1px solid var(--border-color)' }}>
+            <JSONBlock>
               {JSON.stringify(apiResponse.data, null, 2)}
-            </pre>
+            </JSONBlock>
           </SectionContent>
         </InfoSection>
       )}

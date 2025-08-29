@@ -1,0 +1,29 @@
+{
+  "app_8173364316bf4910": {},
+  "app_8f777f620aac48d1": {},
+  "app_fe80739ff4e547fb": {
+    "test14": {
+      "permissions": [
+        "app_fe80739ff4e547fb.users.read.created_at",
+        "app_fe80739ff4e547fb.users.read.medical_records"
+      ],
+      "rls_filters": {
+        "field:users.read.medical_records": [
+          {
+            "id": "1756402971397",
+            "expression": "created_date >= CURRENT_DATE - INTERVAL '30 days'",
+            "timestamp": "2025-08-28T17:42:51.397Z"
+          }
+        ],
+        "field:users.read.created_at": [
+          {
+            "id": "1756402976037",
+            "expression": "department = @current_user_department",
+            "timestamp": "2025-08-28T17:42:56.037Z"
+          }
+        ]
+      }
+    }
+  },
+  "app_affa35367c004335": {}
+}

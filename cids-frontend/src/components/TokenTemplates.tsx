@@ -64,7 +64,7 @@ const TokenTemplates: React.FC<TokenTemplatesProps> = ({ onLoadTemplate }) => {
       // Debounce the search to avoid too many API calls
       const timeout = setTimeout(async () => {
         try {
-          const response = await adminService.searchAzureGroups(currentInput, 10);
+          const response = await adminService.searchAzureGroups(currentInput, 50);
           const groups = response.groups || [];
           
           // Filter out already selected groups

@@ -1,0 +1,23 @@
+{"timestamp": "2025-08-26T01:03:43.883482", "action": "token_template.updated", "user": {"id": "XnidUzlFgv9N6Mny9QFn0qQ3FwauUT7vK2o0L7eeFBU"}, "details": {"template_name": "Current CIDS Token Structure", "ad_groups": [], "priority": 0}}
+{"timestamp": "2025-08-26T08:04:55.855131", "action": "token_template.updated", "user": {"id": "XnidUzlFgv9N6Mny9QFn0qQ3FwauUT7vK2o0L7eeFBU"}, "details": {"template_name": "test 2", "ad_groups": [], "priority": 0}}
+{"timestamp": "2025-08-26T08:05:16.220499", "action": "token_template.updated", "user": {"id": "XnidUzlFgv9N6Mny9QFn0qQ3FwauUT7vK2o0L7eeFBU"}, "details": {"template_name": "test 2", "ad_groups": ["Information Technology Division"], "priority": 0}}
+{"timestamp": "2025-08-26T08:18:05.770554", "action": "token_template.deleted", "user": {"id": "XnidUzlFgv9N6Mny9QFn0qQ3FwauUT7vK2o0L7eeFBU"}, "details": {"template_name": "test 2"}}
+{"timestamp": "2025-08-26T08:18:47.788484", "action": "token_template.updated", "user": {"id": "XnidUzlFgv9N6Mny9QFn0qQ3FwauUT7vK2o0L7eeFBU"}, "details": {"template_name": "test 3", "ad_groups": [], "priority": 0}}
+{"timestamp": "2025-08-26T08:19:04.253348", "action": "token_template.updated", "user": {"id": "XnidUzlFgv9N6Mny9QFn0qQ3FwauUT7vK2o0L7eeFBU"}, "details": {"template_name": "test 3", "ad_groups": ["Information Technology Division"], "priority": 0}}
+{"timestamp": "2025-08-26T09:17:36.244183", "action": "role.created", "details": {"app_client_id": "app_fe80739ff4e547fb", "role_name": "test 4", "permissions_count": 0, "created_by": "jnbailey@volusia.gov"}}
+{"timestamp": "2025-08-26T09:17:51.923768", "action": "role.updated", "details": {"app_client_id": "app_fe80739ff4e547fb", "role_name": "test 4", "permissions_count": 0, "updated_by": "jnbailey@volusia.gov"}}
+{"timestamp": "2025-08-26T09:23:27.146400", "action": "discovery.triggered", "details": {"app_client_id": "app_fe80739ff4e547fb", "triggered_by": "jnbailey@volusia.gov", "force": false}}
+{"timestamp": "2025-08-26T09:25:37.863112", "action": "discovery.triggered", "details": {"app_client_id": "app_fe80739ff4e547fb", "triggered_by": "jnbailey@volusia.gov", "force": false}}
+{"timestamp": "2025-08-26T09:25:42.995045", "action": "discovery.triggered", "details": {"app_client_id": "app_fe80739ff4e547fb", "triggered_by": "jnbailey@volusia.gov", "force": false}}
+{"timestamp": "2025-08-26T09:25:54.720257", "action": "discovery.triggered", "details": {"app_client_id": "app_fe80739ff4e547fb", "triggered_by": "jnbailey@volusia.gov", "force": false}}
+{"timestamp": "2025-08-26T16:51:47.720140", "action": "discovery.triggered", "details": {"app_client_id": "app_fe80739ff4e547fb", "triggered_by": "jnbailey@volusia.gov", "force": false}}
+{"timestamp": "2025-08-26T16:55:03.865377", "action": "discovery.triggered", "details": {"app_client_id": "app_fe80739ff4e547fb", "triggered_by": "jnbailey@volusia.gov", "force": false}}
+{"timestamp": "2025-08-26T16:55:17.176171", "action": "discovery.triggered", "details": {"app_client_id": "app_fe80739ff4e547fb", "triggered_by": "jnbailey@volusia.gov", "force": false}}
+{"timestamp": "2025-08-26T17:00:02.423632", "action": "discovery.triggered", "details": {"app_client_id": "app_fe80739ff4e547fb", "triggered_by": "jnbailey@volusia.gov", "force": false}}
+{"timestamp": "2025-08-26T17:02:18.426018", "action": "discovery.triggered", "details": {"app_client_id": "app_fe80739ff4e547fb", "triggered_by": "jnbailey@volusia.gov", "force": false}}
+{"timestamp": "2025-08-26T17:02:44.317561", "action": "discovery.triggered", "details": {"app_client_id": "app_affa35367c004335", "triggered_by": "jnbailey@volusia.gov", "force": false}}
+{"timestamp": "2025-08-26T17:45:54.883214", "action": "discovery.triggered", "details": {"app_client_id": "app_fe80739ff4e547fb", "triggered_by": "jnbailey@volusia.gov", "force": false}}
+{"timestamp": "2025-08-26T18:27:03.701497", "action": "discovery.triggered", "details": {"app_client_id": "app_fe80739ff4e547fb", "triggered_by": "jnbailey@volusia.gov", "force": false}}
+{"timestamp": "2025-08-26T18:32:55.446207", "action": "discovery.triggered", "details": {"app_client_id": "app_fe80739ff4e547fb", "triggered_by": "FOrtega@volusia.gov", "force": false}}
+{"timestamp": "2025-08-26T18:52:27.768024", "action": "role.created", "details": {"app_client_id": "app_fe80739ff4e547fb", "role_name": "Test Role A", "permissions_count": 0, "created_by": "jnbailey@volusia.gov"}}
+{"timestamp": "2025-08-26T18:53:01.699452", "action": "role.updated", "details": {"app_client_id": "app_fe80739ff4e547fb", "role_name": "Test Role A", "permissions_count": 0, "updated_by": "jnbailey@volusia.gov"}}

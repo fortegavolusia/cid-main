@@ -1,0 +1,2 @@
+{"timestamp": "2025-08-28T15:57:07.803169", "action": "token_template.updated", "user": {"id": "XnidUzlFgv9N6Mny9QFn0qQ3FwauUT7vK2o0L7eeFBU"}, "details": {"template_name": "test 3", "ad_groups": [], "priority": 0}}
+{"timestamp": "2025-08-28T15:57:18.142156", "action": "token_template.updated", "user": {"id": "XnidUzlFgv9N6Mny9QFn0qQ3FwauUT7vK2o0L7eeFBU"}, "details": {"template_name": "test 3", "ad_groups": ["Information Technology Division"], "priority": 0}}
