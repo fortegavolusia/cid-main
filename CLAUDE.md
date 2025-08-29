@@ -1,332 +1,226 @@
-# CIDS Project Documentation
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-CIDS (Centralized Identity Discovery Service) is a comprehensive authentication and authorization service with row-level security (RLS) capabilities.
+CIDS (Centralized Identity Discovery Service) is a comprehensive authentication and authorization service with row-level security (RLS) capabilities. The system consists of:
+- **FastAPI Backend** (`backend/`): JWT issuing, token validation, API key management, roles, and policies
+- **React Frontend** (`cids-frontend/`): Admin UI for permission management and token administration  
+- **Integration Apps**: Example applications demonstrating CIDS integration
 
-## Architecture
-- **Backend Auth Service**: Handles authentication and JWT token management
-  - Token template management system
-  - Azure AD group integration
-  - Automatic template application based on user groups
-- **React Frontend**: Permission management interface  
-  - Token Administration with Builder and Templates
-  - Real-time Azure AD group search
-- **FastAPI Test Apps**: Example applications demonstrating integration
+## Development Commands
 
-## Development Environment
-
-### Starting Services
+### Frontend (React + Vite + TypeScript)
 ```bash
-# Start backend auth service with DEV CORS
+# Install dependencies
+cd cids-frontend
+npm install
+
+# Development server (HTTPS required for Azure AD)
+npm run dev                    # Runs on https://localhost:3000
+
+# Build commands
+npm run build                  # Skips build in dev unless FORCE_BUILD=1
+npm run build:force            # Forces build regardless of environment
+npm run build:ci               # Always builds (for CI environments)
+
+# Code quality
+npm run lint                   # Run ESLint
+
+# Preview production build
+npm run preview
+```
+
+### Backend (FastAPI + Python)
+```bash
+# Install dependencies (no requirements.txt currently)
+pip install fastapi "uvicorn[standard]" pydantic httpx python-dotenv jinja2
+
+# Start backend with development CORS
+cd backend
+DEV_CROSS_ORIGIN=true uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Alternative: using legacy script (if available)
 cd azure-auth-app
 DEV_CROSS_ORIGIN=true bash restart_server.sh
 
-# Start React frontend (HTTPS enabled)
-cd cids-frontend
-npm run dev
-# Access at: https://10.1.5.58:3000
-
-# Start CIDS-compliant test app with UI (optional)
+# Start test app with UI
 python3 azure-auth-app/test_apps/compliant_app_with_ui.py
 ```
 
-### Authentication Flow
-- **React OAuth Flow**: Direct Azure AD authentication from React (Primary)
-  - No dependency on backend session/cookies
-  - React initiates OAuth flow directly with Azure AD
-  - Callback handled by React at `/auth/callback`
-  - Authorization code exchanged for CIDS JWT via `/auth/token/exchange`
-  - Fetches AD groups via Microsoft Graph API
-  - Resolves app-specific roles based on AD group mappings
-  - Retrieves permissions and RLS filters from role_permissions.json
-  - Includes `rls_filters` claim in generated tokens
-  - Access tokens stored in localStorage
-  - Refresh tokens stored in localStorage for automatic renewal
-  - Admin status validated against env file during token creation
-- **Token Refresh & Session Management**:
-  - Automatic token refresh 1 minute before expiry
-  - Inactivity monitoring with 8-minute warning
-  - Session timeout modal with 2-minute countdown
-  - "Stay Logged In" option to extend session
-  - Refresh tokens maintain AD group to role mappings
-- **Legacy HTML/JS Flow**: Commented out, replaced by React flow
-  - Previously used `/auth/login` and `/auth/callback` endpoints
-  - Server-side OAuth flow with session management
+## Architecture & Code Structure
 
-## Key Components
+### Backend Architecture (`backend/`)
+- **`api/`**: FastAPI application
+  - `main.py`: Application entrypoint with all route definitions
+  - `auth_app.py`: Legacy compatibility layer
+- **`services/`**: Core business logic
+  - `jwt.py`, `jwks.py`: Token generation and key management
+  - `discovery.py`, `endpoints.py`: Service discovery and registration
+  - `roles.py`, `permission_registry.py`: Role and permission management
+  - `api_keys.py`, `app_registration.py`: App registration and API keys
+  - `token_templates.py`: JWT template management with AD group mapping
+  - `resource_filters.py`: RLS filter management
+  - `refresh_tokens.py`, `token_activity.py`: Token lifecycle
+- **`infra/data/app_data/`**: JSON file storage
+  - `registered_apps.json`: App registrations
+  - `role_permissions.json`: Permissions AND RLS filters (unified storage)
+  - `discovered_permissions.json`: Valid permissions from discovery
+  - `token_templates.json`: JWT claim templates
+  - `app_role_mappings.json`: AD group to role mappings
 
-### PermissionSelector (React)
-- Manages permissions at resource, action, and field levels
-- Supports Allow/Deny permissions for endpoints
-- Implements multiple SQL filters per resource/action/field for RLS
-- Unified persistence via localStorage (per app + role)
-- Save button to persist all permission settings
-- Field name extraction from API 'path' property
+### Frontend Architecture (`cids-frontend/src/`)
+- **`components/`**: Reusable UI components
+  - `PermissionSelector`: Resource/action/field permission management with RLS
+  - `RuleBuilder`: SQL WHERE clause editor for RLS filters
+  - `TokenBuilder`: Visual JWT structure editor
+  - `TokenTemplates`: Template management with AD group associations
+  - `RolesModal`: Role configuration and export
+- **`pages/`**: Route components
+  - `AdminPage`: App registration, API keys, role mappings
+  - `TokenAdministrationPage`: Token builder, templates, and logs
+- **`services/`**: API clients and utilities
+  - `authService.ts`: OAuth flow, token exchange, refresh
+  - `adminService.ts`: Admin API operations
+  - `tokenManager.ts`: Token storage and refresh logic
+- **`contexts/`**: React contexts
+  - `AuthContext`: Authentication state and user info
 
-### RuleBuilder (React)
-- Power BI style SQL WHERE clause editor
-- Template library for common filter patterns
-- Support for context variables (@current_user_email, etc.)
-- Edit existing filters or add new ones
+## Authentication Flow
 
-### RolesModal (React)
-- Display permission and resource scope counts
-- Export individual role configurations
-- Export all roles for an application
-- Database-ready JSON export format
-- **NEW**: Automatic backend synchronization when saving permissions
-- **NEW**: Creates empty role in permission registry when new role added
+1. **React initiates OAuth** → Azure AD login
+2. **Callback with auth code** → `/auth/callback` route
+3. **Exchange code for JWT** → `/auth/token/exchange` endpoint
+   - Fetches AD groups via Microsoft Graph API
+   - Resolves roles from AD group mappings
+   - Applies matching token templates (AD group or default)
+   - Includes permissions and RLS filters in token
+4. **Store tokens** → localStorage (access + refresh)
+5. **Auto refresh** → 1 minute before expiry
 
-### AdminPage (React)
-- **NEW**: Registered Applications section displays first (always visible)
-- **NEW**: App Registration section is collapsible below
-- Apps load automatically on page mount
-- Manage registered apps, API keys, role mappings
-- Trigger endpoint discovery for apps
+## Critical Implementation Details
 
-### Token Administration (React)
-- **Token Builder**: Visual JWT token structure editor
-  - Drag-and-drop claim management
-  - Standard and custom JWT claims including `rls_filters`
-  - Real-time JSON structure preview
-  - Save/load token templates
-  - Backend synchronization for templates
-- **Token Templates**: Manage saved token structures
-  - Azure AD group associations with live autocomplete search
-  - Default template support (applied to all authenticated users)
-  - Template priority for conflict resolution
-  - Enable/disable templates
-  - Import/export templates as JSON
-  - Full backend API integration for persistence
-  - Default template badge display and persistence
-- **Logs Tab**: Token activity monitoring
-  - View active Internal and Azure tokens with proper storage
-  - Filter by user, email, or subject
-  - Sort by issue date or expiration
-  - View full decoded token claims in modal
-  - Token details modal with formatted JSON display
-  - Copy raw token to clipboard
-  - Revoke tokens
-- **Backend Integration**: Automatic template application
-  - Default template applies to all authenticated users
-  - AD group templates always take precedence over default templates
-  - Among AD group templates, higher priority wins
-  - Matches templates to user's AD groups (by display name)
-  - Includes all template-defined claims with proper defaults
-  - Initializes empty arrays/objects for collection types
-  - Token version 2.0 for templated tokens
-  - Template metadata (_template_applied, _template_priority) included
-  - App-specific roles resolved from AD group → role mappings
-  - Roles aggregated across all registered apps for user
+### Token Template System
+- Templates define JWT claim structure with types and defaults
+- AD group templates matched by display name (not ID)
+- Priority system: AD group templates > default template
+- Template claims filtered to only include specified fields
+- Version 2.0 tokens indicate template was applied
 
-## Permission & RLS System
+### Permission & RLS Storage
+- **Unified format**: Permissions + RLS filters stored together
+- **Backend persistence**: `role_permissions.json` for stateless operation
+- **Frontend cache**: localStorage with key pattern `cids_unified_role_{clientId}_{roleName}`
+- **RLS filter format**: Multiple SQL WHERE clauses per field
+- **Auto sync**: Frontend saves trigger backend updates
 
-### Unified Storage Structure
-- **Permissions**: Endpoint allow/deny states (e.g., `products.read`)
-- **Resource Scopes**: SQL WHERE clauses for RLS filtering
-- **Field Permissions**: Automatically created for fields with RLS filters
-- **Backend Persistence**: RLS filters now stored in `role_permissions.json` alongside permissions
-- Storage keys: 
-  - `cids_unified_role_{clientId}_{roleName}` - Complete role config in localStorage
-  - `discovered_permissions.json` - Single source of truth for valid permissions
-  - `role_permissions.json` - Role permissions AND RLS filters (stateless backend storage)
+### Discovery Requirements
+- **Version 2.0 format required** for field-level permissions
+- **App ID must match** registered client_id exactly
+- **JWT auth for discovery** (not API keys)
+- **Response validation** against FieldMetadata schema
+- **Automatic permission generation** from discovered endpoints
 
-### Filter Management Features
-- **Multiple filters per field**: Unlimited SQL WHERE clauses
-- **CRUD operations**: Add, view, edit, delete individual filters  
-- **Filter count badges**: Visual indicators showing total filters
-- **Persistence**: Both permissions and filters saved together
+### AD Group Integration
+- Groups fetched fresh on token exchange and refresh
+- Stored as objects with `id` and `displayName`
+- Multiple apps can map same group to different roles
+- Roles aggregated across all registered apps
 
-### Backend Storage Format (role_permissions.json)
-```json
-{
-  "app_id": {
-    "role_name": {
-      "permissions": ["permission1", "permission2"],
-      "rls_filters": {
-        "field:resource.action.field": [
-          {
-            "id": "unique-id",
-            "expression": "SQL WHERE clause",
-            "timestamp": "ISO timestamp"
-          }
-        ]
-      }
-    }
-  }
-}
-```
-
-### Export Format
-```json
-{
-  "app_id": "client_123",
-  "role_name": "Admin",
-  "permissions": [
-    {
-      "endpoint": "products.read",
-      "resource": "products",
-      "action": "read",
-      "allowed": true
-    }
-  ],
-  "rls_filters": [
-    {
-      "filter_type": "field",
-      "filter_path": "products.read.created_by",
-      "expression": "created_by = @current_user_id",
-      "created_at": "2024-01-01T..."
-    }
-  ]
-}
-```
-
-## Testing & Validation
-
-### Linting and Type Checking
+### Environment Variables (Backend)
 ```bash
-# Run if available (check package.json for exact commands)
-npm run lint
-npm run typecheck
+AZURE_TENANT_ID=...           # Required: Azure AD tenant
+AZURE_CLIENT_ID=...           # Required: App registration client ID
+AZURE_CLIENT_SECRET=...       # Required: App registration secret
+DEV_CROSS_ORIGIN=true         # Development: Enable CORS for React
+ADMIN_EMAILS=...              # Comma-separated admin emails
+ADMIN_GROUP_IDS=...           # Comma-separated AD group IDs for admins
+PERSIST_KEYS=true             # Store JWT signing keys to disk
 ```
 
-## Common Issues & Solutions
+### Frontend Environment
+```bash
+VITE_API_ORIGIN=http://localhost:8000  # Backend API URL
+```
 
-### HTTPS Configuration
-- React dev server requires HTTPS for Azure AD redirect
-- Self-signed certificates generated with OpenSSL
-- Vite config updated to use HTTPS with certificates
-- Accept browser certificate warning for development
+## Common Development Tasks
 
-### OAuth State Management
-- State parameter stored in localStorage (not sessionStorage)
-- Persists across redirects to Azure AD and back
-- Prevents CSRF attacks during OAuth flow
+### Adding New Permissions
+1. Trigger discovery: `POST /discovery/endpoints/{client_id}`
+2. Permissions auto-populate from discovery response
+3. Assign permissions in UI → saves to backend automatically
 
-### React Key Warnings
-- Fixed by using index fallback when field_name is undefined
-- Key format: `${resource}-${action}-${field.field_name || field-${index}}`
+### Creating Role Mappings
+1. Register app if needed: `POST /auth/admin/apps`
+2. Set AD group mappings: `POST /auth/admin/apps/{client_id}/role-mappings`
+3. Format: `{"AD Group Name": "Role Name"}`
 
-### Filter Storage Migration
-- Automatic migration from single-filter to multi-filter format
-- Handles corrupted data gracefully with try/catch
-- Migration for old field-N format to actual field names
-- Field names extracted from API 'path' property
+### Managing Token Templates
+1. Create template in Token Builder UI
+2. Associate with AD groups (live search)
+3. Set priority for conflict resolution
+4. Mark as default for all users (optional)
 
-### Token Template Synchronization
-- Templates saved to both localStorage and backend
-- Backend is authoritative source on page load
-- Fallback to localStorage if backend unavailable
-- Automatic sync of localStorage templates to backend on first load
-- Default template setting persists to backend properly
+### Debugging Token Issues
+1. Check Token Administration → Logs tab
+2. View decoded claims in modal
+3. Verify template application metadata
+4. Check AD group membership and mappings
 
-### Token Storage in Logs
-- Internal and Azure tokens stored during /auth/token/exchange
-- Each token gets unique ID for tracking
-- Token metadata includes user info, timestamps, and type
+## Known Issues & Solutions
 
-### Template Application Issues
-- Template manager properly handles frontend claim structure
-- Supports type, description, required fields in claims
-- Initializes empty arrays/objects for collection types
-- Includes default values from template when specified
-- AD group templates always override default templates
-- Template priority logic: Group templates > Default template
+### HTTPS Certificate Warnings
+- Self-signed certs required for local Azure AD redirects
+- Generate with: `openssl req -x509 -nodes -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365`
+- Accept browser warning for development
 
-### Role Creation 422 Error
-- Backend expects role mappings as Dict[str, Union[str, List[str]]]
-- Frontend was sending array of objects, now sends dictionary
-- Format: `{"AD Group Name": "Role Name"}` or `{"AD Group": ["Role1", "Role2"]}`
+### Permission Not Appearing in Tokens
+1. Ensure discovery completed successfully
+2. Check `discovered_permissions.json` has the permission
+3. Verify role saved to backend via UI save button
+4. Confirm user's AD groups map to the role
 
-### Permission Storage Architecture
-- **Single source of truth**: `discovered_permissions.json` for all valid permissions
-- Discovery process populates permissions automatically
-- Role assignments stored separately in `role_permissions.json`
-- Field-level permissions automatically added for fields with RLS filters
+### Template Not Applied
+1. Verify AD group display name matches exactly
+2. Check template is enabled
+3. Confirm priority if multiple templates match
+4. Look for `_template_applied` in token claims
 
-### Discovery Authentication
-- Discovery uses JWT tokens created by CIDS (NOT API keys)
-- API keys are for YOUR app to call OTHER services
-- Discovery endpoints should be publicly accessible or accept JWT tokens
-- JWT tokens for discovery are short-lived (5 minutes)
-- Required fields: `app_name` (not `service_name`), `last_updated`
+### Discovery 422 Errors
+- Ensure `app_id` in response matches registered `client_id`
+- Use `app_name` not `service_name` in response
+- Include required `last_updated` field
+- Validate `response_fields` format
 
-### Discovery Format Requirements
-- **CRITICAL**: Discovery response `app_id` must match CIDS registration `client_id`
-- Discovery v2.0 format required for field-level permissions
-- `response_fields` must be Dict[str, FieldMetadata] format
-- FieldMetadata supports: type, description, sensitive, pii, phi flags
-- Permissions only generated for apps with proper discovery response
+### Role Creation Failures
+- Role mappings must be Dict format: `{"Group": "Role"}`
+- Not array format: `[{"group": "...", "role": "..."}]`
+- Frontend handles conversion automatically
 
-### AD Groups and Role Resolution
-- `/auth/token/exchange` fetches AD groups from Microsoft Graph
-- Groups stored as objects with `id` and `displayName`
-- Role mappings stored in `app_role_mappings.json`
-- Roles resolved by matching user's AD group display names to mappings
-- Multiple apps can map the same AD group to different roles
-- Token includes all resolved roles across registered apps
-- Refresh tokens also fetch fresh AD groups to maintain current roles
+## API Endpoint Reference
 
-### Role Permission Synchronization
-- Permissions and RLS filters saved to backend (`role_permissions.json`) to appear in tokens
-- Frontend saves to localStorage AND syncs to backend via `/permissions/{client_id}/roles/{role_name}`
-- New roles automatically create empty permission entry in backend
-- Discovery must complete successfully before permissions can be assigned
-- Permissions validated against `discovered_permissions.json` during save
-- Backend stores both permissions and RLS filters in new unified format
-- Role deletion properly removes entries from all registries (permissions, metadata, RLS filters)
+### Core Authentication
+- `POST /auth/token/exchange` - Exchange Azure auth code for JWT
+- `POST /auth/token` - OAuth2 refresh token endpoint
+- `GET /auth/validate` - Validate JWT or API key
+- `GET /auth/whoami` - Current user info
+- `GET /.well-known/jwks.json` - Public keys for token validation
 
-## Git Workflow
-- Feature branch: `feature/resource-permissions`
-- Commit messages follow conventional format
-- Co-authored commits with Claude
-
-## Dependencies
-- React 18+ with TypeScript
-- Vite for build tooling
-- CSS modules for styling
-- localStorage for persistence
-
-## API Endpoints
-
-### Authentication
-- `POST /auth/token/exchange` - Exchange Azure AD auth code for CIDS JWT token
-- `POST /auth/token` - OAuth2 token endpoint for refresh tokens
-- `GET /auth/validate` - Validate JWT token or API key
-- `GET /auth/whoami` - Get current user info
-- `POST /auth/logout` - Logout user
-
-### Token Template Management
-- `GET /auth/admin/token-templates` - List all templates
-- `GET /auth/admin/token-templates/{name}` - Get specific template
-- `POST /auth/admin/token-templates` - Create/update template
-- `DELETE /auth/admin/token-templates/{name}` - Delete template
-- `POST /auth/admin/token-templates/import` - Bulk import templates
-
-### App Registration & Discovery
-- `POST /auth/admin/apps` - Register new app with optional API key creation
-- `POST /discovery/endpoints/{client_id}` - Trigger discovery for app
-- `GET /discovery/v2/permissions/{client_id}` - Get discovered permissions
-- `POST /auth/admin/apps/{client_id}/api-keys` - Create API key for app
-- `POST /auth/admin/apps/{client_id}/role-mappings` - Set AD group to role mappings
+### Admin Operations (Requires Admin Auth)
+- `GET/POST /auth/admin/token-templates` - Template management
+- `POST /auth/admin/apps` - Register applications
+- `POST /discovery/endpoints/{client_id}` - Trigger discovery
+- `GET /auth/admin/azure-groups?search={query}` - Search AD groups
+- `GET /auth/admin/token-activity` - View active tokens
 
 ### Permission Management
-- `POST /permissions/{client_id}/roles` - Create role with permissions and RLS filters
-- `PUT /permissions/{client_id}/roles/{role_name}` - Update role permissions and RLS filters
-- `GET /permissions/{client_id}/roles/{role_name}` - Get role permissions and RLS filters
+- `POST /permissions/{client_id}/roles` - Create role with permissions
+- `PUT /permissions/{client_id}/roles/{role_name}` - Update role
 - `DELETE /permissions/{client_id}/roles/{role_name}` - Delete role
 
-### Azure AD Integration
-- `GET /auth/admin/azure-groups?search={query}` - Search Azure AD groups
+## Testing Considerations
 
-## Security Considerations
-- RLS filters apply SQL WHERE clauses at data access layer
-- Context variables prevent SQL injection
-- Filters scoped to app + role combination
-- No secrets or keys in frontend code
-- Token templates applied based on Azure AD group membership
-- Template priority system for handling multiple group matches
-- Default template ensures baseline token structure for all users
-- Only one template can be marked as default at a time
-- Template claim filtering ensures only specified claims are included in tokens
-- Required JWT claims (iss, sub, aud, exp, iat, nbf, jti, token_type, token_version) always included
+- No test framework configured yet (add pytest for backend, Jest/Vitest for frontend)
+- Manual testing via test apps in `azure-auth-app/test_apps/`
+- Validate JWT signatures using public key endpoint
+- Test discovery format with compliant test app
