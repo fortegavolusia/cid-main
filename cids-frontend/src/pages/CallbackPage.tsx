@@ -9,15 +9,17 @@ const CallbackContainer = styled.div`
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background-color: var(--bg-color);
+  padding: 24px;
 `;
 
 const CallbackCard = styled.div`
   background: white;
-  border-radius: 10px;
-  padding: 40px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-  max-width: 400px;
+  border-radius: var(--border-radius);
+  padding: 32px;
+  box-shadow: var(--card-shadow);
+  border: 1px solid var(--border-color);
+  max-width: 420px;
   width: 100%;
   text-align: center;
 `;
@@ -27,7 +29,7 @@ const LoadingSpinner = styled.div`
   width: 40px;
   height: 40px;
   border: 4px solid #f3f3f3;
-  border-top: 4px solid #1890ff;
+  border-top: 4px solid var(--primary-color);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 20px;
@@ -40,33 +42,39 @@ const LoadingSpinner = styled.div`
 
 const Message = styled.div`
   font-size: 16px;
-  color: #666;
+  color: var(--text-secondary);
   margin-bottom: 20px;
 `;
 
 const ErrorMessage = styled.div`
   background-color: #fff2f0;
-  border: 1px solid #ffccc7;
-  color: #ff4d4f;
+  border: 1px solid var(--error-color);
+  color: var(--error-color);
   padding: 12px;
-  border-radius: 6px;
+  border-radius: var(--border-radius);
   margin-bottom: 20px;
   font-size: 14px;
+  text-align: left;
 `;
 
 const RetryButton = styled.button`
-  background-color: #1890ff;
+  background-color: var(--primary-color);
   color: white;
   border: none;
   padding: 12px 24px;
-  border-radius: 6px;
+  border-radius: var(--border-radius);
   cursor: pointer;
   font-size: 16px;
   font-weight: 500;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.015);
 
   &:hover {
-    background-color: #40a9ff;
+    filter: brightness(1.05);
+  }
+
+  &:active {
+    filter: brightness(0.95);
   }
 `;
 
@@ -196,14 +204,14 @@ const CallbackPage: React.FC = () => {
 
         {status === 'success' && (
           <>
-            <div style={{ fontSize: '48px', marginBottom: '20px' }}>✓</div>
+            <div style={{ fontSize: '48px', marginBottom: '20px', color: 'var(--success-color)' }}>✓</div>
             <Message>Authentication successful! Redirecting...</Message>
           </>
         )}
 
         {status === 'error' && (
           <>
-            <div style={{ fontSize: '48px', marginBottom: '20px', color: '#ff4d4f' }}>✗</div>
+            <div style={{ fontSize: '48px', marginBottom: '20px', color: 'var(--error-color)' }}>✗</div>
             <Message>Authentication failed</Message>
             {error && <ErrorMessage>{error}</ErrorMessage>}
             <RetryButton onClick={handleRetry}>
