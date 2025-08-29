@@ -26,11 +26,16 @@ class TokenActivityLogger:
         self.activity_logs: Dict[str, List[Dict[str, Any]]] = {}
 
     def log_activity(self, token_id: str, action: TokenAction, performed_by: Optional[Dict[str, Any]] = None, details: Optional[Dict[str, Any]] = None, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> str:
+        from backend.libs.logging_config import get_logging_config
+        from backend.services.token_activity_persist import append_token_activity
+
         log_id = str(uuid.uuid4())
-        timestamp = datetime.utcnow()
+        timestamp = datetime.utcnow().isoformat() + 'Z'
         log_entry = {
             'id': log_id,
-            'timestamp': timestamp.isoformat() + 'Z',
+            'timestamp': timestamp,
+            'event.category': 'token_activity',
+            'token_id': token_id,
             'action': action.value,
             'performed_by': performed_by,
             'details': details or {},
@@ -40,6 +45,12 @@ class TokenActivityLogger:
         if token_id not in self.activity_logs:
             self.activity_logs[token_id] = []
         self.activity_logs[token_id].append(log_entry)
+
+        # Persist to disk if enabled
+        cfg = get_logging_config()
+        if cfg.get('token_activity', {}).get('enabled', True):
+            append_token_activity(log_entry)
+
         logger.debug(f"Logged activity for token {token_id}: {action.value}")
         return log_id
 

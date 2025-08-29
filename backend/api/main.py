@@ -38,6 +38,8 @@ from backend.services.token_templates import TokenTemplateManager
 from backend.services.api_keys import api_key_manager, APIKeyTTL
 from backend.background.api_key_rotation import start_rotation_scheduler
 from backend.utils.paths import api_templates_path
+from backend.libs.logging_config import setup_logging, get_logging_config, update_logging_config as apply_logging_update
+from backend.services.log_reader import read_app_logs
 
 # Request models
 class TokenRequest(BaseModel):
@@ -129,9 +131,8 @@ def datetime_filter(timestamp):
 templates.env.filters['datetime'] = datetime_filter
 
 # Logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+setup_logging()
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 # Ensure infra dirs exist on app import
 try:
@@ -1047,6 +1048,46 @@ async def cleanup_expired_azure_tokens(authorization: Optional[str] = Header(Non
 # Start rotation scheduler
 # ==============================
 # Admin: Rotation policies and manual check
+# ==============================
+# Admin: Logging configuration & readers
+# ==============================
+
+@app.get("/auth/admin/logging/config")
+async def get_logging_configuration(authorization: Optional[str] = Header(None)):
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return JSONResponse(get_logging_config())
+
+
+class LoggingConfigUpdate(BaseModel):
+    app: Optional[dict] = None
+    audit: Optional[dict] = None
+    token_activity: Optional[dict] = None
+    access: Optional[dict] = None
+    privacy: Optional[dict] = None
+
+
+@app.put("/auth/admin/logging/config")
+async def update_logging_configuration(request: LoggingConfigUpdate, authorization: Optional[str] = Header(None)):
+    is_admin, claims = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    patch = {k: v for k, v in request.dict(exclude_none=True).items()}
+    updated = apply_logging_update(patch)
+    audit_logger.log_action(action=AuditAction.POLICY_UPDATED, user_email=claims.get('email'), resource_type="logging", resource_id="config", details={"updated_keys": list(patch.keys())})
+    return JSONResponse(updated)
+
+
+@app.get("/auth/admin/logs/app")
+async def get_app_logs(authorization: Optional[str] = Header(None), start: Optional[str] = None, end: Optional[str] = None, level: Optional[str] = None, logger_prefix: Optional[str] = None, q: Optional[str] = None, limit: int = 100):
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    levels = [s.strip() for s in (level or "").split(",") if s.strip()]
+    items = read_app_logs(start=start, end=end, level=levels or None, logger_prefix=logger_prefix, q=q, limit=limit)
+    return JSONResponse({"items": items, "count": len(items)})
+
 # ==============================
 
 @app.post("/auth/admin/rotation/check")
