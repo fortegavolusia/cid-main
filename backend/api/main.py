@@ -2,7 +2,7 @@
 # NOTE: This is a full move; all imports reference backend.* modules.
 
 from fastapi import FastAPI, Request, HTTPException, Response, Header, Body
-from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
+from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -1170,6 +1170,128 @@ async def get_token_activity_logs(authorization: Optional[str] = Header(None), s
                 continue
     items.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
     return JSONResponse({"items": items[: max(1, min(limit, 1000))], "count": min(len(items), max(1, min(limit, 1000)))})
+
+# ===============
+# Export endpoints
+# ===============
+
+@app.get("/auth/admin/logs/app/export")
+async def export_app_logs(authorization: Optional[str] = Header(None), format: str = "ndjson", limit: int = 50000):
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    items = read_app_logs(limit=min(max(1, limit), 50000))
+
+    if format == "csv":
+        import csv
+        from io import StringIO
+        buf = StringIO()
+        if items:
+            keys = sorted({k for item in items for k in item.keys()})
+            writer = csv.DictWriter(buf, fieldnames=keys)
+            writer.writeheader()
+            for it in items:
+                writer.writerow(it)
+        content = buf.getvalue()
+        return Response(content, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=app_logs.csv"})
+    else:
+        # ndjson
+        content = "\n".join(json.dumps(it) for it in items)
+        return Response(content + ("\n" if content else ""), media_type="application/x-ndjson", headers={"Content-Disposition": "attachment; filename=app_logs.ndjson"})
+
+
+@app.get("/auth/admin/logs/audit/export")
+async def export_audit_logs(authorization: Optional[str] = Header(None), format: str = "ndjson", limit: int = 50000):
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    from backend.services.audit import audit_logger
+    items = audit_logger.query_audit_logs(limit=min(max(1, limit), 50000))
+    if format == "csv":
+        import csv
+        from io import StringIO
+        buf = StringIO()
+        if items:
+            keys = sorted({k for item in items for k in item.keys()})
+            writer = csv.DictWriter(buf, fieldnames=keys)
+            writer.writeheader()
+            for it in items:
+                writer.writerow(it)
+        return Response(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=audit_logs.csv"})
+    else:
+        content = "\n".join(json.dumps(it) for it in items)
+        return Response(content + ("\n" if content else ""), media_type="application/x-ndjson", headers={"Content-Disposition": "attachment; filename=audit_logs.ndjson"})
+
+
+@app.get("/auth/admin/logs/token-activity/export")
+async def export_token_activity_logs(authorization: Optional[str] = Header(None), format: str = "ndjson", limit: int = 50000):
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    # Reuse reader
+    data = await get_token_activity_logs(authorization=authorization, limit=min(max(1, limit), 50000))
+    items = data.body if hasattr(data, 'body') else None
+    if hasattr(data, 'body'):
+        import json as _json
+        body = _json.loads(data.body)
+        items = body.get('items', [])
+    else:
+        items = []
+    if format == "csv":
+        import csv
+        from io import StringIO
+        buf = StringIO()
+        if items:
+            keys = sorted({k for item in items for k in item.keys()})
+            writer = csv.DictWriter(buf, fieldnames=keys)
+            writer.writeheader()
+            for it in items:
+                writer.writerow(it)
+        return Response(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=token_activity.csv"})
+    else:
+        content = "\n".join(json.dumps(it) for it in items)
+        return Response(content + ("\n" if content else ""), media_type="application/x-ndjson", headers={"Content-Disposition": "attachment; filename=token_activity.ndjson"})
+
+
+# ===============
+# SSE live tails
+# ===============
+
+async def _sse_event_stream_app():
+    import asyncio
+    from pathlib import Path
+    from backend.libs.logging_config import get_logging_config
+
+    cfg = get_logging_config()
+    path = Path(cfg.get("app", {}).get("file", {}).get("path", ""))
+    if not path.exists():
+        # yield a comment to keep connection open
+        yield f": no log file yet\n\n"
+    last_size = 0
+    while True:
+        try:
+            if path.exists():
+                size = path.stat().st_size
+                if size > last_size:
+                    with path.open('r') as fh:
+                        fh.seek(last_size)
+                        for line in fh:
+                            if line.strip():
+                                yield f"data: {line.strip()}\n\n"
+                    last_size = size
+        except Exception:
+            pass
+        await asyncio.sleep(1)
+
+
+@app.get("/auth/admin/logs/app/stream")
+async def stream_app_logs(authorization: Optional[str] = Header(None)):
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return StreamingResponse(_sse_event_stream_app(), media_type="text/event-stream")
+
 
 async def get_app_logs(authorization: Optional[str] = Header(None), start: Optional[str] = None, end: Optional[str] = None, level: Optional[str] = None, logger_prefix: Optional[str] = None, q: Optional[str] = None, limit: int = 100):
     is_admin, _ = check_admin_access(authorization)
