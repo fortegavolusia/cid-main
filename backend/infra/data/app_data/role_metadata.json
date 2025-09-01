@@ -5,6 +5,11 @@
       "created_at": "2025-08-28T17:42:38.728336",
       "description": "Role with 1 permissions and 2 RLS filters",
       "updated_at": "2025-08-28T17:43:01.993653"
+    },
+    "log testing": {
+      "created_at": "2025-08-29T18:38:29.586297",
+      "description": "Role with 1 permissions and 0 RLS filters",
+      "updated_at": "2025-08-29T18:38:53.053612"
     }
   },
   "app_affa35367c004335": {}

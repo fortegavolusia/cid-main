@@ -66,7 +66,20 @@ class JSONFormatter(logging.Formatter):
             "message": record.getMessage(),
         }
         # Attach extras if present
-        for key in ("request_id", "trace_id", "span_id", "user_email"):
+        extra_keys = (
+            "request_id",
+            "trace_id",
+            "span_id",
+            "user_email",
+            "http_request_method",
+            "http_response_status_code",
+            "url_path",
+            "duration_ms",
+            "source_ip",
+            "user_agent_original",
+            "event_category",
+        )
+        for key in extra_keys:
             val = getattr(record, key, None)
             if val is not None:
                 payload[key.replace("_", ".")] = val

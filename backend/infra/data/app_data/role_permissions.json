@@ -4,8 +4,8 @@
   "app_fe80739ff4e547fb": {
     "test14": {
       "permissions": [
-        "app_fe80739ff4e547fb.users.read.created_at",
-        "app_fe80739ff4e547fb.users.read.medical_records"
+        "app_fe80739ff4e547fb.users.read.medical_records",
+        "app_fe80739ff4e547fb.users.read.created_at"
       ],
       "rls_filters": {
         "field:users.read.medical_records": [
@@ -23,6 +23,10 @@
           }
         ]
       }
+    },
+    "log testing": {
+      "permissions": [],
+      "rls_filters": {}
     }
   },
   "app_affa35367c004335": {}

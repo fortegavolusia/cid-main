@@ -24,32 +24,29 @@ async def access_log_middleware(request: Request, call_next: Callable):
     finally:
         try:
             duration_ms = int((time.perf_counter() - start) * 1000)
-            # Extract minimal user/email info from Authorization if our auth middleware sets it; fallback None
+            # Extract user/email if set by auth; fallback None
             user_email = None
             try:
-                # If downstream set on request.state
                 user_email = getattr(request.state, "user_email", None)
             except Exception:
                 pass
-            # Redact Authorization header
             user_agent = request.headers.get("user-agent")
             client_ip = request.client.host if request.client else None
-            record = {
-                "timestamp": None,  # logger formatter will add
-                "event.category": "access",
-                "service.name": "cids-backend",
-                "http.request.method": request.method,
-                "http.response.status_code": getattr(response, "status_code", None),
-                "url.path": request.url.path,
-                "duration.ms": duration_ms,
-                "user.email": user_email,
-                "source.ip": client_ip,
-                "user_agent.original": user_agent,
-            }
-            logger.info("request", extra={
-                "user_email": user_email,
-                "request_id": getattr(request.state, "request_id", None),
-            })
+
+            # Emit structured fields via `extra` so JSON formatter includes them
+            logger.info(
+                "request",
+                extra={
+                    "request_id": getattr(request.state, "request_id", None),
+                    "user_email": user_email,
+                    "http_request_method": request.method,
+                    "http_response_status_code": getattr(response, "status_code", None),
+                    "url_path": request.url.path,
+                    "duration_ms": duration_ms,
+                    "source_ip": client_ip,
+                    "user_agent_original": user_agent,
+                },
+            )
         except Exception:
             # Avoid breaking request on logging failure
             pass

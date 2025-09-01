@@ -11,6 +11,48 @@ import type {
 } from '../types/admin';
 
 class AdminService {
+  // Logging Config
+  async getLoggingConfig(): Promise<any> {
+    return apiService.get('/auth/admin/logging/config');
+  }
+
+  async updateLoggingConfig(patch: any): Promise<any> {
+    return apiService.put('/auth/admin/logging/config', patch);
+  }
+
+  // Logs Readers
+  async getAppLogs(params?: { start?: string; end?: string; level?: string; logger_prefix?: string; q?: string; limit?: number }): Promise<{ items: any[]; count: number }>{
+    const usp = new URLSearchParams();
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && String(v).length) usp.append(k, String(v));
+    });
+    return apiService.get(`/auth/admin/logs/app${usp.toString() ? `?${usp.toString()}` : ''}`);
+  }
+
+  async getAuditLogs(params?: { start?: string; end?: string; action?: string; user_email?: string; resource_id?: string; limit?: number }): Promise<{ items: any[]; count: number }>{
+    const usp = new URLSearchParams();
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && String(v).length) usp.append(k, String(v));
+    });
+    return apiService.get(`/auth/admin/logs/audit${usp.toString() ? `?${usp.toString()}` : ''}`);
+  }
+
+  async getTokenActivityLogs(params?: { start?: string; end?: string; action?: string; user_email?: string; token_id?: string; limit?: number }): Promise<{ items: any[]; count: number }>{
+    const usp = new URLSearchParams();
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && String(v).length) usp.append(k, String(v));
+    });
+    return apiService.get(`/auth/admin/logs/token-activity${usp.toString() ? `?${usp.toString()}` : ''}`);
+  }
+
+  async exportLogs(kind: 'app' | 'audit' | 'token-activity', format: 'ndjson' | 'csv' = 'ndjson', limit: number = 50000): Promise<Blob> {
+    const path = kind === 'app' ? '/auth/admin/logs/app/export' : kind === 'audit' ? '/auth/admin/logs/audit/export' : '/auth/admin/logs/token-activity/export';
+    const usp = new URLSearchParams({ format, limit: String(limit) });
+    // Use axios to include Authorization header and get blob
+    // @ts-ignore - allow custom config
+    return apiService.get(path + `?${usp.toString()}`, { responseType: 'blob' });
+  }
+
   // Token Management
   async getInternalTokens(): Promise<TokenListResponse> {
     return apiService.get<TokenListResponse>('/auth/admin/tokens');
@@ -76,7 +118,7 @@ class AdminService {
 
   async rotateAPIKey(
     clientId: string,
-    keyId: string, 
+    keyId: string,
     gracePeriodHours: number = 24
   ): Promise<APIKeyCreationResponse> {
     return apiService.post(
@@ -140,7 +182,7 @@ class AdminService {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
     params.append('top', top.toString());
-    
+
     return apiService.get(`/auth/admin/azure-groups?${params.toString()}`);
   }
 

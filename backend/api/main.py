@@ -36,7 +36,7 @@ from backend.services.discovery import DiscoveryService as EnhancedDiscoveryServ
 from backend.services.permission_registry import PermissionRegistry
 from backend.services.token_templates import TokenTemplateManager
 from backend.services.api_keys import api_key_manager, APIKeyTTL
-from backend.background.api_key_rotation import start_rotation_scheduler
+from backend.background.api_key_rotation import start_rotation_scheduler, rotation_scheduler
 from backend.utils.paths import api_templates_path
 from backend.libs.logging_config import setup_logging, get_logging_config, update_logging_config as apply_logging_update
 from backend.services.log_reader import read_app_logs
@@ -1059,6 +1059,12 @@ async def cleanup_expired_azure_tokens(authorization: Optional[str] = Header(Non
 # Admin: Logging configuration & readers
 # ==============================
 
+@app.get("/auth/debug/admin-check")
+async def admin_check(authorization: Optional[str] = Header(None)):
+    is_admin, _ = check_admin_access(authorization)
+    return JSONResponse({"is_admin": is_admin})
+
+
 @app.get("/auth/admin/logging/config")
 async def get_logging_configuration(authorization: Optional[str] = Header(None)):
     is_admin, _ = check_admin_access(authorization)
@@ -1087,6 +1093,15 @@ async def update_logging_configuration(request: LoggingConfigUpdate, authorizati
 
 
 @app.get("/auth/admin/logs/app")
+async def get_app_logs(authorization: Optional[str] = Header(None), start: Optional[str] = None, end: Optional[str] = None, level: Optional[str] = None, logger_prefix: Optional[str] = None, q: Optional[str] = None, limit: int = 100):
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    levels = [s.strip() for s in (level or "").split(",") if s.strip()]
+    items = read_app_logs(start=start, end=end, level=levels or None, logger_prefix=logger_prefix, q=q, limit=limit)
+    return JSONResponse({"items": items, "count": len(items)})
+
+
 
 @app.get("/auth/admin/logs/audit")
 async def get_audit_logs(authorization: Optional[str] = Header(None), start: Optional[str] = None, end: Optional[str] = None, action: Optional[str] = None, user_email: Optional[str] = None, resource_id: Optional[str] = None, limit: int = 100):
@@ -1291,6 +1306,88 @@ async def stream_app_logs(authorization: Optional[str] = Header(None)):
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     return StreamingResponse(_sse_event_stream_app(), media_type="text/event-stream")
+
+
+async def _sse_event_stream_audit():
+    import asyncio
+    from pathlib import Path
+    from backend.libs.logging_config import get_logging_config
+
+    cfg = get_logging_config()
+    dir_path = Path(cfg.get("audit", {}).get("path", ""))
+    last_file = None
+    last_size = 0
+    while True:
+        try:
+            files = sorted(dir_path.glob('audit_*.jsonl')) if dir_path.exists() else []
+            current = files[-1] if files else None
+            if current is None:
+                yield f": no audit log file yet\n\n"
+                await asyncio.sleep(2)
+                continue
+            if last_file != current:
+                last_file = current
+                last_size = 0
+            size = current.stat().st_size
+            if size > last_size:
+                with current.open('r') as fh:
+                    fh.seek(last_size)
+                    for line in fh:
+                        if line.strip():
+                            yield f"data: {line.strip()}\n\n"
+                last_size = size
+        except Exception:
+            pass
+        await asyncio.sleep(1)
+
+
+@app.get("/auth/admin/logs/audit/stream")
+async def stream_audit_logs(authorization: Optional[str] = Header(None)):
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return StreamingResponse(_sse_event_stream_audit(), media_type="text/event-stream")
+
+
+async def _sse_event_stream_token_activity():
+    import asyncio
+    from pathlib import Path
+    from backend.libs.logging_config import get_logging_config
+
+    cfg = get_logging_config()
+    dir_path = Path(cfg.get("token_activity", {}).get("path", ""))
+    last_file = None
+    last_size = 0
+    while True:
+        try:
+            files = sorted(dir_path.glob('token_activity_*.jsonl')) if dir_path.exists() else []
+            current = files[-1] if files else None
+            if current is None:
+                yield f": no token activity log file yet\n\n"
+                await asyncio.sleep(2)
+                continue
+            if last_file != current:
+                last_file = current
+                last_size = 0
+            size = current.stat().st_size
+            if size > last_size:
+                with current.open('r') as fh:
+                    fh.seek(last_size)
+                    for line in fh:
+                        if line.strip():
+                            yield f"data: {line.strip()}\n\n"
+                last_size = size
+        except Exception:
+            pass
+        await asyncio.sleep(1)
+
+
+@app.get("/auth/admin/logs/token-activity/stream")
+async def stream_token_activity_logs(authorization: Optional[str] = Header(None)):
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return StreamingResponse(_sse_event_stream_token_activity(), media_type="text/event-stream")
 
 
 async def get_app_logs(authorization: Optional[str] = Header(None), start: Optional[str] = None, end: Optional[str] = None, level: Optional[str] = None, logger_prefix: Optional[str] = None, q: Optional[str] = None, limit: int = 100):
