@@ -1,0 +1,39 @@
+{
+  "app": {
+    "level": "DEBUG",
+    "json": true,
+    "stdout": true,
+    "file": {
+      "enabled": true,
+      "path": "/home/jnbailey/Desktop/CID/backend/infra/logs/app/app.log",
+      "rotation": {
+        "max_bytes": 20000000,
+        "backup_count": 10
+      }
+    },
+    "module_levels": {
+      "httpx": "WARNING",
+      "uvicorn": "WARNING"
+    }
+  },
+  "audit": {
+    "enabled": true,
+    "path": "/home/jnbailey/Desktop/CID/backend/infra/logs/audit",
+    "retention_days": 90
+  },
+  "token_activity": {
+    "enabled": true,
+    "persist_to_disk": true,
+    "path": "/home/jnbailey/Desktop/CID/backend/infra/logs/token_activity",
+    "retention_days": 60
+  },
+  "access": {
+    "enabled": true,
+    "path": "/home/jnbailey/Desktop/CID/backend/infra/logs/access",
+    "retention_days": 30
+  },
+  "privacy": {
+    "redact_auth_headers": true,
+    "truncate_ids": true
+  }
+}

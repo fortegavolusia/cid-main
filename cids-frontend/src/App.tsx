@@ -9,6 +9,7 @@ import CallbackPage from './pages/CallbackPage';
 import AdminPage from './pages/AdminPage';
 import QueryBuilderPage from './pages/QueryBuilderPage';
 import TokenAdministrationPage from './pages/TokenAdministrationPage';
+import CIDAdministrationPage from './pages/CIDAdministrationPage';
 import SessionTimeoutModal from './components/SessionTimeoutModal';
 import { tokenManager } from './services/tokenManager';
 import './App.css';
@@ -83,7 +84,7 @@ const AppRoutes: React.FC = () => {
     // Initialize token manager on app load if tokens exist
     const accessToken = localStorage.getItem('access_token');
     const refreshToken = localStorage.getItem('refresh_token');
-    
+
     if (accessToken && isAuthenticated) {
       tokenManager.initialize(accessToken, refreshToken || undefined);
     }
@@ -93,7 +94,7 @@ const AppRoutes: React.FC = () => {
     <>
       {/* Session timeout modal - only show when authenticated */}
       {isAuthenticated && <SessionTimeoutModal />}
-      
+
       <Routes>
       <Route
         path="/login"
@@ -147,6 +148,17 @@ const AppRoutes: React.FC = () => {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/cid-admin"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <CIDAdministrationPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </>

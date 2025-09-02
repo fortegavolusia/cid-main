@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { useAuth } from '../contexts/AuthContext';
+import adminService from '../services/adminService';
 
 const LayoutContainer = styled.div`
   display: flex;
@@ -134,12 +135,27 @@ interface LayoutProps {
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const { user, logout, isAuthenticated } = useAuth();
 
   useEffect(() => {
     const saved = localStorage.getItem('sidebarCollapsed');
     if (saved === 'true') setSidebarCollapsed(true);
   }, []);
+
+  useEffect(() => {
+    // Check admin status by probing a known admin-only endpoint.
+    // Avoids 404 noise if /auth/debug/admin-check isn't present in this backend build.
+    if (!isAuthenticated) return;
+    (async () => {
+      try {
+        await adminService.getAppLogs({ limit: 1 });
+        setIsAdmin(true);
+      } catch (e) {
+        setIsAdmin(false);
+      }
+    })();
+  }, [isAuthenticated]);
 
   const toggleSidebar = () => {
     const next = !sidebarCollapsed;
@@ -174,6 +190,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <NavButton onClick={() => window.location.href = '/token-admin'}>
             Token Administration
           </NavButton>
+
+          {isAdmin && (
+            <NavButton onClick={() => window.location.href = '/cid-admin'}>
+              CID Administration
+            </NavButton>
+          )}
 
           <NavButton onClick={() => window.location.href = '/query-builder'}>
             Query Builder
