@@ -76,6 +76,9 @@ const AdminPage: React.FC = () => {
     appName: ''
   });
 
+  // Discovery status tracking
+  const [discoveryStatus, setDiscoveryStatus] = useState<Record<string, 'running' | 'success' | 'error' | 'cached' | 'unknown'>>({});
+
   const [editModal, setEditModal] = useState({
     isOpen: false,
     app: null as AppInfo | null
@@ -383,26 +386,127 @@ const AdminPage: React.FC = () => {
                           });
                         }}>User Roles & Permissions</button>
 
-                        <button className="button secondary" onClick={async()=>{
-                          try {
-                            alert('Running discovery...');
-                            const res = await adminService.triggerDiscovery(app.client_id);
-                            console.log('Discovery response:', res);
-                            if (res && res.status === 'success') {
-                              alert(`Discovery completed! Found ${res.endpoints_discovered} endpoints, stored ${res.endpoints_stored}.\n\nPermissions generated: ${res.permissions_generated || 0}`);
-                            } else if (res && res.status === 'cached') {
-                              alert(res.message || 'Using cached discovery data');
-                            } else if (res && res.status === 'error') {
-                              alert(`Discovery failed: ${res.error}`);
-                            } else {
-                              alert(`Discovery response: ${JSON.stringify(res)}`);
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          <button className="button secondary" onClick={async()=>{
+                            try {
+                              setDiscoveryStatus(prev => ({ ...prev, [app.client_id]: 'running' }));
+                              const res = await adminService.triggerDiscovery(app.client_id, false);
+                              console.log('Discovery response:', res);
+
+                              if (res && res.status === 'success') {
+                                setDiscoveryStatus(prev => ({ ...prev, [app.client_id]: 'success' }));
+                                alert(`✅ Discovery completed successfully!\n\n` +
+                                      `📊 Results:\n` +
+                                      `• Endpoints discovered: ${res.endpoints_discovered}\n` +
+                                      `• Endpoints stored: ${res.endpoints_stored}\n` +
+                                      `• Permissions generated: ${res.permissions_generated || 0}\n` +
+                                      `• Response time: ${res.response_time_ms || 0}ms\n` +
+                                      `• Discovery version: ${res.discovery_version || 'N/A'}`);
+                              } else if (res && res.status === 'cached') {
+                                setDiscoveryStatus(prev => ({ ...prev, [app.client_id]: 'cached' }));
+                                alert(`📋 Using cached discovery data\n\n${res.message}\n\nCache age: ${res.cache_age_minutes || 0} minutes`);
+                              } else if (res && res.status === 'error') {
+                                setDiscoveryStatus(prev => ({ ...prev, [app.client_id]: 'error' }));
+                                const errorType = res.error_type ? ` (${res.error_type})` : '';
+                                const responseTime = res.response_time_ms ? `\nResponse time: ${res.response_time_ms}ms` : '';
+                                alert(`❌ Discovery failed${errorType}\n\nError: ${res.error}${responseTime}`);
+                              } else {
+                                setDiscoveryStatus(prev => ({ ...prev, [app.client_id]: 'unknown' }));
+                                alert(`❓ Unexpected response: ${JSON.stringify(res)}`);
+                              }
+                              await loadApps();
+                            } catch (error) {
+                              console.error('Discovery error:', error);
+                              setDiscoveryStatus(prev => ({ ...prev, [app.client_id]: 'error' }));
+                              alert(`❌ Discovery failed: ${error.message || 'unknown error'}`);
                             }
-                            await loadApps();
-                          } catch (error) {
-                            console.error('Discovery error:', error);
-                            alert(`Discovery failed: ${error.message || 'unknown error'}`);
-                          }
-                        }}>Run Discovery</button>
+                          }} disabled={discoveryStatus[app.client_id] === 'running'}>
+                            {discoveryStatus[app.client_id] === 'running' ? '🔄 Running...' : '🔍 Run Discovery'}
+                          </button>
+
+                          <button className="button secondary" onClick={async()=>{
+                            try {
+                              const res = await adminService.triggerDiscovery(app.client_id, true);
+                              console.log('Force discovery response:', res);
+
+                              if (res && res.status === 'success') {
+                                alert(`✅ Force discovery completed!\n\n` +
+                                      `📊 Results:\n` +
+                                      `• Endpoints discovered: ${res.endpoints_discovered}\n` +
+                                      `• Permissions generated: ${res.permissions_generated || 0}\n` +
+                                      `• Response time: ${res.response_time_ms || 0}ms`);
+                              } else if (res && res.status === 'error') {
+                                const errorType = res.error_type ? ` (${res.error_type})` : '';
+                                alert(`❌ Force discovery failed${errorType}\n\nError: ${res.error}`);
+                              }
+                              await loadApps();
+                            } catch (error) {
+                              console.error('Force discovery error:', error);
+                              alert(`❌ Force discovery failed: ${error.message || 'unknown error'}`);
+                            }
+                          }} title="Force discovery (ignore cache)">
+                            🔄 Force
+                          </button>
+
+                          <button className="button secondary" onClick={async()=>{
+                            try {
+                              const history = await adminService.getDiscoveryHistory(app.client_id);
+                              const recentAttempts = history.recent_attempts || [];
+                              const lastSuccess = history.last_successful_discovery ?
+                                new Date(history.last_successful_discovery).toLocaleString() : 'Never';
+
+                              let message = `📈 Discovery History for ${history.app_name}\n\n`;
+                              message += `📊 Statistics:\n`;
+                              message += `• Total attempts: ${history.total_attempts}\n`;
+                              message += `• Success rate: ${(history.success_rate * 100).toFixed(1)}%\n`;
+                              message += `• Last success: ${lastSuccess}\n\n`;
+
+                              if (recentAttempts.length > 0) {
+                                message += `🕒 Recent attempts (last ${Math.min(recentAttempts.length, 5)}):\n`;
+                                recentAttempts.slice(-5).reverse().forEach((attempt, i) => {
+                                  const timestamp = new Date(attempt.timestamp).toLocaleString();
+                                  const status = attempt.success ? '✅' : '❌';
+                                  const error = attempt.error_message ? ` - ${attempt.error_message}` : '';
+                                  message += `${status} ${timestamp}${error}\n`;
+                                });
+                              }
+
+                              alert(message);
+                            } catch (error) {
+                              console.error('History error:', error);
+                              alert(`❌ Failed to load history: ${error.message || 'unknown error'}`);
+                            }
+                          }} title="View discovery history">
+                            📈 History
+                          </button>
+
+                          {app.discovery_endpoint && (
+                            <button className="button secondary" onClick={async()=>{
+                              try {
+                                const result = await adminService.testDiscoveryEndpoint(app.discovery_endpoint);
+
+                                if (result.status === 'success') {
+                                  alert(`✅ Discovery endpoint test passed!\n\n` +
+                                        `📊 Results:\n` +
+                                        `• App name: ${result.app_name}\n` +
+                                        `• Endpoints found: ${result.endpoints_found}\n` +
+                                        `• Services found: ${result.services_found}\n` +
+                                        `• Discovery version: ${result.discovery_version}\n` +
+                                        `• Health check: ${result.health_check?.healthy ? '✅ Healthy' : '❌ Unhealthy'}`);
+                                } else {
+                                  const stage = result.stage ? ` (${result.stage})` : '';
+                                  const errorType = result.error_type ? ` [${result.error_type}]` : '';
+                                  alert(`❌ Discovery endpoint test failed${stage}${errorType}\n\nError: ${result.error}`);
+                                }
+                              } catch (error) {
+                                console.error('Test endpoint error:', error);
+                                alert(`❌ Endpoint test failed: ${error.message || 'unknown error'}`);
+                              }
+                            }} title="Test discovery endpoint">
+                              🧪 Test
+                            </button>
+                          )}
+                        </div>
                       </>
                     )}
                     <button className="button" onClick={()=>handleEditApp(app)}>Edit</button>
@@ -413,6 +517,103 @@ const AdminPage: React.FC = () => {
               ))}
             </div>
           )}
+        </SectionContent>
+      </InfoSection>
+
+      {/* Discovery Statistics Section */}
+      <InfoSection>
+        <SectionTitle>🔍 Discovery Statistics</SectionTitle>
+        <SectionContent>
+          <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
+            <button className="button secondary" onClick={async () => {
+              try {
+                const stats = await adminService.getDiscoveryStatistics();
+                const message = `📊 Discovery Statistics\n\n` +
+                              `• Total apps: ${stats.total_apps}\n` +
+                              `• Total attempts: ${stats.total_attempts}\n` +
+                              `• Overall success rate: ${(stats.overall_success_rate * 100).toFixed(1)}%\n` +
+                              `• Apps with recent success: ${stats.apps_with_recent_success}\n` +
+                              `• Apps with failures: ${stats.apps_with_failures}\n` +
+                              `• Average response time: ${stats.average_response_time_ms?.toFixed(0) || 0}ms`;
+                alert(message);
+              } catch (error) {
+                console.error('Stats error:', error);
+                alert(`❌ Failed to load statistics: ${error.message || 'unknown error'}`);
+              }
+            }}>
+              📊 View Statistics
+            </button>
+
+            <button className="button secondary" onClick={async () => {
+              try {
+                const active = await adminService.getActiveDiscoveries();
+                const discoveries = active.active_discoveries || {};
+                const count = Object.keys(discoveries).length;
+
+                if (count === 0) {
+                  alert('✅ No active discoveries');
+                  return;
+                }
+
+                let message = `🔄 Active Discoveries (${count})\n\n`;
+                Object.entries(discoveries).forEach(([appId, progress]: [string, any]) => {
+                  message += `• ${appId}: ${progress.current_step} (${progress.progress_percentage}%)\n`;
+                  if (progress.error_message) {
+                    message += `  ❌ Error: ${progress.error_message}\n`;
+                  }
+                });
+
+                alert(message);
+              } catch (error) {
+                console.error('Active discoveries error:', error);
+                alert(`❌ Failed to load active discoveries: ${error.message || 'unknown error'}`);
+              }
+            }}>
+              🔄 Active Discoveries
+            </button>
+
+            <button className="button" onClick={async () => {
+              if (!apps) return;
+
+              const appIds = apps.filter(app => app.allow_discovery).map(app => app.client_id);
+              if (appIds.length === 0) {
+                alert('❌ No apps with discovery enabled');
+                return;
+              }
+
+              const confirmed = confirm(`🚀 Run batch discovery on ${appIds.length} apps?\n\nThis will discover endpoints for all apps with discovery enabled.`);
+              if (!confirmed) return;
+
+              try {
+                const result = await adminService.batchDiscovery(appIds, false);
+                const summary = result.summary;
+
+                let message = `📊 Batch Discovery Results\n\n`;
+                message += `• Total apps: ${summary.total}\n`;
+                message += `• Successful: ${summary.successful}\n`;
+                message += `• Failed: ${summary.failed}\n`;
+                message += `• Cached: ${summary.cached}\n`;
+                message += `• Success rate: ${(summary.success_rate * 100).toFixed(1)}%\n\n`;
+
+                if (summary.failed > 0) {
+                  message += `❌ Failed apps:\n`;
+                  Object.entries(result.batch_results).forEach(([appId, res]: [string, any]) => {
+                    if (res.status === 'error') {
+                      message += `• ${appId}: ${res.error}\n`;
+                    }
+                  });
+                }
+
+                alert(message);
+                await loadApps();
+              } catch (error) {
+                console.error('Batch discovery error:', error);
+                alert(`❌ Batch discovery failed: ${error.message || 'unknown error'}`);
+              }
+            }}>
+              🚀 Batch Discovery
+            </button>
+          </div>
         </SectionContent>
       </InfoSection>
 

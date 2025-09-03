@@ -159,8 +159,29 @@ class AdminService {
     return apiService.delete(`/permissions/${clientId}/roles/${roleName}`);
   }
 
-  async triggerDiscovery(clientId: string): Promise<any> {
-    return apiService.post(`/discovery/endpoints/${clientId}`);
+  async triggerDiscovery(clientId: string, force: boolean = false): Promise<any> {
+    return apiService.post(`/discovery/endpoints/${clientId}?force=${force}`);
+  }
+
+  // Enhanced Discovery Methods
+  async batchDiscovery(clientIds: string[], force: boolean = false): Promise<any> {
+    return apiService.post('/discovery/batch', { client_ids: clientIds, force });
+  }
+
+  async getDiscoveryHistory(clientId: string): Promise<any> {
+    return apiService.get(`/discovery/history/${clientId}`);
+  }
+
+  async getDiscoveryStatistics(): Promise<any> {
+    return apiService.get('/discovery/statistics');
+  }
+
+  async getActiveDiscoveries(): Promise<any> {
+    return apiService.get('/discovery/active');
+  }
+
+  async testDiscoveryEndpoint(discoveryEndpoint: string): Promise<any> {
+    return apiService.post('/discovery/test-endpoint', { discovery_endpoint: discoveryEndpoint });
   }
 
   async updateAppEndpoints(clientId: string, endpoints: any): Promise<any> {
