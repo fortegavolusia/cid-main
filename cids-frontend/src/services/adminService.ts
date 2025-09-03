@@ -101,7 +101,12 @@ class AdminService {
 
   // API Key Management
   async getAppAPIKeys(clientId: string): Promise<{ api_keys: APIKey[] }> {
-    return apiService.get(`/auth/admin/apps/${clientId}/api-keys`);
+    const res = await apiService.get(`/auth/admin/apps/${clientId}/api-keys`);
+    // Backend returns a raw array; adapt to expected shape
+    if (Array.isArray(res)) {
+      return { api_keys: res as APIKey[] };
+    }
+    return res;
   }
 
   async createAPIKey(clientId: string, request: CreateAPIKeyRequest): Promise<APIKeyCreationResponse> {
@@ -142,11 +147,11 @@ class AdminService {
   }
 
   // Permission Management
-  async createRolePermissions(clientId: string, roleData: { role_name: string; permissions: string[]; description?: string; rls_filters?: any }): Promise<any> {
+  async createRolePermissions(clientId: string, roleData: { role_name: string; permissions: string[]; description?: string; rls_filters?: any; a2a_only?: boolean }): Promise<any> {
     return apiService.post(`/permissions/${clientId}/roles`, roleData);
   }
 
-  async updateRolePermissions(clientId: string, roleName: string, permissionData: { permissions: string[]; description?: string; rls_filters?: any }): Promise<any> {
+  async updateRolePermissions(clientId: string, roleName: string, permissionData: { permissions: string[]; description?: string; rls_filters?: any; a2a_only?: boolean }): Promise<any> {
     return apiService.put(`/permissions/${clientId}/roles/${roleName}`, permissionData);
   }
 
@@ -169,6 +174,30 @@ class AdminService {
 
   async getAppPermissionTree(clientId: string): Promise<any> {
     return apiService.get(`/discovery/v2/permissions/${clientId}/tree`);
+  }
+
+  // Roles (Admin)
+  async getAppRoles(clientId: string): Promise<string[]> {
+    const res: any = await apiService.get(`/permissions/${clientId}/roles`);
+    const rolesObj = res?.roles || {};
+    return Object.keys(rolesObj);
+  }
+
+  async getAppRolesWithMetadata(clientId: string): Promise<Record<string, { permissions: string[]; metadata: any }>> {
+    const res: any = await apiService.get(`/permissions/${clientId}/roles`);
+    return res?.roles || {};
+  }
+
+  // A2A Role Mappings (App-level defaults)
+  async getA2ARoleMappings(callerId: string): Promise<Record<string, string[]>> {
+    const res: any = await apiService.get(`/auth/admin/apps/${callerId}/a2a-role-mappings`);
+    // Response shape: { [callerId]: { target_app_id: [roles] } }
+    const mapping = res?.[callerId] || {};
+    return mapping as Record<string, string[]>;
+  }
+
+  async putA2ARoleMappings(callerId: string, mappings: Record<string, string[]>): Promise<void> {
+    await apiService.put(`/auth/admin/apps/${callerId}/a2a-role-mappings`, { mappings });
   }
 
   // Azure AD Groups
@@ -242,6 +271,13 @@ class AdminService {
 
   async importTokenTemplates(templates: any[]): Promise<any> {
     return apiService.post('/auth/admin/token-templates/import', { templates });
+  }
+
+  // A2A Token Minting (for testing from UI)
+  async mintA2AToken(apiKey: string, body?: { template_name?: string; audience?: string }): Promise<{ access_token: string; token_type: string; expires_in: number; token_id?: string }>{
+    return apiService.post('/auth/token/a2a', body || {}, {
+      headers: { Authorization: `Bearer ${apiKey}` }
+    });
   }
 }
 

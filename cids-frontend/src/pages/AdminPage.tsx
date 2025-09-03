@@ -75,12 +75,26 @@ const AdminPage: React.FC = () => {
     clientId: '',
     appName: ''
   });
+
+  const [editModal, setEditModal] = useState({
+    isOpen: false,
+    app: null as AppInfo | null
+  });
+
+  const [editForm, setEditForm] = useState({
+    name: '',
+    description: '',
+    redirect_uris: [''],
+    allow_discovery: false,
+    discovery_endpoint: ''
+  });
+
   const [registerForm, setRegisterForm] = useState({
-    name: '', 
-    description: '', 
-    owner_email: '', 
-    redirect_uris: [''], 
-    allow_discovery: false, 
+    name: '',
+    description: '',
+    owner_email: '',
+    redirect_uris: [''],
+    allow_discovery: false,
     discovery_endpoint: '',
     create_api_key: false,
     api_key_name: '',
@@ -127,28 +141,28 @@ const AdminPage: React.FC = () => {
         discovery_endpoint: registerForm.discovery_endpoint || null,
         create_api_key: registerForm.create_api_key,
         api_key_name: registerForm.api_key_name || undefined,
-        api_key_permissions: registerForm.api_key_permissions ? 
-          registerForm.api_key_permissions.split(',').map(p => p.trim()).filter(p => p) : 
+        api_key_permissions: registerForm.api_key_permissions ?
+          registerForm.api_key_permissions.split(',').map(p => p.trim()).filter(p => p) :
           undefined
       };
       const result = await adminService.createApp(payload);
-      
+
       // Build alert message
       let alertMessage = `App registered successfully!\n\nClient ID: ${result.app.client_id}\nClient Secret: ${result.client_secret}`;
-      
+
       if (result.api_key) {
         alertMessage += `\n\n🔑 API Key Created:\n${result.api_key}\n\n⚠️ SAVE BOTH THE CLIENT SECRET AND API KEY NOW!\nThey won't be shown again.`;
       } else {
         alertMessage += `\n\n⚠️ SAVE THE CLIENT SECRET NOW!\nIt won't be shown again.`;
       }
-      
+
       alert(alertMessage);
-      setRegisterForm({ 
-        name: '', 
-        description: '', 
-        owner_email: '', 
-        redirect_uris: [''], 
-        allow_discovery: false, 
+      setRegisterForm({
+        name: '',
+        description: '',
+        owner_email: '',
+        redirect_uris: [''],
+        allow_discovery: false,
         discovery_endpoint: '',
         create_api_key: false,
         api_key_name: '',
@@ -177,6 +191,56 @@ const AdminPage: React.FC = () => {
       await loadApps();
     } catch (e: any) {
       alert(e.message || 'Failed to delete app');
+    }
+  };
+
+  const handleEditApp = (app: AppInfo) => {
+    setEditForm({
+      name: app.name,
+      description: app.description || '',
+      redirect_uris: app.redirect_uris && app.redirect_uris.length > 0 ? app.redirect_uris : [''],
+      allow_discovery: app.allow_discovery || false,
+      discovery_endpoint: app.discovery_endpoint || ''
+    });
+    setEditModal({ isOpen: true, app });
+  };
+
+  const handleUpdateApp = async (e: any) => {
+    e.preventDefault();
+    if (!editModal.app) return;
+
+    try {
+      const payload = {
+        name: editForm.name,
+        description: editForm.description,
+        redirect_uris: editForm.redirect_uris.filter(u => u && u.trim().length > 0),
+        allow_discovery: editForm.allow_discovery,
+        discovery_endpoint: editForm.discovery_endpoint || null
+      };
+
+      await adminService.updateApp(editModal.app.client_id, payload);
+      alert('App updated successfully!');
+      setEditModal({ isOpen: false, app: null });
+      await loadApps();
+    } catch (e: any) {
+      alert(e.message || 'Failed to update app');
+    }
+  };
+
+  const handleEditRedirectChange = (index: number, value: string) => {
+    const newUris = [...editForm.redirect_uris];
+    newUris[index] = value;
+    setEditForm({ ...editForm, redirect_uris: newUris });
+  };
+
+  const handleAddEditRedirect = () => {
+    setEditForm({ ...editForm, redirect_uris: [...editForm.redirect_uris, ''] });
+  };
+
+  const handleRemoveEditRedirect = (index: number) => {
+    if (editForm.redirect_uris.length > 1) {
+      const newUris = editForm.redirect_uris.filter((_, i) => i !== index);
+      setEditForm({ ...editForm, redirect_uris: newUris });
     }
   };
 
@@ -241,13 +305,6 @@ const AdminPage: React.FC = () => {
                       if (!data.mappings.length) alert('No role mappings configured for this app.');
                       else alert(`Role Mappings for ${data.app_name}:\n\n${data.mappings.map(m=>`AD Group: ${m.ad_group}  Role: ${m.app_role}`).join('\n')}`);
                     }}>Role Mappings</button>
-                    <button className="button" style={{ backgroundColor: '#17a2b8', color: 'white' }} onClick={() => {
-                      setApiKeyModal({
-                        isOpen: true,
-                        clientId: app.client_id,
-                        appName: app.name
-                      });
-                    }}>API Keys</button>
                     {app.allow_discovery && (
                       <>
                         <button className="button" onClick={async()=>{
@@ -258,19 +315,19 @@ const AdminPage: React.FC = () => {
                               // Format permission tree for display
                               let output = `Discovered Resources for ${app.client_id}:\n\n`;
                               const tree = permTree.permission_tree;
-                              
+
                               for (const [resource, actions] of Object.entries(tree as any)) {
                                 output += `${resource}\n`;
                                 for (const [action, details] of Object.entries(actions as any)) {
                                   const fields = details.fields || [];
                                   const sensitiveFields = fields.filter((f: any) => f.sensitive || f.pii || f.phi);
                                   const hasWildcard = fields.some((f: any) => f.field_name === '*');
-                                  
+
                                   output += `  ${action}`;
                                   if (hasWildcard) output += ' (has wildcard *)';
                                   if (sensitiveFields.length > 0) output += ` (${sensitiveFields.length} sensitive fields)`;
                                   output += '\n';
-                                  
+
                                   // Show fields with details
                                   for (const field of fields) {
                                     if (field.field_name !== '*') {
@@ -312,12 +369,20 @@ const AdminPage: React.FC = () => {
                           }
                         }}>View Endpoints</button>
                         <button className="button" onClick={() => {
+                          setApiKeyModal({
+                            isOpen: true,
+                            clientId: app.client_id,
+                            appName: app.name
+                          });
+                        }}>A2A Roles & Permissions</button>
+                        <button className="button" onClick={() => {
                           setRolesModal({
                             isOpen: true,
                             clientId: app.client_id,
                             appName: app.name
                           });
-                        }}>Roles & Permissions</button>
+                        }}>User Roles & Permissions</button>
+
                         <button className="button secondary" onClick={async()=>{
                           try {
                             alert('Running discovery...');
@@ -340,6 +405,7 @@ const AdminPage: React.FC = () => {
                         }}>Run Discovery</button>
                       </>
                     )}
+                    <button className="button" onClick={()=>handleEditApp(app)}>Edit</button>
                     <button className="button secondary" onClick={()=>handleRotateSecret(app.client_id)}>Rotate Secret</button>
                     <button className="button danger" onClick={()=>handleDeleteApp(app.client_id)}>Delete</button>
                   </div>
@@ -393,42 +459,42 @@ const AdminPage: React.FC = () => {
                   <label>Discovery Endpoint (optional)</label>
                   <input type="url" value={registerForm.discovery_endpoint} onChange={e => setRegisterForm({ ...registerForm, discovery_endpoint: e.target.value })} style={{ width: '100%' }} />
                 </div>
-                
+
                 <div style={{ gridColumn: '1 / -1', marginTop: 16, padding: 16, background: '#e8f4fd', borderRadius: 6, border: '1px solid #b3d9f2' }}>
                   <h4 style={{ marginTop: 0, marginBottom: 12, color: '#0066cc' }}>🔑 Initial API Key (Optional)</h4>
                   <div style={{ marginBottom: 12 }}>
                     <label>
-                      <input 
-                        type="checkbox" 
-                        checked={registerForm.create_api_key} 
-                        onChange={e => setRegisterForm({ ...registerForm, create_api_key: e.target.checked })} 
-                      /> 
+                      <input
+                        type="checkbox"
+                        checked={registerForm.create_api_key}
+                        onChange={e => setRegisterForm({ ...registerForm, create_api_key: e.target.checked })}
+                      />
                       Create an API key during registration (eliminates chicken-egg problem!)
                     </label>
                   </div>
-                  
+
                   {registerForm.create_api_key && (
                     <>
                       <div style={{ marginBottom: 12 }}>
                         <label>API Key Name (optional)</label>
-                        <input 
-                          type="text" 
-                          placeholder="e.g., Initial Key, Development Key" 
-                          value={registerForm.api_key_name} 
-                          onChange={e => setRegisterForm({ ...registerForm, api_key_name: e.target.value })} 
-                          style={{ width: '100%' }} 
+                        <input
+                          type="text"
+                          placeholder="e.g., Initial Key, Development Key"
+                          value={registerForm.api_key_name}
+                          onChange={e => setRegisterForm({ ...registerForm, api_key_name: e.target.value })}
+                          style={{ width: '100%' }}
                         />
                         <small style={{ color: '#666' }}>Leave empty for default name</small>
                       </div>
-                      
+
                       <div>
                         <label>API Key Permissions (comma-separated)</label>
-                        <input 
-                          type="text" 
-                          placeholder="e.g., admin, read:users, write:data" 
-                          value={registerForm.api_key_permissions} 
-                          onChange={e => setRegisterForm({ ...registerForm, api_key_permissions: e.target.value })} 
-                          style={{ width: '100%' }} 
+                        <input
+                          type="text"
+                          placeholder="e.g., admin, read:users, write:data"
+                          value={registerForm.api_key_permissions}
+                          onChange={e => setRegisterForm({ ...registerForm, api_key_permissions: e.target.value })}
+                          style={{ width: '100%' }}
                         />
                         <small style={{ color: '#666' }}>Leave empty for 'admin' permission. Use 'admin' for full access during development.</small>
                       </div>
@@ -443,14 +509,136 @@ const AdminPage: React.FC = () => {
           </SectionContent>
         )}
       </InfoSection>
-      
+
+      {/* Edit App Modal */}
+      {editModal.isOpen && editModal.app && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: 8,
+            padding: 24,
+            maxWidth: 600,
+            width: '90%',
+            maxHeight: '80vh',
+            overflow: 'auto'
+          }}>
+            <h3 style={{ marginTop: 0 }}>Edit App: {editModal.app.name}</h3>
+            <form onSubmit={handleUpdateApp}>
+              <div style={{ display: 'grid', gap: 16 }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Name</label>
+                  <input
+                    required
+                    value={editForm.name}
+                    onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                    style={{ width: '100%', padding: 8, border: '1px solid #ddd', borderRadius: 4 }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Description</label>
+                  <textarea
+                    required
+                    value={editForm.description}
+                    onChange={e => setEditForm({ ...editForm, description: e.target.value })}
+                    style={{ width: '100%', padding: 8, border: '1px solid #ddd', borderRadius: 4, minHeight: 80 }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Redirect URIs</label>
+                  {editForm.redirect_uris.map((uri, idx) => (
+                    <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <input
+                        type="url"
+                        required
+                        value={uri}
+                        onChange={e => handleEditRedirectChange(idx, e.target.value)}
+                        style={{ flex: 1, padding: 8, border: '1px solid #ddd', borderRadius: 4 }}
+                      />
+                      {editForm.redirect_uris.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveEditRedirect(idx)}
+                          style={{ padding: '8px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: 4 }}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={handleAddEditRedirect}
+                    style={{ padding: '8px 16px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: 4 }}
+                  >
+                    Add URI
+                  </button>
+                </div>
+
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={editForm.allow_discovery}
+                      onChange={e => setEditForm({ ...editForm, allow_discovery: e.target.checked })}
+                    />
+                    Enable Discovery
+                  </label>
+                </div>
+
+                {editForm.allow_discovery && (
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Discovery Endpoint</label>
+                    <input
+                      type="url"
+                      value={editForm.discovery_endpoint}
+                      onChange={e => setEditForm({ ...editForm, discovery_endpoint: e.target.value })}
+                      style={{ width: '100%', padding: 8, border: '1px solid #ddd', borderRadius: 4 }}
+                      placeholder="http://localhost:5001/discovery/endpoints"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: 12, marginTop: 24, justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setEditModal({ isOpen: false, app: null })}
+                  style={{ padding: '8px 16px', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: 4 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{ padding: '8px 16px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: 4 }}
+                >
+                  Update App
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <RolesModal
         isOpen={rolesModal.isOpen}
         onClose={() => setRolesModal({ isOpen: false, clientId: '', appName: '' })}
         clientId={rolesModal.clientId}
         appName={rolesModal.appName}
       />
-      
+
       <APIKeyModal
         isOpen={apiKeyModal.isOpen}
         onClose={() => setApiKeyModal({ isOpen: false, clientId: '', appName: '' })}

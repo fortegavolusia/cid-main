@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import adminService from '../services/adminService';
 import type { APIKey, APIKeyCreationResponse } from '../types/admin';
+import apiService from '../services/api';
+
 
 const ModalOverlay = styled.div`
   position: fixed;
@@ -54,7 +56,7 @@ const CloseButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  
+
   &:hover {
     color: #333;
   }
@@ -95,7 +97,7 @@ const Input = styled.input`
   border: 1px solid #d9d9d9;
   border-radius: 4px;
   font-size: 14px;
-  
+
   &:focus {
     outline: none;
     border-color: #40a9ff;
@@ -111,7 +113,7 @@ const TextArea = styled.textarea`
   font-size: 14px;
   min-height: 60px;
   resize: vertical;
-  
+
   &:focus {
     outline: none;
     border-color: #40a9ff;
@@ -126,7 +128,7 @@ const Select = styled.select`
   border-radius: 4px;
   font-size: 14px;
   background: white;
-  
+
   &:focus {
     outline: none;
     border-color: #40a9ff;
@@ -142,7 +144,7 @@ const Button = styled.button`
   cursor: pointer;
   font-weight: 500;
   transition: all 0.3s;
-  
+
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -152,7 +154,7 @@ const Button = styled.button`
 const PrimaryButton = styled(Button)`
   background: #52c41a;
   color: white;
-  
+
   &:hover:not(:disabled) {
     background: #73d13d;
   }
@@ -162,7 +164,7 @@ const DangerButton = styled(Button)`
   background: #ff4d4f;
   color: white;
   margin-left: 8px;
-  
+
   &:hover:not(:disabled) {
     background: #ff7875;
   }
@@ -172,7 +174,7 @@ const SecondaryButton = styled(Button)`
   background: #ffc107;
   color: #333;
   margin-left: 8px;
-  
+
   &:hover:not(:disabled) {
     background: #ffca28;
   }
@@ -207,11 +209,149 @@ const KeyCode = styled.code`
 const CopyButton = styled(Button)`
   background: #1890ff;
   color: white;
-  
+
   &:hover:not(:disabled) {
     background: #40a9ff;
   }
 `;
+// Inline editor for A2A mappings
+const Row = styled.div`
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+`;
+
+const SmallButton = styled(Button)`
+  background: #1890ff;
+  color: white;
+  &:hover:not(:disabled) { background: #40a9ff; }
+`;
+
+interface MappingRow { appId: string; role: string; }
+
+const A2AMappingsEditor: React.FC<{ callerId: string }>=({ callerId })=>{
+  const [apps, setApps] = useState<{ client_id: string; name: string }[]>([]);
+  const [rows, setRows] = useState<MappingRow[]>([]);
+  const [rolesByApp, setRolesByApp] = useState<Record<string, string[]>>({});
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(()=>{
+    (async()=>{
+      try {
+        setLoading(true);
+        const allApps = await adminService.getApps();
+        setApps(allApps.map(a=>({ client_id: a.client_id, name: a.name })));
+        const mapping = await adminService.getA2ARoleMappings(callerId);
+        // Flatten mapping to rows (one role per row)
+        const flat: MappingRow[] = [];
+        for (const [appId, roleList] of Object.entries(mapping)){
+          for (const r of roleList){ flat.push({ appId, role: r }); }
+        }
+        setRows(flat.length ? flat : [{ appId: '', role: '' }]);
+        // Preload roles for any apps present so the role dropdown shows existing selections
+        const uniqueAppIds = Array.from(new Set(flat.map(r => r.appId).filter(a => !!a)));
+        await Promise.all(uniqueAppIds.map(async (aid) => {
+          try {
+            const roles = await adminService.getAppRoles(aid);
+            setRolesByApp(prev => ({ ...prev, [aid]: roles }));
+          } catch (e:any) {
+            console.error('Failed to preload roles for app', aid, e);
+          }
+        }));
+      } catch(e:any) {
+        console.error('Failed to load A2A mappings', e);
+        setRows([{ appId: '', role: '' }]);
+      } finally { setLoading(false); }
+    })();
+  }, [callerId]);
+
+  const ensureRolesLoaded = async (appId: string)=>{
+    if (!appId || rolesByApp[appId]) return;
+    try {
+      const roles = await adminService.getAppRoles(appId);
+      setRolesByApp(prev=>({ ...prev, [appId]: roles }));
+    } catch(e:any){
+      console.error('Failed to load roles for app', appId, e);
+      setRolesByApp(prev=>({ ...prev, [appId]: [] }));
+    }
+  };
+
+  const updateRowApp = async (idx: number, appId: string)=>{
+    const copy = [...rows];
+    copy[idx] = { appId, role: '' };
+    setRows(copy);
+    await ensureRolesLoaded(appId);
+  };
+
+  const updateRowRole = (idx: number, role: string)=>{
+    const copy = [...rows];
+    copy[idx] = { ...copy[idx], role };
+    setRows(copy);
+  };
+
+  const addRow = ()=> setRows(prev=>[...prev, { appId: '', role: '' }]);
+  const removeRow = (i:number)=> setRows(prev=> prev.filter((_,idx)=> idx!==i));
+
+  const save = async ()=>{
+    try {
+      setSaving(true);
+      // Build mapping: appId -> list of roles (dedup)
+      const mapping: Record<string, string[]> = {};
+      for (const r of rows){
+        if (!r.appId || !r.role) continue;
+        mapping[r.appId] = mapping[r.appId] || [];
+        if (!mapping[r.appId].includes(r.role)) mapping[r.appId].push(r.role);
+      }
+      await adminService.putA2ARoleMappings(callerId, mapping);
+      alert('A2A mappings saved');
+    } catch(e:any){
+      alert('Failed to save A2A mappings: ' + (e.message || 'Unknown error'));
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div>
+      {loading ? <p>Loading…</p> : (
+        <>
+          {rows.map((row, idx)=> (
+            <Row key={idx}>
+              <Select
+                value={row.appId}
+                onChange={async (e)=> updateRowApp(idx, e.target.value)}
+              >
+                <option value="">Select Registered Application…</option>
+                {apps.map(a=> (
+                  <option key={a.client_id} value={a.client_id}>{a.name}</option>
+                ))}
+              </Select>
+              <Select
+                value={row.role}
+                onChange={(e)=> updateRowRole(idx, e.target.value)}
+                disabled={!row.appId}
+              >
+                <option value="">Select Role…</option>
+                {(rolesByApp[row.appId] || []).map(role=> (
+                  <option key={role} value={role}>{role}</option>
+                ))}
+              </Select>
+              <SmallButton onClick={()=> addRow()}>+ Add</SmallButton>
+              {rows.length>1 && (
+                <SmallButton onClick={()=> removeRow(idx)} style={{ background: '#ff4d4f' }}>Remove</SmallButton>
+              )}
+            </Row>
+          ))}
+          <div style={{ marginTop: 8 }}>
+            <PrimaryButton onClick={save} disabled={saving}>Save Defaults</PrimaryButton>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 
 const KeyCard = styled.div`
   background: white;
@@ -238,12 +378,32 @@ const KeyInfo = styled.div`
   font-size: 13px;
   color: #666;
   margin-bottom: 8px;
-  
+
   strong {
     color: #333;
     margin-right: 4px;
   }
 `;
+
+const ClaimsPanel = styled.div`
+  margin-top: 8px;
+  background: #f9f9f9;
+  border: 1px solid #eee;
+  border-radius: 6px;
+  padding: 10px;
+  text-align: left;
+`;
+
+const ClaimsPre = styled.pre`
+  margin: 0;
+  white-space: pre;
+  word-break: normal;
+  overflow: auto;
+  max-height: 320px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+`;
+
 
 const StatusBadge = styled.span<{ $status: 'active' | 'expired' | 'revoked' }>`
   display: inline-block;
@@ -251,7 +411,7 @@ const StatusBadge = styled.span<{ $status: 'active' | 'expired' | 'revoked' }>`
   border-radius: 4px;
   font-size: 12px;
   font-weight: 600;
-  background: ${props => 
+  background: ${props =>
     props.$status === 'active' ? '#d4edda' :
     props.$status === 'expired' ? '#fff3cd' :
     '#f8d7da'
@@ -288,7 +448,7 @@ const APIKeyModal: React.FC<APIKeyModalProps> = ({ isOpen, onClose, clientId, ap
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
-    permissions: '',
+    allow_admin: false,
     ttl_days: 90
   });
 
@@ -319,19 +479,16 @@ const APIKeyModal: React.FC<APIKeyModalProps> = ({ isOpen, onClose, clientId, ap
 
     try {
       setLoading(true);
-      const permissions = formData.permissions
-        .split(',')
-        .map(p => p.trim())
-        .filter(p => p);
+      const permissions = formData.allow_admin ? ['admin'] : [];
 
       const response: APIKeyCreationResponse = await adminService.createAPIKey(clientId, {
         name: formData.name,
-        permissions: permissions,
+        permissions,
         ttl_days: formData.ttl_days === 0 ? undefined : formData.ttl_days
       });
 
       setGeneratedKey(response.api_key);
-      setFormData({ name: '', permissions: '', ttl_days: 90 });
+      setFormData({ name: '', allow_admin: false, ttl_days: 90 });
       await loadAPIKeys();
     } catch (error: any) {
       alert('Failed to generate API key: ' + (error.message || 'Unknown error'));
@@ -428,13 +585,18 @@ const APIKeyModal: React.FC<APIKeyModalProps> = ({ isOpen, onClose, clientId, ap
               />
             </FormGroup>
             <FormGroup>
-              <Label>Permissions (comma-separated)</Label>
-              <TextArea
-                placeholder="read:users, write:posts, admin:settings"
-                value={formData.permissions}
-                onChange={(e) => setFormData({ ...formData, permissions: e.target.value })}
-                disabled={loading}
-              />
+              <Label>Allow this key to call CID Admin APIs</Label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={formData.allow_admin}
+                  onChange={(e) => setFormData({ ...formData, allow_admin: e.target.checked })}
+                  disabled={loading}
+                />
+                <span style={{ color: '#666', fontSize: 13 }}>
+                  When enabled, the key will include the 'admin' permission to access CID admin endpoints.
+                </span>
+              </div>
             </FormGroup>
             <FormGroup>
               <Label>Expiration</Label>
@@ -458,6 +620,13 @@ const APIKeyModal: React.FC<APIKeyModalProps> = ({ isOpen, onClose, clientId, ap
             </PrimaryButton>
           </FormSection>
         </Section>
+        <Section>
+          <SectionTitle>A2A Roles & Permissions (Defaults)</SectionTitle>
+          <FormSection>
+            <A2AMappingsEditor callerId={clientId} />
+          </FormSection>
+        </Section>
+
 
         <Section>
           <SectionTitle>Existing API Keys</SectionTitle>
@@ -511,6 +680,33 @@ const APIKeyModal: React.FC<APIKeyModalProps> = ({ isOpen, onClose, clientId, ap
                     </KeyInfo>
                     {key.last_used_at && (
                       <KeyInfo>
+                        {status === 'active' && (
+                          <div style={{ marginTop: 8 }}>
+                            <SecondaryButton onClick={async () => {
+                              const pasted = prompt('Paste the full API key (starts with cids_ak_) to mint an app token:');
+                              if (!pasted) return;
+                              try {
+                                const resp = await adminService.mintA2AToken(pasted);
+                                const claims = await apiService.post('/auth/validate', { token: resp.access_token });
+                                (window as any)[`claims_${key.key_id}`] = claims; // store for preview rendering
+                                alert('A2A token minted and validated. A claims preview will be shown below.');
+                                // Force re-render by setting state (append a no-op)
+                                setApiKeys(prev => [...prev]);
+                              } catch (e: any) {
+                                alert('Failed to mint token: ' + (e.message || 'Unknown error'));
+                              }
+                            }}>Mint App Token</SecondaryButton>
+                            {(window as any)[`claims_${key.key_id}`] && (
+                              <ClaimsPanel>
+                                <div style={{ fontWeight: 600, marginBottom: 6 }}>Token Claims (preview)</div>
+                                <ClaimsPre>
+{JSON.stringify((window as any)[`claims_${key.key_id}`], null, 2)}
+                                </ClaimsPre>
+                              </ClaimsPanel>
+                            )}
+                          </div>
+                        )}
+
                         <strong>Last Used:</strong> {new Date(key.last_used_at).toLocaleString()} ({key.usage_count} times)
                       </KeyInfo>
                     )}

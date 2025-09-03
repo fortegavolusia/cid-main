@@ -59,6 +59,12 @@ class CreateAPIKeyRequest(BaseModel):
     name: str
     permissions: List[str]
     ttl_days: Optional[int] = APIKeyTTL.DAYS_90.value
+    # Optional A2A token behavior fields
+    token_template_name: Optional[str] = None
+    app_roles_overrides: Optional[Dict[str, List[str]]] = None
+    token_ttl_minutes: Optional[int] = 15
+    default_audience: Optional[str] = None
+    allowed_audiences: Optional[List[str]] = None
 
 class APIKeyResponse(BaseModel):
     key_id: str
@@ -119,6 +125,11 @@ if DEV_CROSS_ORIGIN:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+class A2ATokenRequest(BaseModel):
+    audience: Optional[str] = None
+    template_name: Optional[str] = None
+
 
 # Access log middleware (enabled by default via config)
 try:
@@ -333,6 +344,85 @@ def check_admin_access(authorization: Optional[str] = None) -> tuple[bool, Optio
             return True, claims
     return False, claims
 
+# In-memory relay store for OAuth login flows (CID brokered)
+oauth_relays: Dict[str, dict] = {}
+
+@app.get("/auth/login")
+async def cids_login(request: Request, client_id: str, app_redirect_uri: str, state: str):
+    # Validate app and redirect uri
+    app_data = app_store.get_app(client_id)
+    if not app_data:
+        raise HTTPException(status_code=404, detail="Unknown client_id")
+    if not app_data.get('is_active', True):
+        raise HTTPException(status_code=400, detail="Application is not active")
+    allowed_redirects = app_data.get('redirect_uris') or []
+    if app_redirect_uri not in allowed_redirects:
+        raise HTTPException(status_code=400, detail="redirect_uri not allowed for this app")
+
+    relay_id = str(uuid.uuid4())
+    oauth_relays[relay_id] = {
+        'client_id': client_id,
+        'app_redirect_uri': app_redirect_uri,
+        'state': state,
+        'created_at': datetime.utcnow().isoformat() + 'Z'
+    }
+
+    tenant_id, azure_client_id, _ = ensure_azure_env()
+    if not tenant_id or not azure_client_id:
+        raise HTTPException(status_code=500, detail="Azure credentials not configured")
+    base_url = str(request.base_url).rstrip('/')
+    redirect_uri = f"{base_url}/auth/callback"
+
+    auth_url = (
+        f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize"
+        f"?client_id={urllib.parse.quote(azure_client_id)}"
+        f"&response_type=code"
+        f"&redirect_uri={urllib.parse.quote(redirect_uri)}"
+        f"&scope={urllib.parse.quote(os.getenv('AZURE_SCOPE', 'openid profile email User.Read'))}"
+        f"&response_mode=query"
+        f"&state={urllib.parse.quote(relay_id)}"
+    )
+    return RedirectResponse(url=auth_url, status_code=302)
+
+@app.get("/auth/callback")
+async def cids_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None):
+    if error:
+        raise HTTPException(status_code=400, detail=error_description or error)
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+    relay = oauth_relays.pop(state, None)
+    if not relay:
+        raise HTTPException(status_code=400, detail="Invalid state (relay not found)")
+
+    # Exchange code for internal token using the same redirect_uri we used to start login
+    base_url = str(request.base_url).rstrip('/')
+    redirect_uri = f"{base_url}/auth/callback"
+    try:
+        token_response: JSONResponse = await exchange_code_for_token(TokenExchangeRequest(code=code, redirect_uri=redirect_uri))  # type: ignore
+        # token_response.body is bytes; parse to dict
+        payload = json.loads(token_response.body.decode('utf-8'))
+        access_token = payload.get('access_token')
+        refresh_token = payload.get('refresh_token')
+        if not access_token:
+            raise HTTPException(status_code=500, detail="No access_token from exchange")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Callback exchange failed: {e}")
+        raise HTTPException(status_code=500, detail="Token exchange failed")
+
+    # Redirect back to the app with token in fragment to avoid logs
+    params = {
+        'access_token': access_token,
+        'token_type': 'Bearer',
+        'state': relay.get('state', ''),
+    }
+    if refresh_token:
+        params['refresh_token'] = refresh_token
+    fragment = urllib.parse.urlencode(params)
+    redirect_url = f"{relay['app_redirect_uri']}#{fragment}"
+    return RedirectResponse(url=redirect_url, status_code=302)
+
 # ROUTES
 
 @app.post("/auth/token")
@@ -408,6 +498,8 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
         if len(parts) != 3:
             raise HTTPException(status_code=400, detail="Invalid ID token format")
         payload = parts[1]
+
+
         payload += '=' * (4 - len(payload) % 4)
         claims = json.loads(base64.urlsafe_b64decode(payload))
         user_email = claims.get('email') or claims.get('preferred_username')
@@ -653,8 +745,128 @@ async def register_app_admin(request: RegisterAppRequest, authorization: Optiona
             )
             api_key = new_key
             api_key_metadata = metadata.to_dict()
+
         except Exception:
             logger.exception("Failed to create initial API key")
+
+@app.post("/auth/token/a2a")
+async def a2a_token_exchange(request: A2ATokenRequest = Body(None), authorization: Optional[str] = Header(None)):
+    # Validate API key from Authorization header
+    if not authorization or not authorization.startswith('Bearer cids_ak_'):
+        raise HTTPException(status_code=401, detail="API key required in Authorization header")
+    is_valid, app_client_id, _ = validate_api_key_auth(authorization)
+    if not is_valid or not app_client_id:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    # Build service identity for the app
+    app_info = registered_apps.get(app_client_id)
+    app_name = app_info.get('name') if app_info else app_client_id
+
+    # Fetch per-key metadata (validate again to get metadata and update usage)
+    api_key = authorization.replace('Bearer ', '')
+    key_lookup = api_key_manager.validate_api_key(api_key)
+    key_metadata = key_lookup[1] if key_lookup else None
+
+    # Construct a minimal user_info for service token
+    user_info = {
+        'sub': f'app:{app_client_id}',
+        'email': f'{app_client_id}@apps.cids',
+        'name': f'{app_name} (service)',
+        'groups': [],
+        'token_version': '2.0'
+    }
+
+    # Build roles for all apps using permission_registry and any app_roles_overrides from the key
+    user_roles: dict[str, list[str]] = {}
+    roles_source = "none"
+    if key_metadata and key_metadata.app_roles_overrides:
+        for aid, roles in (key_metadata.app_roles_overrides or {}).items():
+            if roles:
+                user_roles[aid] = list(set(roles))
+        roles_source = "overrides"
+    if not user_roles:
+        # Fallback to A2A mappings for this caller app id
+        try:
+            mapped = app_store.get_a2a_mappings_for_caller(app_client_id)
+            for aid, roles in (mapped or {}).items():
+                if roles:
+                    user_roles[aid] = list(set(roles))
+            if user_roles:
+                roles_source = "a2a_mappings"
+        except Exception:
+            logger.exception("Error loading A2A role mappings")
+
+    # Compute permissions and rls_filters
+    permissions: dict[str, list[str]] = {}
+    rls_filters: dict[str, dict[str, list[dict]]] = {}
+    for app_id, roles_list in user_roles.items():
+        all_perms = set()
+        all_rls: dict[str, list[dict]] = {}
+        for role_name in roles_list:
+            for p in permission_registry.get_role_permissions(app_id, role_name):
+                all_perms.add(p)
+            role_rls = permission_registry.get_role_rls_filters(app_id, role_name)
+            for field, flist in role_rls.items():
+                all_rls.setdefault(field, []).extend(flist)
+        if all_perms:
+            permissions[app_id] = list(all_perms)
+        if all_rls:
+            rls_filters[app_id] = all_rls
+
+    # Assemble claims and apply template if specified on request or key
+    claims = {
+        'sub': user_info['sub'],
+        'email': user_info['email'],
+        'name': user_info['name'],
+        'groups': user_info['groups'],
+        'roles': user_roles,
+        'permissions': permissions,
+        'rls_filters': rls_filters,
+        'attrs': { 'app_client_id': app_client_id, 'app_name': app_name },
+        'token_version': user_info['token_version'],
+        'aud': ['internal-services']
+    }
+
+    template_name = (request.template_name if request else None) or (key_metadata.token_template_name if key_metadata else None)
+    if template_name:
+        try:
+            tmpls = token_template_manager.get_all_templates()
+            chosen = next((t for t in tmpls if t.get('name') == template_name and t.get('enabled', True)), None)
+            if chosen:
+                template_claims = {c['key']: c for c in chosen.get('claims', [])}
+                filtered = {}
+                required = ['iss','sub','aud','exp','iat','nbf','jti','token_type','token_version']
+                for key in template_claims.keys():
+                    if key in claims:
+                        filtered[key] = claims[key]
+                for key in required:
+                    if key not in filtered and key in claims:
+                        filtered[key] = claims[key]
+                claims = filtered
+        except Exception:
+            logger.exception("Failed to apply named template; proceeding with default")
+
+    ttl_minutes = (key_metadata.token_ttl_minutes if key_metadata and key_metadata.token_ttl_minutes else 15)
+    access_token = jwt_manager.create_token(claims, token_lifetime_minutes=ttl_minutes, token_type='service')
+
+    token_id = str(uuid.uuid4())
+    now_utc = datetime.utcnow()
+    expires_utc = now_utc + timedelta(minutes=ttl_minutes)
+    issued_tokens[token_id] = {
+        'id': token_id,
+        'access_token': access_token,
+        'user': {'name': user_info['name'], 'email': user_info['email']},
+        'issued_at': now_utc.isoformat() + 'Z',
+        'roles_source': roles_source,
+        'expires_at': expires_utc.isoformat() + 'Z',
+        'source': 'api_key_a2a',
+        'app_client_id': app_client_id,
+        'api_key_id': key_metadata.key_id if key_metadata else None
+    }
+    token_activity_logger.log_activity(token_id, TokenAction.CREATED, performed_by={'email': user_info['email'], 'sub': user_info['sub']}, details={'auth_method': 'api_key_a2a'})
+
+    return JSONResponse({'access_token': access_token, 'token_type': 'Bearer', 'expires_in': ttl_minutes * 60, 'token_id': token_id})
+
     return JSONResponse({
         "app": app_data,
         "client_secret": client_secret,
@@ -683,9 +895,70 @@ async def rotate_app_secret_admin(client_id: str, authorization: Optional[str] =
     return JSONResponse({"client_id": client_id, "client_secret": new_secret, "message": "Client secret has been rotated. Please update your application configuration."})
 
 @app.delete("/auth/admin/apps/{client_id}")
+async def delete_app_admin(client_id: str, authorization: Optional[str] = Header(None)):
+    is_admin, claims = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    # Check if app exists before deletion
+    if not app_store.get_app(client_id):
+        raise HTTPException(status_code=404, detail="App not found")
+
+    # Clean up related data
+    # 1. Revoke all API keys for this app
+    api_keys = api_key_manager.list_api_keys(client_id)
+    for api_key in api_keys:
+        api_key_manager.revoke_api_key(client_id, api_key.key_id)
+
+    # 2. Delete app endpoints
+    endpoints_registry.delete_app_endpoints(client_id)
+
+    # 3. Delete the app itself (includes secrets, role mappings, a2a mappings)
+    app_store.delete_app(client_id)
+
+    return JSONResponse({"message": "App has been permanently deleted"})
+
 # ==============================
 # Admin: Role Mappings & Azure Groups
 # ==============================
+
+@app.get("/auth/admin/a2a-role-mappings")
+async def get_all_a2a_role_mappings_admin(authorization: Optional[str] = Header(None)):
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return JSONResponse(app_store.get_a2a_mappings())
+
+@app.get("/auth/admin/apps/{caller_id}/a2a-role-mappings")
+async def get_a2a_role_mappings_admin(caller_id: str, authorization: Optional[str] = Header(None)):
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if not app_store.get_app(caller_id):
+        raise HTTPException(status_code=404, detail="Caller app not found")
+    return JSONResponse({caller_id: app_store.get_a2a_mappings_for_caller(caller_id)})
+
+class A2ARoleMappingsRequest(BaseModel):
+    mappings: Dict[str, List[str]]
+
+@app.put("/auth/admin/apps/{caller_id}/a2a-role-mappings")
+async def put_a2a_role_mappings_admin(caller_id: str, request: A2ARoleMappingsRequest, authorization: Optional[str] = Header(None)):
+    is_admin, claims = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if not app_store.get_app(caller_id):
+        raise HTTPException(status_code=404, detail="Caller app not found")
+    # Validate target apps and roles
+    for target_app_id, roles in (request.mappings or {}).items():
+        if not app_store.get_app(target_app_id):
+            raise HTTPException(status_code=400, detail=f"Unknown target app: {target_app_id}")
+        for role_name in roles or []:
+            role_config = permission_registry.get_role_full_config(target_app_id, role_name)
+            if not role_config['permissions'] and not role_config['rls_filters']:
+                raise HTTPException(status_code=400, detail=f"Unknown role '{role_name}' for app '{target_app_id}'")
+    result = app_store.upsert_a2a_mappings(caller_id, request.mappings or {})
+    audit_logger.log_action(action=AuditAction.ROLE_MAPPINGS_UPDATED, details={'type': 'a2a', 'caller': caller_id, 'updated_by': claims.get('email')})
+    return JSONResponse({"caller": caller_id, "mappings": result[caller_id]})
 
 @app.post("/auth/admin/apps/{client_id}/role-mappings")
 async def set_role_mappings_admin(client_id: str, request: SetRoleMappingRequest, authorization: Optional[str] = Header(None)):
@@ -773,13 +1046,7 @@ async def get_azure_groups_admin(authorization: Optional[str] = Header(None), se
         groups = [{"id": g.get('id', ''), "displayName": g.get('displayName', ''), "description": g.get('description', '')} for g in values][:top]
         return JSONResponse({"groups": groups})
 
-async def delete_app_admin(client_id: str, authorization: Optional[str] = Header(None)):
-    is_admin, claims = check_admin_access(authorization)
-    if not is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
-    if not app_store.delete_app(client_id):
-        raise HTTPException(status_code=404, detail="App not found")
-    return JSONResponse({"message": "App has been deactivated"})
+
 
 # Note: whoami route is already defined earlier; remove stray stub header
 # ==============================
@@ -799,6 +1066,11 @@ async def create_api_key_admin(client_id: str, request: CreateAPIKeyRequest, aut
         permissions=request.permissions,
         created_by=claims.get('email', 'admin'),
         ttl_days=request.ttl_days,
+        token_template_name=request.token_template_name,
+        app_roles_overrides=request.app_roles_overrides,
+        token_ttl_minutes=request.token_ttl_minutes,
+        default_audience=request.default_audience,
+        allowed_audiences=request.allowed_audiences,
     )
     return JSONResponse({
         "api_key": api_key,
@@ -813,6 +1085,12 @@ async def create_api_key_admin(client_id: str, request: CreateAPIKeyRequest, aut
             "is_active": metadata.is_active,
             "last_used_at": metadata.last_used_at,
             "usage_count": metadata.usage_count,
+            # A2A fields
+            "token_template_name": metadata.token_template_name,
+            "app_roles_overrides": metadata.app_roles_overrides,
+            "token_ttl_minutes": metadata.token_ttl_minutes,
+            "default_audience": metadata.default_audience,
+            "allowed_audiences": metadata.allowed_audiences,
         }
     })
 
@@ -835,6 +1113,12 @@ async def list_api_keys_admin(client_id: str, authorization: Optional[str] = Hea
         "is_active": k.is_active,
         "last_used_at": k.last_used_at,
         "usage_count": k.usage_count,
+        # A2A fields
+        "token_template_name": k.token_template_name,
+        "app_roles_overrides": k.app_roles_overrides,
+        "token_ttl_minutes": k.token_ttl_minutes,
+        "default_audience": k.default_audience,
+        "allowed_audiences": k.allowed_audiences,
     } for k in keys])
 
 @app.delete("/auth/admin/apps/{client_id}/api-keys/{key_id}")
@@ -898,13 +1182,19 @@ async def get_permission_tree(client_id: str, authorization: Optional[str] = Hea
 # ==============================
 
 @app.post("/permissions/{client_id}/roles")
-async def create_permission_role(client_id: str, authorization: Optional[str] = Header(None), role_name: str = Body(...), permissions: List[str] = Body(...), description: Optional[str] = Body(None), rls_filters: Optional[Dict[str, List[Dict[str, str]]]] = Body(None)):
+async def create_permission_role(client_id: str, authorization: Optional[str] = Header(None), role_name: str = Body(...), permissions: List[str] = Body(...), description: Optional[str] = Body(None), rls_filters: Optional[Dict[str, List[Dict[str, str]]]] = Body(None), a2a_only: Optional[bool] = Body(False)):
     is_admin, claims = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     valid_perms = permission_registry.create_role_with_rls(client_id, role_name, set(permissions), description, rls_filters)
-    audit_logger.log_action(action=AuditAction.ROLE_CREATED, details={'app_client_id': client_id, 'role_name': role_name, 'permissions_count': len(valid_perms), 'rls_filters_count': len(rls_filters) if rls_filters else 0, 'created_by': claims.get('email')})
-    return JSONResponse({"app_id": client_id, "role_name": role_name, "permissions": list(valid_perms), "valid_count": len(valid_perms), "invalid_count": len(permissions) - len(valid_perms), "rls_filters_saved": len(rls_filters) if rls_filters else 0})
+    # Persist a2a_only flag in metadata
+    try:
+        permission_registry.role_metadata.setdefault(client_id, {}).setdefault(role_name, {})['a2a_only'] = bool(a2a_only)
+        permission_registry._save_registry()
+    except Exception:
+        logger.exception("Failed to persist a2a_only metadata")
+    audit_logger.log_action(action=AuditAction.ROLE_CREATED, details={'app_client_id': client_id, 'role_name': role_name, 'permissions_count': len(valid_perms), 'rls_filters_count': len(rls_filters) if rls_filters else 0, 'created_by': claims.get('email'), 'a2a_only': bool(a2a_only)})
+    return JSONResponse({"app_id": client_id, "role_name": role_name, "permissions": list(valid_perms), "valid_count": len(valid_perms), "invalid_count": len(permissions) - len(valid_perms), "rls_filters_saved": len(rls_filters) if rls_filters else 0, "metadata": permission_registry.get_role_metadata(client_id, role_name)})
 
 @app.get("/permissions/{client_id}/roles/{role_name}")
 async def get_role_permissions(client_id: str, role_name: str, authorization: Optional[str] = Header(None)):
@@ -924,18 +1214,29 @@ async def list_roles(client_id: str, authorization: Optional[str] = Header(None)
     app_roles = permission_registry.role_permissions.get(client_id, {})
     app_metadata = permission_registry.role_metadata.get(client_id, {})
     roles_with_metadata = {role_name: {"permissions": list(perms), "metadata": app_metadata.get(role_name, {})} for role_name, perms in app_roles.items()}
-    return JSONResponse({"app_id": client_id, "roles": roles_with_metadata, "count": len(app_roles)})
+    # Include roles that exist only in metadata (e.g., A2A-only roles with no permissions yet)
+    for role_name, meta in app_metadata.items():
+        if role_name not in roles_with_metadata:
+            roles_with_metadata[role_name] = {"permissions": [], "metadata": meta}
+    return JSONResponse({"app_id": client_id, "roles": roles_with_metadata, "count": len(roles_with_metadata)})
 
 @app.put("/permissions/{client_id}/roles/{role_name}")
-async def update_permission_role(client_id: str, role_name: str, authorization: Optional[str] = Header(None), permissions: List[str] = Body(...), description: Optional[str] = Body(None), rls_filters: Optional[Dict[str, List[Dict[str, str]]]] = Body(None)):
+async def update_permission_role(client_id: str, role_name: str, authorization: Optional[str] = Header(None), permissions: List[str] = Body(...), description: Optional[str] = Body(None), rls_filters: Optional[Dict[str, List[Dict[str, str]]]] = Body(None), a2a_only: Optional[bool] = Body(None)):
     is_admin, claims = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     if client_id not in permission_registry.role_permissions or role_name not in permission_registry.role_permissions[client_id]:
         raise HTTPException(status_code=404, detail="Role not found")
     valid_perms = permission_registry.update_role_with_rls(client_id, role_name, set(permissions), description, rls_filters)
-    audit_logger.log_action(action=AuditAction.ROLE_UPDATED, details={'app_client_id': client_id, 'role_name': role_name, 'permissions_count': len(valid_perms), 'rls_filters_count': len(rls_filters) if rls_filters else 0, 'updated_by': claims.get('email')})
-    return JSONResponse({"app_id": client_id, "role_name": role_name, "permissions": list(valid_perms), "valid_count": len(valid_perms), "invalid_count": len(permissions) - len(valid_perms), "rls_filters_saved": len(rls_filters) if rls_filters else 0})
+    # Optionally update a2a_only flag
+    if a2a_only is not None:
+        try:
+            permission_registry.role_metadata.setdefault(client_id, {}).setdefault(role_name, {})['a2a_only'] = bool(a2a_only)
+            permission_registry._save_registry()
+        except Exception:
+            logger.exception("Failed to update a2a_only metadata")
+    audit_logger.log_action(action=AuditAction.ROLE_UPDATED, details={'app_client_id': client_id, 'role_name': role_name, 'permissions_count': len(valid_perms), 'rls_filters_count': len(rls_filters) if rls_filters else 0, 'updated_by': claims.get('email'), 'a2a_only': a2a_only})
+    return JSONResponse({"app_id": client_id, "role_name": role_name, "permissions": list(valid_perms), "valid_count": len(valid_perms), "invalid_count": len(permissions) - len(valid_perms), "rls_filters_saved": len(rls_filters) if rls_filters else 0, "metadata": permission_registry.get_role_metadata(client_id, role_name)})
 
 @app.delete("/permissions/{client_id}/roles/{role_name}")
 async def delete_role(client_id: str, role_name: str, authorization: Optional[str] = Header(None)):
