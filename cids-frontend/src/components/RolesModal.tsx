@@ -22,11 +22,11 @@ interface RolesModalProps {
   appName: string;
 }
 
-const RolesModal: React.FC<RolesModalProps> = ({ 
-  isOpen, 
-  onClose, 
+const RolesModal: React.FC<RolesModalProps> = ({
+  isOpen,
+  onClose,
   clientId,
-  appName 
+  appName
 }) => {
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(false);
@@ -46,7 +46,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const searchTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const suggestionsRef = React.useRef<HTMLDivElement>(null);
-  
+
   // New role form
   const [newRole, setNewRole] = useState<Role>({
     name: '',
@@ -55,6 +55,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
     permissions: [],
     resource_scopes: []
   });
+  const [newRoleA2AOnly, setNewRoleA2AOnly] = useState(false);
 
   useEffect(() => {
     if (isOpen && clientId) {
@@ -116,7 +117,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
     try {
       // Fetch role mappings first
       const mappingsData = await adminService.getRoleMappings(clientId);
-      
+
       // Group mappings by role name to handle multiple AD groups per role
       const roleMap = new Map<string, string[]>();
       mappingsData.mappings.forEach((mapping: any) => {
@@ -125,34 +126,45 @@ const RolesModal: React.FC<RolesModalProps> = ({
         }
         roleMap.get(mapping.app_role)!.push(mapping.ad_group);
       });
-      
+
       // Convert to roles format and load saved permissions
       const rolesData = Array.from(roleMap.entries()).map(([roleName, adGroups], index) => {
-        // Try to load saved permissions for this role
         const unifiedKey = `cids_unified_role_${clientId}_${roleName}`;
         const saved = localStorage.getItem(unifiedKey);
         let permissions: string[] = [];
         let resourceScopes: string[] = [];
-        
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
             permissions = parsed.permissions || [];
             resourceScopes = parsed.resourceScopes || [];
-          } catch (e) {
-            console.error('Error loading saved permissions for role:', roleName, e);
-          }
+          } catch (e) { console.error('Error loading saved permissions for role:', roleName, e); }
         }
-        
         return {
           id: `role_${index}`,
           name: roleName,
           ad_groups: adGroups,
           permissions,
-          resource_scopes: resourceScopes
-        };
+          resource_scopes: resourceScopes,
+          metadata: {} as any
+        } as any;
       });
-      
+
+      // Merge in roles from permission registry (to include A2A-only roles)
+      try {
+        const rolesMap = await adminService.getAppRolesWithMetadata(clientId);
+        const hideA2A = localStorage.getItem(`hide_a2a_only_${clientId}`) === 'true';
+        for (const [roleName, info] of Object.entries(rolesMap)) {
+          if (hideA2A && info.metadata?.a2a_only) continue;
+          if (!rolesData.find(r => r.name === roleName)) {
+            rolesData.push({ id: `meta_${roleName}`, name: roleName, ad_groups: [], permissions: info.permissions || [], resource_scopes: [], metadata: info.metadata as any } as any);
+          } else {
+            const idx = rolesData.findIndex(r => r.name === roleName);
+            (rolesData[idx] as any).metadata = info.metadata;
+          }
+        }
+      } catch {}
+
       setRoles(rolesData);
     } catch (err) {
       console.error('Error fetching roles:', err);
@@ -175,15 +187,19 @@ const RolesModal: React.FC<RolesModalProps> = ({
   };
 
   const handleSaveNewRole = async () => {
-    if (!newRole.name || newRole.ad_groups.length === 0) {
-      alert('Please provide both role name and at least one AD group');
+    if (!newRole.name) {
+      alert('Please provide a role name');
+      return;
+    }
+    if (!newRoleA2AOnly && newRole.ad_groups.length === 0) {
+      alert('Please add at least one AD group or mark the role as A2A only');
       return;
     }
 
     try {
       // Create mappings object - backend expects Dict[str, Union[str, List[str]]]
       const mappingsDict: Record<string, string | string[]> = {};
-      
+
       // Add existing roles to mappings
       roles.forEach(role => {
         role.ad_groups.forEach(group => {
@@ -199,7 +215,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
           }
         });
       });
-      
+
       // Add new role mappings
       newRole.ad_groups.forEach(group => {
         if (mappingsDict[group]) {
@@ -213,9 +229,9 @@ const RolesModal: React.FC<RolesModalProps> = ({
           mappingsDict[group] = newRole.name;
         }
       });
-      
+
       await adminService.setRoleMappings(clientId, mappingsDict);
-      
+
       // Create the role in the backend permission registry with empty permissions
       // This ensures the role exists in the backend for later permission updates
       try {
@@ -224,7 +240,8 @@ const RolesModal: React.FC<RolesModalProps> = ({
           await adminService.createRolePermissions(clientId, {
             role_name: newRole.name,
             permissions: [],  // Start with empty permissions
-            description: newRole.description || `Role for ${newRole.ad_groups.join(', ')}`
+            description: newRole.description || `Role for ${newRole.ad_groups.join(', ')}`,
+            a2a_only: newRoleA2AOnly
           });
           console.log(`Role ${newRole.name} created in backend permission registry`);
         }
@@ -232,7 +249,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
         console.error('Error creating role in permission registry:', error);
         // Don't fail the whole operation if this fails
       }
-      
+
       // Refresh roles
       await fetchRoles();
       setCreateMode(false);
@@ -282,7 +299,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setSelectedSuggestionIndex(prev => 
+        setSelectedSuggestionIndex(prev =>
           prev < groupSuggestions.length - 1 ? prev + 1 : prev
         );
         break;
@@ -305,13 +322,13 @@ const RolesModal: React.FC<RolesModalProps> = ({
   const handleAddGroup = async (role: Role, groupName?: string) => {
     const groupToAdd = groupName || groupInput.trim();
     if (!groupToAdd) return;
-    
+
     try {
       const updatedRole = {
         ...role,
         ad_groups: [...role.ad_groups, groupToAdd]
       };
-      
+
       // Update all mappings - convert to dictionary format
       const mappingsDict: Record<string, string | string[]> = {};
       roles.forEach(r => {
@@ -329,7 +346,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
           }
         });
       });
-      
+
       await adminService.setRoleMappings(clientId, mappingsDict);
       await fetchRoles();
       setGroupInput('');
@@ -344,13 +361,13 @@ const RolesModal: React.FC<RolesModalProps> = ({
       alert('A role must have at least one AD group');
       return;
     }
-    
+
     try {
       const updatedRole = {
         ...role,
         ad_groups: role.ad_groups.filter(g => g !== groupToRemove)
       };
-      
+
       // Update all mappings - convert to dictionary format
       const mappingsDict: Record<string, string | string[]> = {};
       roles.forEach(r => {
@@ -368,7 +385,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
           }
         });
       });
-      
+
       await adminService.setRoleMappings(clientId, mappingsDict);
       await fetchRoles();
     } catch (err) {
@@ -391,7 +408,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
         console.error('Error deleting role permissions:', err);
         // Continue with role deletion even if permission deletion fails
       }
-      
+
       // Remove this role from mappings - convert to dictionary format
       const mappingsDict: Record<string, string | string[]> = {};
       roles
@@ -410,13 +427,13 @@ const RolesModal: React.FC<RolesModalProps> = ({
             }
           });
         });
-      
+
       await adminService.setRoleMappings(clientId, mappingsDict);
-      
+
       // Also remove from localStorage
       const unifiedKey = `cids_unified_role_${clientId}_${role.name}`;
       localStorage.removeItem(unifiedKey);
-      
+
       await fetchRoles();
       alert(`Role "${role.name}" has been deleted successfully`);
     } catch (err) {
@@ -433,7 +450,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
         permissions,
         resource_scopes: resourceScopes
       };
-      
+
       try {
         // Save permissions to backend
         const token = localStorage.getItem('access_token');
@@ -449,7 +466,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
           }
           return perm;
         });
-        
+
         // Also add field-level permissions for fields that have RLS filters
         // Parse resource scopes to extract field permissions
         const fieldPermissions = new Set(formattedPermissions);
@@ -468,7 +485,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
             fieldPermissions.add(fieldPerm);
           }
         });
-        
+
         const allPermissions = Array.from(fieldPermissions);
 
         // Use adminService to save permissions to backend with RLS filters
@@ -479,26 +496,26 @@ const RolesModal: React.FC<RolesModalProps> = ({
         });
 
         console.log('Permissions saved to backend:', result);
-        
+
         // Update local state
         setRoles(roles.map(r => r.id === selectedRole.id ? updatedRole : r));
-        
+
         alert(`Permissions saved successfully! ${result.valid_permissions} permissions were saved to the backend.`);
       } catch (error) {
         console.error('Error saving permissions to backend:', error);
         alert(`Failed to save permissions to backend: ${error.message}\n\nThe permissions have been saved locally but may not be reflected in your token until saved to the backend.`);
-        
+
         // Still update local state even if backend save fails
         setRoles(roles.map(r => r.id === selectedRole.id ? updatedRole : r));
       }
     }
   };
-  
+
   const handleExportRole = (role: any) => {
     // Load the full configuration from localStorage
     const unifiedKey = `cids_unified_role_${clientId}_${role.name}`;
     const saved = localStorage.getItem(unifiedKey);
-    
+
     let exportData: any = {
       app_id: clientId,
       app_name: appName,
@@ -508,11 +525,11 @@ const RolesModal: React.FC<RolesModalProps> = ({
       rls_filters: [],
       exported_at: new Date().toISOString()
     };
-    
+
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        
+
         // Format permissions for database
         exportData.permissions = parsed.permissions?.map((perm: string) => {
           const [resource, action] = perm.split('.');
@@ -523,7 +540,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
             allowed: true
           };
         }) || [];
-        
+
         // Format RLS filters for database
         if (parsed.savedFilters) {
           exportData.rls_filters = Object.entries(parsed.savedFilters).flatMap(([key, filters]: [string, any]) => {
@@ -541,7 +558,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
             return [];
           });
         }
-        
+
         // Add summary statistics
         exportData.summary = {
           total_permissions: exportData.permissions.length,
@@ -563,13 +580,13 @@ const RolesModal: React.FC<RolesModalProps> = ({
           allowed: true
         };
       }) || [];
-      
+
       exportData.summary = {
         total_permissions: role.permissions?.length || 0,
         total_rls_filters: role.resource_scopes?.length || 0
       };
     }
-    
+
     // Create and download the JSON file
     const jsonStr = JSON.stringify(exportData, null, 2);
     const blob = new Blob([jsonStr], { type: 'application/json' });
@@ -581,7 +598,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    
+
     console.log('Exported role configuration:', exportData);
   };
 
@@ -598,17 +615,17 @@ const RolesModal: React.FC<RolesModalProps> = ({
           {loading && (
             <div className="loading-message">Loading roles...</div>
           )}
-          
+
           {error && (
             <div className="error-message">{error}</div>
           )}
-          
+
           {!loading && !error && (
             <>
               <div className="roles-header">
                 <h3>Application Roles</h3>
                 <div style={{ display: 'flex', gap: '10px' }}>
-                  <button 
+                  <button
                     className="button secondary"
                     onClick={() => {
                       // Export all roles
@@ -624,7 +641,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
                             permissions: role.permissions,
                             resource_scopes: role.resource_scopes
                           };
-                          
+
                           if (saved) {
                             try {
                               const parsed = JSON.parse(saved);
@@ -634,12 +651,12 @@ const RolesModal: React.FC<RolesModalProps> = ({
                               console.error('Error parsing role data:', e);
                             }
                           }
-                          
+
                           return roleData;
                         }),
                         exported_at: new Date().toISOString()
                       };
-                      
+
                       const jsonStr = JSON.stringify(allRolesExport, null, 2);
                       const blob = new Blob([jsonStr], { type: 'application/json' });
                       const url = URL.createObjectURL(blob);
@@ -655,7 +672,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
                   >
                     Export All Roles
                   </button>
-                  <button 
+                  <button
                     className="button primary"
                     onClick={handleCreateRole}
                   >
@@ -685,6 +702,15 @@ const RolesModal: React.FC<RolesModalProps> = ({
                       rows={2}
                     />
                   </div>
+                  <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={newRoleA2AOnly}
+                      onChange={(e)=> setNewRoleA2AOnly(e.target.checked)}
+                    />
+                    <label>Use this role for A2A only (no AD group mapping required)</label>
+                  </div>
+
                   <div className="form-group">
                     <label>Azure AD Groups</label>
                     <div className="ad-groups-input-wrapper">
@@ -694,6 +720,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
                           value={groupInput}
                           onChange={(e) => setGroupInput(e.target.value)}
                           onKeyDown={(e) => handleKeyDown(e)}
+
                           onKeyPress={(e) => {
                             if (e.key === 'Enter' && !showSuggestions) {
                               e.preventDefault();
@@ -767,13 +794,13 @@ const RolesModal: React.FC<RolesModalProps> = ({
                     </div>
                   </div>
                   <div className="form-actions">
-                    <button 
+                    <button
                       className="button primary"
                       onClick={handleSaveNewRole}
                     >
                       Save Role
                     </button>
-                    <button 
+                    <button
                       className="button secondary"
                       onClick={() => setCreateMode(false)}
                     >
@@ -782,6 +809,20 @@ const RolesModal: React.FC<RolesModalProps> = ({
                   </div>
                 </div>
               )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  id="hideA2AOnly"
+                  checked={localStorage.getItem(`hide_a2a_only_${clientId}`) === 'true'}
+                  onChange={(e)=>{
+                    if (e.target.checked) localStorage.setItem(`hide_a2a_only_${clientId}`, 'true');
+                    else localStorage.removeItem(`hide_a2a_only_${clientId}`);
+                    fetchRoles();
+                  }}
+                />
+                <label htmlFor="hideA2AOnly">Hide A2A-only roles</label>
+              </div>
+
 
               <div className="roles-list">
                 {roles.length === 0 ? (
@@ -897,7 +938,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
                           </div>
                         )}
                       </div>
-                      
+
                       <div className="role-stats">
                         <div className="stat">
                           <span className="stat-label">Permissions:</span>
@@ -910,20 +951,20 @@ const RolesModal: React.FC<RolesModalProps> = ({
                       </div>
 
                       <div className="role-actions">
-                        <button 
+                        <button
                           className="button primary"
                           onClick={() => handleEditPermissions(role)}
                         >
                           Edit Permissions
                         </button>
-                        <button 
+                        <button
                           className="button secondary"
                           onClick={() => handleExportRole(role)}
                           title="Export role configuration as JSON"
                         >
                           Export
                         </button>
-                        <button 
+                        <button
                           className="button danger"
                           onClick={() => handleDeleteRole(role)}
                         >
