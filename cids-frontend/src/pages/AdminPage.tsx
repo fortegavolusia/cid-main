@@ -522,7 +522,9 @@ const AdminPage: React.FC = () => {
 
       {/* Discovery Statistics Section */}
       <InfoSection>
-        <SectionTitle>🔍 Discovery Statistics</SectionTitle>
+        <SectionHeader style={{ cursor: 'default', borderBottom: '1px solid var(--border-color)' }}>
+          <h2 style={{ margin: 0 }}>🔍 Discovery Statistics</h2>
+        </SectionHeader>
         <SectionContent>
           <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
             <button className="button secondary" onClick={async () => {
