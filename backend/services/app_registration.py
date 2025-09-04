@@ -69,10 +69,11 @@ class SetRoleMappingRequest(BaseModel):
 APPS_FILE = data_path("registered_apps.json")
 SECRETS_FILE = data_path("app_secrets.json")
 ROLE_MAPPINGS_FILE = data_path("app_role_mappings.json")
+A2A_MAPPINGS_FILE = data_path("a2a_role_mappings.json")
 
 
 def load_data():
-    global registered_apps, app_secrets, app_role_mappings
+    global registered_apps, app_secrets, app_role_mappings, a2a_role_mappings
     try:
         if APPS_FILE.exists():
             with open(APPS_FILE, 'r') as f:
@@ -117,6 +118,15 @@ def load_data():
     except Exception as e:
         logger.error(f"Error loading role mappings: {e}")
         app_role_mappings = {}
+    try:
+        if A2A_MAPPINGS_FILE.exists():
+            with open(A2A_MAPPINGS_FILE, 'r') as f:
+                a2a_role_mappings = json.load(f)
+        else:
+            a2a_role_mappings = {}
+    except Exception as e:
+        logger.error(f"Error loading A2A role mappings: {e}")
+        a2a_role_mappings = {}
 
 
 def save_data():
@@ -124,6 +134,7 @@ def save_data():
         temp_apps = APPS_FILE.with_suffix('.tmp')
         temp_secrets = SECRETS_FILE.with_suffix('.tmp')
         temp_mappings = ROLE_MAPPINGS_FILE.with_suffix('.tmp')
+        temp_a2a_mappings = A2A_MAPPINGS_FILE.with_suffix('.tmp')
         APPS_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(temp_apps, 'w') as f:
             json.dump(registered_apps, f, indent=2)
@@ -134,9 +145,13 @@ def save_data():
         with open(temp_mappings, 'w') as f:
             json.dump(app_role_mappings, f, indent=2)
             f.write('\n')
+        with open(temp_a2a_mappings, 'w') as f:
+            json.dump(a2a_role_mappings, f, indent=2)
+            f.write('\n')
         temp_apps.replace(APPS_FILE)
         temp_secrets.replace(SECRETS_FILE)
         temp_mappings.replace(ROLE_MAPPINGS_FILE)
+        temp_a2a_mappings.replace(A2A_MAPPINGS_FILE)
     except Exception as e:
         logger.error(f"Error saving data: {e}", exc_info=True)
         raise
@@ -145,6 +160,7 @@ def save_data():
 registered_apps: Dict[str, dict] = {}
 app_secrets: Dict[str, str] = {}
 app_role_mappings: Dict[str, List[dict]] = {}
+a2a_role_mappings: Dict[str, Dict[str, List[str]]] = {}
 load_data()
 
 
@@ -245,6 +261,8 @@ class AppRegistrationStore:
             del app_secrets[client_id]
         if client_id in app_role_mappings:
             del app_role_mappings[client_id]
+        if client_id in a2a_role_mappings:
+            del a2a_role_mappings[client_id]
         save_data()
         logger.info(f"Permanently deleted app: {client_id}")
         return True
@@ -281,23 +299,21 @@ class AppRegistrationStore:
         return user_roles
 
     # A2A (App-to-App) Role Mappings Methods
-    def get_a2a_mappings(self) -> Dict[str, List[dict]]:
+    def get_a2a_mappings(self) -> Dict[str, Dict[str, List[str]]]:
         """Get all A2A role mappings for all apps"""
-        # For now, A2A mappings are the same as regular role mappings
-        # In the future, these could be stored separately if needed
-        return app_role_mappings
+        return a2a_role_mappings
 
-    def get_a2a_mappings_for_caller(self, caller_id: str) -> List[dict]:
+    def get_a2a_mappings_for_caller(self, caller_id: str) -> Dict[str, List[str]]:
         """Get A2A role mappings for a specific caller app"""
-        # For now, A2A mappings are the same as regular role mappings
-        # In the future, these could be stored separately if needed
-        return app_role_mappings.get(caller_id, [])
+        return a2a_role_mappings.get(caller_id, {})
 
     def set_a2a_mappings(self, caller_id: str, mappings: Dict[str, List[str]], created_by: str) -> bool:
         """Set A2A role mappings for a specific caller app"""
-        # For now, A2A mappings use the same storage as regular role mappings
-        # In the future, these could be stored separately if needed
-        return self.set_role_mappings(caller_id, mappings, created_by)
+        if caller_id not in registered_apps:
+            return False
+        a2a_role_mappings[caller_id] = mappings
+        save_data()
+        return True
 
 
 app_store = AppRegistrationStore()
