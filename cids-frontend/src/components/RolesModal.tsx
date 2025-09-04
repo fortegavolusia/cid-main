@@ -444,6 +444,13 @@ const RolesModal: React.FC<RolesModalProps> = ({
   };
 
   const handlePermissionsUpdate = async (permissions: string[], deniedPermissions: string[], resourceScopes: string[], savedFilters: Record<string, Array<{ id: string; expression: string; timestamp: string }>>) => {
+    console.log('handlePermissionsUpdate called with:', {
+      permissions,
+      deniedPermissions,
+      resourceScopes,
+      savedFilters
+    });
+
     if (selectedRole) {
       // Update the role's permissions
       const updatedRole = {
@@ -477,6 +484,11 @@ const RolesModal: React.FC<RolesModalProps> = ({
           return perm;
         });
 
+        console.log('After formatting:', {
+          formattedPermissions,
+          formattedDeniedPermissions
+        });
+
         // Also add field-level permissions for fields that have RLS filters
         // Parse resource scopes to extract field permissions
         const fieldPermissions = new Set(formattedPermissions);
@@ -500,14 +512,14 @@ const RolesModal: React.FC<RolesModalProps> = ({
 
         // Use adminService to save permissions to backend with RLS filters
         console.log('Sending to backend:', {
-          permissions: allPermissions,
+          permissions: formattedPermissions,
           denied_permissions: formattedDeniedPermissions,
           description: selectedRole.description || `Role with ${permissions.length} allowed, ${deniedPermissions.length} denied permissions and ${resourceScopes.length} RLS filters`,
           rls_filters: savedFilters
         });
 
         const result = await adminService.updateRolePermissions(clientId, selectedRole.name, {
-          permissions: allPermissions,
+          permissions: formattedPermissions,
           denied_permissions: formattedDeniedPermissions,
           description: selectedRole.description || `Role with ${permissions.length} allowed, ${deniedPermissions.length} denied permissions and ${resourceScopes.length} RLS filters`,
           rls_filters: savedFilters
@@ -518,7 +530,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
         // Update local state
         setRoles(roles.map(r => r.id === selectedRole.id ? updatedRole : r));
 
-        alert(`Permissions saved successfully! ${result.valid_count || result.valid_permissions || 0} allowed and ${result.denied_count || 0} denied permissions were saved to the backend.`);
+        alert(`Permissions saved successfully! ${result.valid_count || 0} allowed and ${result.denied_count || 0} denied permissions were saved to the backend.`);
       } catch (error) {
         console.error('Error saving permissions to backend:', error);
         alert(`Failed to save permissions to backend: ${error.message}\n\nThe permissions have been saved locally but may not be reflected in your token until saved to the backend.`);

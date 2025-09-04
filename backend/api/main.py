@@ -1236,7 +1236,7 @@ async def create_permission_role(client_id: str, authorization: Optional[str] = 
     except Exception:
         logger.exception("Failed to persist a2a_only metadata")
     audit_logger.log_action(action=AuditAction.ROLE_CREATED, details={'app_client_id': client_id, 'role_name': role_name, 'permissions_count': len(valid_perms), 'denied_permissions_count': len(valid_denied_perms), 'rls_filters_count': len(rls_filters) if rls_filters else 0, 'created_by': claims.get('email'), 'a2a_only': bool(a2a_only)})
-    return JSONResponse({"app_id": client_id, "role_name": role_name, "permissions": list(valid_perms), "denied_permissions": list(valid_denied_perms), "valid_count": len(valid_perms), "denied_count": len(valid_denied_perms), "invalid_count": len(permissions) - len(valid_perms), "rls_filters_saved": len(rls_filters) if rls_filters else 0, "metadata": permission_registry.get_role_metadata(client_id, role_name)})
+    return JSONResponse({"app_id": client_id, "role_name": role_name, "allowed_permissions": list(valid_perms), "denied_permissions": list(valid_denied_perms), "valid_count": len(valid_perms), "denied_count": len(valid_denied_perms), "invalid_count": len(permissions) - len(valid_perms), "rls_filters_saved": len(rls_filters) if rls_filters else 0, "metadata": permission_registry.get_role_metadata(client_id, role_name)})
 
 @app.get("/permissions/{client_id}/roles/{role_name}")
 async def get_role_permissions(client_id: str, role_name: str, authorization: Optional[str] = Header(None)):
@@ -1244,9 +1244,9 @@ async def get_role_permissions(client_id: str, role_name: str, authorization: Op
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     role_config = permission_registry.get_role_full_config(client_id, role_name)
-    if not role_config['permissions'] and not role_config['denied_permissions'] and not role_config['rls_filters']:
+    if not role_config['allowed_permissions'] and not role_config['denied_permissions'] and not role_config['rls_filters']:
         raise HTTPException(status_code=404, detail="Role not found")
-    return JSONResponse({"app_id": client_id, "role_name": role_name, "permissions": role_config['permissions'], "denied_permissions": role_config['denied_permissions'], "rls_filters": role_config['rls_filters'], "metadata": role_config['metadata'], "count": len(role_config['permissions']), "denied_count": len(role_config['denied_permissions'])})
+    return JSONResponse({"app_id": client_id, "role_name": role_name, "allowed_permissions": role_config['allowed_permissions'], "denied_permissions": role_config['denied_permissions'], "rls_filters": role_config['rls_filters'], "metadata": role_config['metadata'], "count": len(role_config['allowed_permissions']), "denied_count": len(role_config['denied_permissions'])})
 
 @app.get("/permissions/{client_id}/roles")
 async def list_roles(client_id: str, authorization: Optional[str] = Header(None)):
@@ -1282,7 +1282,7 @@ async def update_permission_role(client_id: str, role_name: str, authorization: 
         except Exception:
             logger.exception("Failed to update a2a_only metadata")
     audit_logger.log_action(action=AuditAction.ROLE_UPDATED, details={'app_client_id': client_id, 'role_name': role_name, 'permissions_count': len(valid_perms), 'denied_permissions_count': len(valid_denied_perms), 'rls_filters_count': len(rls_filters) if rls_filters else 0, 'updated_by': claims.get('email'), 'a2a_only': a2a_only})
-    return JSONResponse({"app_id": client_id, "role_name": role_name, "permissions": list(valid_perms), "denied_permissions": list(valid_denied_perms), "valid_count": len(valid_perms), "denied_count": len(valid_denied_perms), "invalid_count": len(permissions) - len(valid_perms), "rls_filters_saved": len(rls_filters) if rls_filters else 0, "metadata": permission_registry.get_role_metadata(client_id, role_name)})
+    return JSONResponse({"app_id": client_id, "role_name": role_name, "allowed_permissions": list(valid_perms), "denied_permissions": list(valid_denied_perms), "valid_count": len(valid_perms), "denied_count": len(valid_denied_perms), "invalid_count": len(permissions) - len(valid_perms), "rls_filters_saved": len(rls_filters) if rls_filters else 0, "metadata": permission_registry.get_role_metadata(client_id, role_name)})
 
 @app.delete("/permissions/{client_id}/roles/{role_name}")
 async def delete_role(client_id: str, role_name: str, authorization: Optional[str] = Header(None)):

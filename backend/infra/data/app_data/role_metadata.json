@@ -20,16 +20,16 @@
     }
   },
   "app_c842dc1a7a8c4bb4": {
-    "test 2": {
-      "created_at": "2025-09-04T19:07:45.324544",
-      "description": "Role with 2 allowed, 2 denied permissions and 0 RLS filters",
+    "test 3": {
+      "created_at": "2025-09-04T19:32:29.225310",
+      "description": "Role with 6 allowed, 13 denied permissions and 0 RLS filters",
       "a2a_only": true,
-      "updated_at": "2025-09-04T19:08:13.419086"
+      "updated_at": "2025-09-04T19:39:14.525961"
     }
   },
   "test_app": {
     "test_role": {
-      "created_at": "2025-09-04T19:11:26.898717",
+      "created_at": "2025-09-04T19:43:02.997824",
       "description": "Test role"
     }
   }

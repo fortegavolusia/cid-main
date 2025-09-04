@@ -48,7 +48,9 @@ class PermissionRegistry:
                         self.role_rls_filters[app_id] = {}
                         for role, role_data in roles.items():
                             if isinstance(role_data, dict):
-                                self.role_permissions[app_id][role] = set(role_data.get('permissions', []))
+                                # Support both old 'permissions' and new 'allowed_permissions' for backward compatibility
+                                allowed_perms = role_data.get('allowed_permissions', role_data.get('permissions', []))
+                                self.role_permissions[app_id][role] = set(allowed_perms)
                                 self.role_denied_permissions[app_id][role] = set(role_data.get('denied_permissions', []))
                                 self.role_rls_filters[app_id][role] = role_data.get('rls_filters', {})
                             else:
@@ -93,7 +95,7 @@ class PermissionRegistry:
                 for role, perms in roles.items():
                     denied_perms = self.role_denied_permissions.get(app_id, {}).get(role, set())
                     role_data[app_id][role] = {
-                        'permissions': list(perms),
+                        'allowed_permissions': list(perms),
                         'denied_permissions': list(denied_perms),
                         'rls_filters': self.role_rls_filters.get(app_id, {}).get(role, {})
                     }
@@ -191,7 +193,7 @@ class PermissionRegistry:
 
     def get_role_full_config(self, app_id: str, role_name: str) -> Dict:
         return {
-            'permissions': list(self.get_role_permissions(app_id, role_name)),
+            'allowed_permissions': list(self.get_role_permissions(app_id, role_name)),
             'denied_permissions': list(self.get_role_denied_permissions(app_id, role_name)),
             'rls_filters': self.get_role_rls_filters(app_id, role_name),
             'metadata': self.get_role_metadata(app_id, role_name)

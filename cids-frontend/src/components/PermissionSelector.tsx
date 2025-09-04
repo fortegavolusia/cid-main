@@ -687,11 +687,30 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
               const deniedPermissions: string[] = [];
 
               // Add action-level permissions (Allow/Deny on endpoints)
+              // Convert action-level permissions to field-level permissions
               Object.entries(actionPermissions).forEach(([actionKey, permission]) => {
-                if (permission === 'allow') {
-                  permissions.push(actionKey);
-                } else if (permission === 'deny') {
-                  deniedPermissions.push(actionKey);
+                if (permission === 'allow' || permission === 'deny') {
+                  // Parse the action key (format: "resource.action")
+                  const [resource, action] = actionKey.split('.');
+
+                  // Find all fields for this resource.action in the permission tree
+                  if (permissionTree && permissionTree[resource] && permissionTree[resource][action]) {
+                    const actionDetails = permissionTree[resource][action];
+                    const fields = actionDetails.fields || [];
+
+                    // Add each field permission
+                    fields.forEach(field => {
+                      if (field.permission_key) {
+                        // Use the full permission key from the field
+                        const fieldPermission = field.permission_key;
+                        if (permission === 'allow') {
+                          permissions.push(fieldPermission);
+                        } else if (permission === 'deny') {
+                          deniedPermissions.push(fieldPermission);
+                        }
+                      }
+                    });
+                  }
                 }
               });
 
@@ -723,6 +742,13 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
               localStorage.setItem(unifiedKey, JSON.stringify(roleConfig));
 
               console.log('Saved role configuration:', roleConfig);
+
+              console.log('PermissionSelector sending:', {
+                permissions,
+                deniedPermissions,
+                resourceScopes,
+                savedFilters
+              });
 
               // Call the onSave callback with collected permissions and filters
               onSave(permissions, deniedPermissions, resourceScopes, savedFilters);
