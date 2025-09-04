@@ -749,6 +749,29 @@ async def register_app_admin(request: RegisterAppRequest, authorization: Optiona
         except Exception:
             logger.exception("Failed to create initial API key")
 
+    # Log the registration
+    audit_logger.log_action(
+        action=AuditAction.APP_REGISTERED,
+        details={
+            'app_name': request.name,
+            'client_id': app_data["client_id"],
+            'registered_by': claims.get('email', 'admin'),
+            'api_key_created': api_key is not None
+        }
+    )
+
+    # Return the registration response
+    response_data = {
+        "app": app_data,
+        "client_secret": client_secret
+    }
+
+    if api_key:
+        response_data["api_key"] = api_key
+        response_data["api_key_metadata"] = api_key_metadata
+
+    return JSONResponse(response_data)
+
 @app.post("/auth/token/a2a")
 async def a2a_token_exchange(request: A2ATokenRequest = Body(None), authorization: Optional[str] = Header(None)):
     # Validate API key from Authorization header
