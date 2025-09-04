@@ -4,8 +4,8 @@
   "app_fe80739ff4e547fb": {
     "test14": {
       "allowed_permissions": [
-        "app_fe80739ff4e547fb.users.read.medical_records",
-        "app_fe80739ff4e547fb.users.read.created_at"
+        "app_fe80739ff4e547fb.users.read.created_at",
+        "app_fe80739ff4e547fb.users.read.medical_records"
       ],
       "denied_permissions": [],
       "rls_filters": {
@@ -38,34 +38,7 @@
       "rls_filters": {}
     }
   },
-  "app_c842dc1a7a8c4bb4": {
-    "test 3": {
-      "allowed_permissions": [
-        "app_c842dc1a7a8c4bb4.secure_admin.read.identity",
-        "app_c842dc1a7a8c4bb4.secure_admin.read.identity.email",
-        "app_c842dc1a7a8c4bb4.secure_admin.read.message",
-        "app_c842dc1a7a8c4bb4.secure_admin.read.identity.permissions",
-        "app_c842dc1a7a8c4bb4..read.status",
-        "app_c842dc1a7a8c4bb4..read.service"
-      ],
-      "denied_permissions": [
-        "app_c842dc1a7a8c4bb4.secure_ping.read.identity.permissions",
-        "app_c842dc1a7a8c4bb4.whoami.read.app_client_id",
-        "app_c842dc1a7a8c4bb4.whoami.read.permissions",
-        "app_c842dc1a7a8c4bb4.whoami.read.auth_type",
-        "app_c842dc1a7a8c4bb4.whoami.read.sub",
-        "app_c842dc1a7a8c4bb4.whoami.read.name",
-        "app_c842dc1a7a8c4bb4.whoami.read.valid",
-        "app_c842dc1a7a8c4bb4.secure_ping.read.identity.email",
-        "app_c842dc1a7a8c4bb4.secure_ping.read.identity.sub",
-        "app_c842dc1a7a8c4bb4.secure_ping.read.identity",
-        "app_c842dc1a7a8c4bb4.secure_ping.read.message",
-        "app_c842dc1a7a8c4bb4.secure_ping.read.identity.name",
-        "app_c842dc1a7a8c4bb4.whoami.read.email"
-      ],
-      "rls_filters": {}
-    }
-  },
+  "app_c842dc1a7a8c4bb4": {},
   "test_app": {
     "test_role": {
       "allowed_permissions": [],
