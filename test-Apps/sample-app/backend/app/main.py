@@ -53,3 +53,211 @@ async def secure_admin(identity = Depends(get_identity)):
 async def whoami(identity = Depends(get_identity)):
     return JSONResponse(identity)
 
+
+@app.get("/discovery")
+async def discovery_endpoint():
+    """
+    CID Discovery endpoint - returns metadata about this app's endpoints and fields
+    """
+    return {
+        "app_id": "sample-test-app",
+        "app_name": "CID Sample Test App",
+        "discovery_version": "2.0",
+        "description": "A sample FastAPI application for testing CID integration",
+        "endpoints": [
+            {
+                "path": "/",
+                "method": "GET",
+                "operation_id": "root",
+                "description": "Health check endpoint",
+                "requires_auth": False,
+                "response_fields": [
+                    {
+                        "name": "status",
+                        "type": "string",
+                        "description": "Service status",
+                        "sensitive": False,
+                        "pii": False,
+                        "phi": False
+                    },
+                    {
+                        "name": "service",
+                        "type": "string",
+                        "description": "Service name",
+                        "sensitive": False,
+                        "pii": False,
+                        "phi": False
+                    }
+                ]
+            },
+            {
+                "path": "/secure/ping",
+                "method": "GET",
+                "operation_id": "secure_ping",
+                "description": "Authenticated ping endpoint that returns user identity",
+                "requires_auth": True,
+                "response_fields": [
+                    {
+                        "name": "message",
+                        "type": "string",
+                        "description": "Response message",
+                        "sensitive": False,
+                        "pii": False,
+                        "phi": False
+                    },
+                    {
+                        "name": "identity",
+                        "type": "object",
+                        "description": "Complete user identity information from CID",
+                        "sensitive": True,
+                        "pii": True,
+                        "phi": False,
+                        "nested_fields": [
+                            {
+                                "name": "email",
+                                "type": "string",
+                                "description": "User email address",
+                                "sensitive": False,
+                                "pii": True,
+                                "phi": False
+                            },
+                            {
+                                "name": "name",
+                                "type": "string",
+                                "description": "User full name",
+                                "sensitive": False,
+                                "pii": True,
+                                "phi": False
+                            },
+                            {
+                                "name": "sub",
+                                "type": "string",
+                                "description": "User subject identifier",
+                                "sensitive": False,
+                                "pii": True,
+                                "phi": False
+                            },
+                            {
+                                "name": "permissions",
+                                "type": "array",
+                                "description": "User permissions list",
+                                "sensitive": True,
+                                "pii": False,
+                                "phi": False
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "path": "/secure/admin",
+                "method": "GET",
+                "operation_id": "secure_admin",
+                "description": "Admin-only endpoint requiring admin permission",
+                "requires_auth": True,
+                "required_permissions": ["admin"],
+                "response_fields": [
+                    {
+                        "name": "message",
+                        "type": "string",
+                        "description": "Admin confirmation message",
+                        "sensitive": False,
+                        "pii": False,
+                        "phi": False
+                    },
+                    {
+                        "name": "identity",
+                        "type": "object",
+                        "description": "Admin user identity information",
+                        "sensitive": True,
+                        "pii": True,
+                        "phi": False,
+                        "nested_fields": [
+                            {
+                                "name": "email",
+                                "type": "string",
+                                "description": "Admin user email",
+                                "sensitive": False,
+                                "pii": True,
+                                "phi": False
+                            },
+                            {
+                                "name": "permissions",
+                                "type": "array",
+                                "description": "Admin permissions (includes admin)",
+                                "sensitive": True,
+                                "pii": False,
+                                "phi": False
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "path": "/whoami",
+                "method": "GET",
+                "operation_id": "whoami",
+                "description": "Returns the authenticated user's identity information",
+                "requires_auth": True,
+                "response_fields": [
+                    {
+                        "name": "auth_type",
+                        "type": "string",
+                        "description": "Authentication method used (jwt or api_key)",
+                        "sensitive": False,
+                        "pii": False,
+                        "phi": False
+                    },
+                    {
+                        "name": "email",
+                        "type": "string",
+                        "description": "User email address",
+                        "sensitive": False,
+                        "pii": True,
+                        "phi": False
+                    },
+                    {
+                        "name": "name",
+                        "type": "string",
+                        "description": "User display name",
+                        "sensitive": False,
+                        "pii": True,
+                        "phi": False
+                    },
+                    {
+                        "name": "sub",
+                        "type": "string",
+                        "description": "User subject identifier",
+                        "sensitive": False,
+                        "pii": True,
+                        "phi": False
+                    },
+                    {
+                        "name": "app_client_id",
+                        "type": "string",
+                        "description": "Client ID of the calling application",
+                        "sensitive": False,
+                        "pii": False,
+                        "phi": False
+                    },
+                    {
+                        "name": "permissions",
+                        "type": "array",
+                        "description": "List of user permissions",
+                        "sensitive": True,
+                        "pii": False,
+                        "phi": False
+                    },
+                    {
+                        "name": "valid",
+                        "type": "boolean",
+                        "description": "Token validation status",
+                        "sensitive": False,
+                        "pii": False,
+                        "phi": False
+                    }
+                ]
+            }
+        ]
+    }
+
