@@ -29,7 +29,7 @@
       "expires_at": "2025-11-25T14:51:38.026869",
       "created_at": "2025-08-27T14:51:38.026935",
       "created_by": "FOrtega@volusia.gov",
-      "is_active": true,
+      "is_active": false,
       "usage_count": 0
     }
   },
@@ -49,6 +49,85 @@
       "created_by": "FOrtega@volusia.gov",
       "is_active": true,
       "usage_count": 0
+    }
+  },
+  "app_7e534f740f024fc7": {
+    "rd3qXr0qa9OAHA4Ocks_DA": {
+      "key_id": "rd3qXr0qa9OAHA4Ocks_DA",
+      "key_hash": "d86856e29941f7a59002c04f1ed9b37234e4758253017a987959c1421b2fa996",
+      "key_prefix": "cids_ak_JbvBvyPd",
+      "name": "CID Sample Test App",
+      "permissions": [
+        "admin"
+      ],
+      "expires_at": "2025-12-03T15:21:59.078007",
+      "created_at": "2025-09-04T15:21:59.078045",
+      "created_by": "jnbailey@volusia.gov",
+      "is_active": false,
+      "usage_count": 0
+    }
+  },
+  "app_fba8bffb12d34fa0": {
+    "Ryptk7bHu_qRrrOd9d1Omw": {
+      "key_id": "Ryptk7bHu_qRrrOd9d1Omw",
+      "key_hash": "e9034cafcf7c8a6b949d60a2d8096d2571b3ebeb3225390578372cc6cb2a4244",
+      "key_prefix": "cids_ak_EtqKtCJS",
+      "name": "CID Sample Test App",
+      "permissions": [
+        "admin"
+      ],
+      "expires_at": "2025-12-03T15:22:12.515630",
+      "created_at": "2025-09-04T15:22:12.515664",
+      "created_by": "jnbailey@volusia.gov",
+      "is_active": false,
+      "usage_count": 0
+    }
+  },
+  "app_38297f9091524f42": {
+    "SnglmPEz5c_FrP5r8RXUGw": {
+      "key_id": "SnglmPEz5c_FrP5r8RXUGw",
+      "key_hash": "64f8d3ddad29669ea850588e727743417f2dbc7122f4937229af5e96650ee49c",
+      "key_prefix": "cids_ak_tVAQASuV",
+      "name": "CID Sample Test App",
+      "permissions": [
+        "admin"
+      ],
+      "expires_at": "2025-12-03T15:22:29.632362",
+      "created_at": "2025-09-04T15:22:29.632389",
+      "created_by": "jnbailey@volusia.gov",
+      "is_active": false,
+      "usage_count": 0
+    }
+  },
+  "app_27e7ce0814774d84": {
+    "3oZUUhDMlrkbT14po7lpFw": {
+      "key_id": "3oZUUhDMlrkbT14po7lpFw",
+      "key_hash": "9ab55517a0cadd692f4402ae1dbff37b64417bb42e786543d65b28d93fcf9705",
+      "key_prefix": "cids_ak_YHK4dQvu",
+      "name": "CID Sample Test App",
+      "permissions": [
+        "admin"
+      ],
+      "expires_at": "2025-12-03T15:22:46.176001",
+      "created_at": "2025-09-04T15:22:46.176029",
+      "created_by": "jnbailey@volusia.gov",
+      "is_active": false,
+      "usage_count": 0
+    }
+  },
+  "app_c842dc1a7a8c4bb4": {
+    "3EHGH8w2Vax2UNHbvf9oIA": {
+      "key_id": "3EHGH8w2Vax2UNHbvf9oIA",
+      "key_hash": "e297d9aefaa90e054f44a1608722a9d79bcfd5a87ed453cde4975170d48b2173",
+      "key_prefix": "cids_ak_nB9bafeB",
+      "name": "test",
+      "permissions": [],
+      "expires_at": "2025-12-03T15:55:40.718882",
+      "created_at": "2025-09-04T15:55:40.718907",
+      "created_by": "jnbailey@volusia.gov",
+      "is_active": false,
+      "usage_count": 0,
+      "token_ttl_minutes": 15
     }
   }
 }

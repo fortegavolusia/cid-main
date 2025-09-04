@@ -6,8 +6,7 @@ import type {
   APIKeyCreationResponse,
   CreateAPIKeyRequest,
   TokenActivityResponse,
-  AppRegistrationResult,
-  RotateSecretResult
+  AppRegistrationResult
 } from '../types/admin';
 
 class AdminService {
@@ -117,9 +116,7 @@ class AdminService {
     return apiService.delete(`/auth/admin/apps/${clientId}/api-keys/${keyId}`);
   }
 
-  async rotateAppSecret(clientId: string): Promise<RotateSecretResult> {
-    return apiService.post(`/auth/admin/apps/${clientId}/rotate-secret`);
-  }
+
 
   async rotateAPIKey(
     clientId: string,
@@ -147,11 +144,11 @@ class AdminService {
   }
 
   // Permission Management
-  async createRolePermissions(clientId: string, roleData: { role_name: string; permissions: string[]; description?: string; rls_filters?: any; a2a_only?: boolean }): Promise<any> {
+  async createRolePermissions(clientId: string, roleData: { role_name: string; permissions: string[]; denied_permissions?: string[]; description?: string; rls_filters?: any; a2a_only?: boolean }): Promise<any> {
     return apiService.post(`/permissions/${clientId}/roles`, roleData);
   }
 
-  async updateRolePermissions(clientId: string, roleName: string, permissionData: { permissions: string[]; description?: string; rls_filters?: any; a2a_only?: boolean }): Promise<any> {
+  async updateRolePermissions(clientId: string, roleName: string, permissionData: { permissions: string[]; denied_permissions?: string[]; description?: string; rls_filters?: any; a2a_only?: boolean }): Promise<any> {
     return apiService.put(`/permissions/${clientId}/roles/${roleName}`, permissionData);
   }
 
@@ -159,9 +156,20 @@ class AdminService {
     return apiService.delete(`/permissions/${clientId}/roles/${roleName}`);
   }
 
-  async triggerDiscovery(clientId: string): Promise<any> {
-    return apiService.post(`/discovery/endpoints/${clientId}`);
+  async triggerDiscovery(clientId: string, force: boolean = true): Promise<any> {
+    return apiService.post(`/discovery/endpoints/${clientId}?force=${force}`);
   }
+
+  // Enhanced Discovery Methods
+  async batchDiscovery(clientIds: string[], force: boolean = true): Promise<any> {
+    return apiService.post('/discovery/batch', { client_ids: clientIds, force });
+  }
+
+
+
+
+
+
 
   async updateAppEndpoints(clientId: string, endpoints: any): Promise<any> {
     return apiService.put(`/auth/admin/apps/${clientId}/endpoints`, endpoints);

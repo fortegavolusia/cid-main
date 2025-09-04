@@ -24,6 +24,7 @@ class PermissionRegistry:
     def __init__(self):
         self.permissions: Dict[str, Dict[str, PermissionMetadata]] = {}
         self.role_permissions: Dict[str, Dict[str, Set[str]]] = {}
+        self.role_denied_permissions: Dict[str, Dict[str, Set[str]]] = {}
         self.role_metadata: Dict[str, Dict[str, Dict]] = {}
         self.role_rls_filters: Dict[str, Dict[str, Dict]] = {}
         self._load_registry()
@@ -43,14 +44,17 @@ class PermissionRegistry:
                     data = json.load(f)
                     for app_id, roles in data.items():
                         self.role_permissions[app_id] = {}
+                        self.role_denied_permissions[app_id] = {}
                         self.role_rls_filters[app_id] = {}
                         for role, role_data in roles.items():
                             if isinstance(role_data, dict):
-                                self.role_permissions[app_id][role] = set(role_data.get('permissions', []))
+                                self.role_permissions[app_id][role] = set(role_data.get('allowed_permissions', []))
+                                self.role_denied_permissions[app_id][role] = set(role_data.get('denied_permissions', []))
                                 self.role_rls_filters[app_id][role] = role_data.get('rls_filters', {})
                             else:
                                 logger.warning(f"Role {role} in app {app_id} has invalid format, initializing as empty")
                                 self.role_permissions[app_id][role] = set()
+                                self.role_denied_permissions[app_id][role] = set()
                                 self.role_rls_filters[app_id][role] = {}
 
             if ROLE_METADATA_DB.exists():
@@ -62,6 +66,7 @@ class PermissionRegistry:
             logger.error(f"Error loading permission registry: {e}")
             self.permissions = {}
             self.role_permissions = {}
+            self.role_denied_permissions = {}
             self.role_metadata = {}
 
     def _save_registry(self):
@@ -86,8 +91,10 @@ class PermissionRegistry:
             for app_id, roles in self.role_permissions.items():
                 role_data[app_id] = {}
                 for role, perms in roles.items():
+                    denied_perms = self.role_denied_permissions.get(app_id, {}).get(role, set())
                     role_data[app_id][role] = {
-                        'permissions': list(perms),
+                        'allowed_permissions': list(perms),
+                        'denied_permissions': list(denied_perms),
                         'rls_filters': self.role_rls_filters.get(app_id, {}).get(role, {})
                     }
             with open(ROLE_PERMISSIONS_DB, 'w') as f:
@@ -109,14 +116,17 @@ class PermissionRegistry:
     def get_app_permissions(self, app_id: str) -> Dict[str, PermissionMetadata]:
         return self.permissions.get(app_id, {})
 
-    def create_role_with_rls(self, app_id: str, role_name: str, permissions: Set[str], description: str = None, rls_filters: Dict = None):
+    def create_role_with_rls(self, app_id: str, role_name: str, permissions: Set[str], description: str = None, rls_filters: Dict = None, denied_permissions: Set[str] = None):
         if app_id not in self.role_permissions:
             self.role_permissions[app_id] = {}
+        if app_id not in self.role_denied_permissions:
+            self.role_denied_permissions[app_id] = {}
         if app_id not in self.role_metadata:
             self.role_metadata[app_id] = {}
         if app_id not in self.role_rls_filters:
             self.role_rls_filters[app_id] = {}
 
+        # Validate and process allowed permissions
         valid_perms = set()
         app_perms = self.permissions.get(app_id, {})
         for perm in permissions:
@@ -130,7 +140,22 @@ class PermissionRegistry:
             else:
                 logger.warning(f"Permission {perm} not found for app {app_id}")
 
+        # Validate and process denied permissions
+        valid_denied_perms = set()
+        if denied_permissions:
+            for perm in denied_permissions:
+                if perm in app_perms:
+                    valid_denied_perms.add(perm)
+                elif perm.endswith(".*"):
+                    prefix = perm[:-2]
+                    for p in app_perms:
+                        if p.startswith(prefix):
+                            valid_denied_perms.add(p)
+                else:
+                    logger.warning(f"Denied permission {perm} not found for app {app_id}")
+
         self.role_permissions[app_id][role_name] = valid_perms
+        self.role_denied_permissions[app_id][role_name] = valid_denied_perms
         self.role_rls_filters[app_id][role_name] = rls_filters or {}
 
         if role_name not in self.role_metadata[app_id]:
@@ -144,25 +169,30 @@ class PermissionRegistry:
                 self.role_metadata[app_id][role_name]['description'] = description
 
         self._save_registry()
-        logger.info(f"Created/updated role {role_name} with {len(valid_perms)} permissions and {len(rls_filters) if rls_filters else 0} RLS filters for app {app_id}")
-        return valid_perms
+        logger.info(f"Created/updated role {role_name} with {len(valid_perms)} allowed, {len(valid_denied_perms)} denied permissions and {len(rls_filters) if rls_filters else 0} RLS filters for app {app_id}")
+        return valid_perms, valid_denied_perms
 
     # Legacy alias
     def create_role(self, app_id: str, role_name: str, permissions: Set[str], description: str = None):
-        return self.create_role_with_rls(app_id, role_name, permissions, description, None)
+        valid_perms, _ = self.create_role_with_rls(app_id, role_name, permissions, description, None)
+        return valid_perms
 
-    def update_role_with_rls(self, app_id: str, role_name: str, permissions: Set[str], description: str = None, rls_filters: Dict = None):
-        return self.create_role_with_rls(app_id, role_name, permissions, description, rls_filters)
+    def update_role_with_rls(self, app_id: str, role_name: str, permissions: Set[str], description: str = None, rls_filters: Dict = None, denied_permissions: Set[str] = None):
+        return self.create_role_with_rls(app_id, role_name, permissions, description, rls_filters, denied_permissions)
 
     def get_role_permissions(self, app_id: str, role_name: str) -> Set[str]:
         return self.role_permissions.get(app_id, {}).get(role_name, set())
+
+    def get_role_denied_permissions(self, app_id: str, role_name: str) -> Set[str]:
+        return self.role_denied_permissions.get(app_id, {}).get(role_name, set())
 
     def get_role_rls_filters(self, app_id: str, role_name: str) -> Dict:
         return self.role_rls_filters.get(app_id, {}).get(role_name, {})
 
     def get_role_full_config(self, app_id: str, role_name: str) -> Dict:
         return {
-            'permissions': list(self.get_role_permissions(app_id, role_name)),
+            'allowed_permissions': list(self.get_role_permissions(app_id, role_name)),
+            'denied_permissions': list(self.get_role_denied_permissions(app_id, role_name)),
             'rls_filters': self.get_role_rls_filters(app_id, role_name),
             'metadata': self.get_role_metadata(app_id, role_name)
         }

@@ -51,44 +51,6 @@
     "updated_by": "discovery-service",
     "has_discovered": true
   },
-  "app_8f777f620aac48d1": {
-    "endpoints": [
-      {
-        "method": "GET",
-        "path": "/api/products",
-        "description": "List all products with filtering",
-        "discovered": true,
-        "discovered_at": "2025-08-24T20:52:15.046025",
-        "required_permissions": [],
-        "required_roles": [],
-        "tags": []
-      },
-      {
-        "method": "GET",
-        "path": "/api/products/{id}",
-        "description": "Get detailed product information",
-        "discovered": true,
-        "discovered_at": "2025-08-24T20:52:15.046055",
-        "required_permissions": [],
-        "required_roles": [],
-        "tags": []
-      },
-      {
-        "method": "POST",
-        "path": "/api/products",
-        "description": "Create a new product",
-        "discovered": true,
-        "discovered_at": "2025-08-24T20:52:15.046069",
-        "required_permissions": [],
-        "required_roles": [],
-        "tags": []
-      }
-    ],
-    "version": "20250824205215",
-    "updated_at": "2025-08-24T20:52:15.046106",
-    "updated_by": "discovery-service",
-    "has_discovered": true
-  },
   "app_dd8c554784594b11": {
     "endpoints": [
       {
@@ -124,7 +86,7 @@
         "path": "/api/users",
         "description": "List all users",
         "discovered": true,
-        "discovered_at": "2025-08-27T11:26:25.952183",
+        "discovered_at": "2025-09-04T17:16:14.658462",
         "required_permissions": [],
         "required_roles": [],
         "tags": []
@@ -134,14 +96,14 @@
         "path": "/api/users/{user_id}",
         "description": "Get specific user details",
         "discovered": true,
-        "discovered_at": "2025-08-27T11:26:25.952209",
+        "discovered_at": "2025-09-04T17:16:14.658488",
         "required_permissions": [],
         "required_roles": [],
         "tags": []
       }
     ],
-    "version": "20250827112625",
-    "updated_at": "2025-08-27T11:26:25.952242",
+    "version": "20250904171614",
+    "updated_at": "2025-09-04T17:16:14.658522",
     "updated_by": "discovery-service",
     "has_discovered": true
   }

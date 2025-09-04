@@ -129,7 +129,178 @@ Return shapes:
 - Avoid logging `Authorization` headers or tokens; sanitize logs
 - Use feature flags to toggle A2A and experimental flows
 
-## 10) Onboarding Checklist (Dev)
+## 10) CID Discovery Compliance
+
+CID Discovery enables automatic endpoint and permission discovery for enhanced role-based access control. When enabled, CID can automatically generate field-level permissions for your app's API endpoints.
+
+### Discovery Endpoint Requirements
+
+Your app must implement a `GET /discovery` endpoint that returns metadata about your API endpoints and response fields.
+
+**Required Response Schema:**
+```json
+{
+  "version": "2.0",
+  "app_id": "your-app-identifier",
+  "app_name": "Your App Display Name",
+  "description": "App description (optional)",
+  "endpoints": [
+    {
+      "path": "/api/endpoint",
+      "method": "GET",
+      "operation_id": "unique_operation_name",
+      "description": "Endpoint description",
+      "required_roles": ["admin"],  // Optional: required roles
+      "response_fields": {
+        "field_name": {
+          "type": "string|number|boolean|object|array",
+          "description": "Field description",
+          "sensitive": false,  // true for sensitive data
+          "pii": false,        // true for personally identifiable info
+          "phi": false         // true for protected health info
+        }
+      }
+    }
+  ]
+}
+```
+
+### Field Classification Standards
+
+**PII (Personally Identifiable Information):**
+- `email`, `name`, `sub` (user identifiers)
+- Phone numbers, addresses, SSNs
+- Any field that can identify a specific person
+
+**Sensitive Fields:**
+- `permissions`, `roles`, `identity` objects
+- Financial data, internal IDs
+- Any field requiring elevated access
+
+**PHI (Protected Health Information):**
+- Medical records, diagnoses, treatments
+- Health-related personal information
+
+### Nested Field Handling
+
+For complex objects, use dot notation to represent nested fields:
+
+```json
+{
+  "identity": {
+    "type": "object",
+    "description": "User identity information",
+    "sensitive": true,
+    "pii": true,
+    "phi": false
+  },
+  "identity.email": {
+    "type": "string",
+    "description": "User email address",
+    "sensitive": false,
+    "pii": true,
+    "phi": false
+  },
+  "identity.permissions": {
+    "type": "array",
+    "description": "User permissions list",
+    "sensitive": true,
+    "pii": false,
+    "phi": false
+  }
+}
+```
+
+### Implementation Example (FastAPI)
+
+```python
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/discovery")
+async def discovery():
+    return {
+        "version": "2.0",
+        "app_id": "my-app-id",
+        "app_name": "My Application",
+        "description": "Sample application with CID discovery",
+        "endpoints": [
+            {
+                "path": "/",
+                "method": "GET",
+                "operation_id": "health_check",
+                "description": "Health check endpoint",
+                "response_fields": {
+                    "status": {
+                        "type": "string",
+                        "description": "Service status",
+                        "sensitive": False,
+                        "pii": False,
+                        "phi": False
+                    }
+                }
+            },
+            {
+                "path": "/users/me",
+                "method": "GET",
+                "operation_id": "get_current_user",
+                "description": "Get current user information",
+                "required_roles": ["user"],
+                "response_fields": {
+                    "email": {
+                        "type": "string",
+                        "description": "User email address",
+                        "sensitive": False,
+                        "pii": True,
+                        "phi": False
+                    },
+                    "permissions": {
+                        "type": "array",
+                        "description": "User permissions",
+                        "sensitive": True,
+                        "pii": False,
+                        "phi": False
+                    }
+                }
+            }
+        ]
+    }
+```
+
+### Discovery Registration
+
+1. **Enable Discovery**: Check "Allow Discovery" when registering your app
+2. **Set Discovery Endpoint**: Provide the full URL (e.g., `http://localhost:8091/discovery`)
+3. **Test Discovery**: Use CID's "🔍 Run Discovery" button to validate your endpoint
+4. **Review Permissions**: Check generated permissions in the CID admin interface
+
+### Expected Discovery Results
+
+CID will automatically generate field-level permissions like:
+- `app_xxxxx.endpoint_name.read.field_name`
+- `app_xxxxx.endpoint_name.read.*` (wildcard permissions)
+- Proper classification of PII/sensitive fields
+- Hierarchical permission structure for role building
+
+### Discovery Validation
+
+CID validates your discovery response against a strict schema. Common validation errors:
+
+- **Wrong field format**: `response_fields` must be `Dict[str, FieldMetadata]`, not `List[dict]`
+- **Missing required fields**: `version`, `app_id`, `app_name` are required
+- **Invalid field names**: Use `version` not `discovery_version`, `required_roles` not `required_permissions`
+- **Nested field structure**: Use dot notation (`identity.email`) instead of nested objects
+
+### Discovery Best Practices
+
+- **Document all endpoints**: Include all API endpoints that return data
+- **Classify fields accurately**: Proper PII/sensitive marking enables compliance
+- **Use descriptive names**: Clear descriptions help with role building
+- **Test thoroughly**: Validate discovery response before registration
+- **Version your schema**: Use semantic versioning for discovery changes
+
+## 11) Onboarding Checklist (Dev)
 
 - [ ] Register your app in CID; capture `client_id`
 - [ ] Add your frontend redirect URI to the app record in CID
@@ -138,6 +309,8 @@ Return shapes:
 - [ ] Implement login redirect to `GET {CID_BASE_URL}/auth/login`
 - [ ] Handle CID callback tokens (fragment or code-exchange via `/auth/token/exchange`)
 - [ ] Validate tokens/API keys through CID `/auth/validate`
+- [ ] **[Optional] Implement `/discovery` endpoint for enhanced permissions**
+- [ ] **[Optional] Enable discovery in CID app registration**
 - [ ] For non-localhost, configure TLS in front of CID and use HTTPS everywhere
 
 ---

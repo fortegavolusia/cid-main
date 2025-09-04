@@ -45,6 +45,12 @@ class APIKeyMetadata:
     is_active: bool = True
     last_used_at: Optional[str] = None
     usage_count: int = 0
+    # A2A (App-to-App) fields
+    token_template_name: Optional[str] = None
+    app_roles_overrides: Optional[Dict[str, List[str]]] = None
+    token_ttl_minutes: Optional[int] = None
+    default_audience: Optional[str] = None
+    allowed_audiences: Optional[List[str]] = None
 
     def to_dict(self) -> Dict:
         return {k: v for k, v in asdict(self).items() if v is not None}
@@ -97,7 +103,10 @@ class APIKeyManager:
     def verify_key(self, api_key: str, stored_hash: str) -> bool:
         return self.hash_key(api_key) == stored_hash
 
-    def create_api_key(self, app_client_id: str, name: str, permissions: List[str], created_by: str, ttl_days: int = None) -> Tuple[str, APIKeyMetadata]:
+    def create_api_key(self, app_client_id: str, name: str, permissions: List[str], created_by: str, ttl_days: int = None,
+                      token_template_name: Optional[str] = None, app_roles_overrides: Optional[Dict[str, List[str]]] = None,
+                      token_ttl_minutes: Optional[int] = None, default_audience: Optional[str] = None,
+                      allowed_audiences: Optional[List[str]] = None) -> Tuple[str, APIKeyMetadata]:
         api_key = self.generate_api_key()
         key_id = secrets.token_urlsafe(16)
         ttl_days = DEFAULT_EXPIRY_DAYS if ttl_days is None else min(ttl_days, MAX_EXPIRY_DAYS)
@@ -112,6 +121,11 @@ class APIKeyManager:
             created_at=datetime.utcnow().isoformat(),
             created_by=created_by,
             is_active=True,
+            token_template_name=token_template_name,
+            app_roles_overrides=app_roles_overrides,
+            token_ttl_minutes=token_ttl_minutes,
+            default_audience=default_audience,
+            allowed_audiences=allowed_audiences,
         )
         if app_client_id not in self.api_keys:
             self.api_keys[app_client_id] = {}

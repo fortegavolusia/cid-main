@@ -3,10 +3,11 @@
   "app_8f777f620aac48d1": {},
   "app_fe80739ff4e547fb": {
     "test14": {
-      "permissions": [
-        "app_fe80739ff4e547fb.users.read.medical_records",
-        "app_fe80739ff4e547fb.users.read.created_at"
+      "allowed_permissions": [
+        "app_fe80739ff4e547fb.users.read.created_at",
+        "app_fe80739ff4e547fb.users.read.medical_records"
       ],
+      "denied_permissions": [],
       "rls_filters": {
         "field:users.read.medical_records": [
           {
@@ -24,10 +25,25 @@
         ]
       }
     },
-    "log testing": {
-      "permissions": [],
+    "test2": {
+      "allowed_permissions": [],
+      "denied_permissions": [],
       "rls_filters": {}
     }
   },
-  "app_affa35367c004335": {}
+  "app_affa35367c004335": {
+    "Fdo Test": {
+      "allowed_permissions": [],
+      "denied_permissions": [],
+      "rls_filters": {}
+    }
+  },
+  "app_c842dc1a7a8c4bb4": {},
+  "test_app": {
+    "test_role": {
+      "allowed_permissions": [],
+      "denied_permissions": [],
+      "rls_filters": {}
+    }
+  }
 }

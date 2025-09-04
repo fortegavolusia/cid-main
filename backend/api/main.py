@@ -729,7 +729,7 @@ async def register_app_admin(request: RegisterAppRequest, authorization: Optiona
     is_admin, claims = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    app_data, client_secret = app_store.register_app(request)
+    app_data = app_store.register_app(request)
     api_key = None
     api_key_metadata = None
     if request.create_api_key:
@@ -748,6 +748,28 @@ async def register_app_admin(request: RegisterAppRequest, authorization: Optiona
 
         except Exception:
             logger.exception("Failed to create initial API key")
+
+    # Log the registration
+    audit_logger.log_action(
+        action=AuditAction.APP_REGISTERED,
+        details={
+            'app_name': request.name,
+            'client_id': app_data["client_id"],
+            'registered_by': claims.get('email', 'admin'),
+            'api_key_created': api_key is not None
+        }
+    )
+
+    # Return the registration response
+    response_data = {
+        "app": app_data
+    }
+
+    if api_key:
+        response_data["api_key"] = api_key
+        response_data["api_key_metadata"] = api_key_metadata
+
+    return JSONResponse(response_data)
 
 @app.post("/auth/token/a2a")
 async def a2a_token_exchange(request: A2ATokenRequest = Body(None), authorization: Optional[str] = Header(None)):
@@ -867,13 +889,6 @@ async def a2a_token_exchange(request: A2ATokenRequest = Body(None), authorizatio
 
     return JSONResponse({'access_token': access_token, 'token_type': 'Bearer', 'expires_in': ttl_minutes * 60, 'token_id': token_id})
 
-    return JSONResponse({
-        "app": app_data,
-        "client_secret": client_secret,
-        "api_key": api_key,
-        "api_key_metadata": api_key_metadata
-    })
-
 @app.put("/auth/admin/apps/{client_id}")
 async def update_app_admin(client_id: str, request: UpdateAppRequest, authorization: Optional[str] = Header(None)):
     is_admin, claims = check_admin_access(authorization)
@@ -884,15 +899,7 @@ async def update_app_admin(client_id: str, request: UpdateAppRequest, authorizat
         raise HTTPException(status_code=404, detail="App not found")
     return JSONResponse(app_data)
 
-@app.post("/auth/admin/apps/{client_id}/rotate-secret")
-async def rotate_app_secret_admin(client_id: str, authorization: Optional[str] = Header(None)):
-    is_admin, claims = check_admin_access(authorization)
-    if not is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
-    new_secret = app_store.rotate_client_secret(client_id)
-    if not new_secret:
-        raise HTTPException(status_code=404, detail="App not found")
-    return JSONResponse({"client_id": client_id, "client_secret": new_secret, "message": "Client secret has been rotated. Please update your application configuration."})
+
 
 @app.delete("/auth/admin/apps/{client_id}")
 async def delete_app_admin(client_id: str, authorization: Optional[str] = Header(None)):
@@ -1157,7 +1164,7 @@ async def rotate_api_key_admin(client_id: str, key_id: str, authorization: Optio
 
 
 @app.post("/discovery/endpoints/{client_id}")
-async def trigger_discovery(client_id: str, authorization: Optional[str] = Header(None), force: bool = False):
+async def trigger_discovery(client_id: str, authorization: Optional[str] = Header(None), force: bool = True):
     is_admin, claims = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
@@ -1177,24 +1184,59 @@ async def get_permission_tree(client_id: str, authorization: Optional[str] = Hea
     tree = enhanced_discovery.get_permission_tree(client_id)
     return JSONResponse({"app_id": client_id, "permission_tree": tree})
 
+# Enhanced Discovery Endpoints
+
+@app.post("/discovery/batch")
+async def batch_discovery(client_ids: List[str] = Body(...), force: bool = Body(True), authorization: Optional[str] = Header(None)):
+    """Run discovery on multiple apps simultaneously"""
+    is_admin, claims = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    audit_logger.log_action(
+        action=AuditAction.DISCOVERY_TRIGGERED,
+        details={
+            'batch_discovery': True,
+            'app_client_ids': client_ids,
+            'triggered_by': claims.get('email') if claims else None,
+            'force': force
+        }
+    )
+
+    try:
+        result = await enhanced_discovery.batch_discover(client_ids, force)
+        return JSONResponse(result)
+    except Exception as e:
+        logger.error(f"Batch discovery error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Batch discovery failed: {str(e)}")
+
+
+
+
+
+
 # ==============================
 # Permissions: roles CRUD (for Admin UI)
 # ==============================
 
 @app.post("/permissions/{client_id}/roles")
-async def create_permission_role(client_id: str, authorization: Optional[str] = Header(None), role_name: str = Body(...), permissions: List[str] = Body(...), description: Optional[str] = Body(None), rls_filters: Optional[Dict[str, List[Dict[str, str]]]] = Body(None), a2a_only: Optional[bool] = Body(False)):
+async def create_permission_role(client_id: str, authorization: Optional[str] = Header(None), role_name: str = Body(...), permissions: List[str] = Body(...), description: Optional[str] = Body(None), rls_filters: Optional[Dict[str, List[Dict[str, str]]]] = Body(None), a2a_only: Optional[bool] = Body(False), denied_permissions: Optional[List[str]] = Body(None)):
     is_admin, claims = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    valid_perms = permission_registry.create_role_with_rls(client_id, role_name, set(permissions), description, rls_filters)
+
+    denied_perms_set = set(denied_permissions) if denied_permissions else set()
+    logger.info(f"Creating role {role_name} for {client_id} with {len(permissions)} allowed and {len(denied_perms_set)} denied permissions")
+    logger.info(f"Denied permissions received: {denied_permissions}")
+    valid_perms, valid_denied_perms = permission_registry.create_role_with_rls(client_id, role_name, set(permissions), description, rls_filters, denied_perms_set)
     # Persist a2a_only flag in metadata
     try:
         permission_registry.role_metadata.setdefault(client_id, {}).setdefault(role_name, {})['a2a_only'] = bool(a2a_only)
         permission_registry._save_registry()
     except Exception:
         logger.exception("Failed to persist a2a_only metadata")
-    audit_logger.log_action(action=AuditAction.ROLE_CREATED, details={'app_client_id': client_id, 'role_name': role_name, 'permissions_count': len(valid_perms), 'rls_filters_count': len(rls_filters) if rls_filters else 0, 'created_by': claims.get('email'), 'a2a_only': bool(a2a_only)})
-    return JSONResponse({"app_id": client_id, "role_name": role_name, "permissions": list(valid_perms), "valid_count": len(valid_perms), "invalid_count": len(permissions) - len(valid_perms), "rls_filters_saved": len(rls_filters) if rls_filters else 0, "metadata": permission_registry.get_role_metadata(client_id, role_name)})
+    audit_logger.log_action(action=AuditAction.ROLE_CREATED, details={'app_client_id': client_id, 'role_name': role_name, 'permissions_count': len(valid_perms), 'denied_permissions_count': len(valid_denied_perms), 'rls_filters_count': len(rls_filters) if rls_filters else 0, 'created_by': claims.get('email'), 'a2a_only': bool(a2a_only)})
+    return JSONResponse({"app_id": client_id, "role_name": role_name, "allowed_permissions": list(valid_perms), "denied_permissions": list(valid_denied_perms), "valid_count": len(valid_perms), "denied_count": len(valid_denied_perms), "invalid_count": len(permissions) - len(valid_perms), "rls_filters_saved": len(rls_filters) if rls_filters else 0, "metadata": permission_registry.get_role_metadata(client_id, role_name)})
 
 @app.get("/permissions/{client_id}/roles/{role_name}")
 async def get_role_permissions(client_id: str, role_name: str, authorization: Optional[str] = Header(None)):
@@ -1202,9 +1244,9 @@ async def get_role_permissions(client_id: str, role_name: str, authorization: Op
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     role_config = permission_registry.get_role_full_config(client_id, role_name)
-    if not role_config['permissions'] and not role_config['rls_filters']:
+    if not role_config['allowed_permissions'] and not role_config['denied_permissions'] and not role_config['rls_filters']:
         raise HTTPException(status_code=404, detail="Role not found")
-    return JSONResponse({"app_id": client_id, "role_name": role_name, "permissions": role_config['permissions'], "rls_filters": role_config['rls_filters'], "metadata": role_config['metadata'], "count": len(role_config['permissions'])})
+    return JSONResponse({"app_id": client_id, "role_name": role_name, "allowed_permissions": role_config['allowed_permissions'], "denied_permissions": role_config['denied_permissions'], "rls_filters": role_config['rls_filters'], "metadata": role_config['metadata'], "count": len(role_config['allowed_permissions']), "denied_count": len(role_config['denied_permissions'])})
 
 @app.get("/permissions/{client_id}/roles")
 async def list_roles(client_id: str, authorization: Optional[str] = Header(None)):
@@ -1221,13 +1263,17 @@ async def list_roles(client_id: str, authorization: Optional[str] = Header(None)
     return JSONResponse({"app_id": client_id, "roles": roles_with_metadata, "count": len(roles_with_metadata)})
 
 @app.put("/permissions/{client_id}/roles/{role_name}")
-async def update_permission_role(client_id: str, role_name: str, authorization: Optional[str] = Header(None), permissions: List[str] = Body(...), description: Optional[str] = Body(None), rls_filters: Optional[Dict[str, List[Dict[str, str]]]] = Body(None), a2a_only: Optional[bool] = Body(None)):
+async def update_permission_role(client_id: str, role_name: str, authorization: Optional[str] = Header(None), permissions: List[str] = Body(...), description: Optional[str] = Body(None), rls_filters: Optional[Dict[str, List[Dict[str, str]]]] = Body(None), a2a_only: Optional[bool] = Body(None), denied_permissions: Optional[List[str]] = Body(None)):
     is_admin, claims = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     if client_id not in permission_registry.role_permissions or role_name not in permission_registry.role_permissions[client_id]:
         raise HTTPException(status_code=404, detail="Role not found")
-    valid_perms = permission_registry.update_role_with_rls(client_id, role_name, set(permissions), description, rls_filters)
+
+    denied_perms_set = set(denied_permissions) if denied_permissions else set()
+    logger.info(f"Updating role {role_name} for {client_id} with {len(permissions)} allowed and {len(denied_perms_set)} denied permissions")
+    logger.info(f"Denied permissions received: {denied_permissions}")
+    valid_perms, valid_denied_perms = permission_registry.update_role_with_rls(client_id, role_name, set(permissions), description, rls_filters, denied_perms_set)
     # Optionally update a2a_only flag
     if a2a_only is not None:
         try:
@@ -1235,8 +1281,8 @@ async def update_permission_role(client_id: str, role_name: str, authorization: 
             permission_registry._save_registry()
         except Exception:
             logger.exception("Failed to update a2a_only metadata")
-    audit_logger.log_action(action=AuditAction.ROLE_UPDATED, details={'app_client_id': client_id, 'role_name': role_name, 'permissions_count': len(valid_perms), 'rls_filters_count': len(rls_filters) if rls_filters else 0, 'updated_by': claims.get('email'), 'a2a_only': a2a_only})
-    return JSONResponse({"app_id": client_id, "role_name": role_name, "permissions": list(valid_perms), "valid_count": len(valid_perms), "invalid_count": len(permissions) - len(valid_perms), "rls_filters_saved": len(rls_filters) if rls_filters else 0, "metadata": permission_registry.get_role_metadata(client_id, role_name)})
+    audit_logger.log_action(action=AuditAction.ROLE_UPDATED, details={'app_client_id': client_id, 'role_name': role_name, 'permissions_count': len(valid_perms), 'denied_permissions_count': len(valid_denied_perms), 'rls_filters_count': len(rls_filters) if rls_filters else 0, 'updated_by': claims.get('email'), 'a2a_only': a2a_only})
+    return JSONResponse({"app_id": client_id, "role_name": role_name, "allowed_permissions": list(valid_perms), "denied_permissions": list(valid_denied_perms), "valid_count": len(valid_perms), "denied_count": len(valid_denied_perms), "invalid_count": len(permissions) - len(valid_perms), "rls_filters_saved": len(rls_filters) if rls_filters else 0, "metadata": permission_registry.get_role_metadata(client_id, role_name)})
 
 @app.delete("/permissions/{client_id}/roles/{role_name}")
 async def delete_role(client_id: str, role_name: str, authorization: Optional[str] = Header(None)):
