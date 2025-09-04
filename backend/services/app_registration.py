@@ -280,6 +280,25 @@ class AppRegistrationStore:
                     user_roles.append(role)
         return user_roles
 
+    # A2A (App-to-App) Role Mappings Methods
+    def get_a2a_mappings(self) -> Dict[str, List[dict]]:
+        """Get all A2A role mappings for all apps"""
+        # For now, A2A mappings are the same as regular role mappings
+        # In the future, these could be stored separately if needed
+        return app_role_mappings
+
+    def get_a2a_mappings_for_caller(self, caller_id: str) -> List[dict]:
+        """Get A2A role mappings for a specific caller app"""
+        # For now, A2A mappings are the same as regular role mappings
+        # In the future, these could be stored separately if needed
+        return app_role_mappings.get(caller_id, [])
+
+    def set_a2a_mappings(self, caller_id: str, mappings: Dict[str, List[str]], created_by: str) -> bool:
+        """Set A2A role mappings for a specific caller app"""
+        # For now, A2A mappings use the same storage as regular role mappings
+        # In the future, these could be stored separately if needed
+        return self.set_role_mappings(caller_id, mappings, created_by)
+
 
 app_store = AppRegistrationStore()
 
