@@ -213,10 +213,19 @@
         "response_time_ms": 115,
         "endpoints_found": 4,
         "permissions_generated": 23
+      },
+      {
+        "timestamp": "2025-09-04T19:06:57.098167",
+        "success": true,
+        "error_type": null,
+        "error_message": null,
+        "response_time_ms": 130,
+        "endpoints_found": 4,
+        "permissions_generated": 23
       }
     ],
-    "last_successful_discovery": "2025-09-04T17:16:09.629659",
-    "total_attempts": 12,
-    "success_rate": 0.5
+    "last_successful_discovery": "2025-09-04T19:06:57.098167",
+    "total_attempts": 13,
+    "success_rate": 0.5384615384615384
   }
 }

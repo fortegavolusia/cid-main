@@ -240,6 +240,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
           await adminService.createRolePermissions(clientId, {
             role_name: newRole.name,
             permissions: [],  // Start with empty permissions
+            denied_permissions: [],  // Start with empty denied permissions
             description: newRole.description || `Role for ${newRole.ad_groups.join(', ')}`,
             a2a_only: newRoleA2AOnly
           });
@@ -442,7 +443,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
     }
   };
 
-  const handlePermissionsUpdate = async (permissions: string[], resourceScopes: string[], savedFilters: Record<string, Array<{ id: string; expression: string; timestamp: string }>>) => {
+  const handlePermissionsUpdate = async (permissions: string[], deniedPermissions: string[], resourceScopes: string[], savedFilters: Record<string, Array<{ id: string; expression: string; timestamp: string }>>) => {
     if (selectedRole) {
       // Update the role's permissions
       const updatedRole = {
@@ -460,6 +461,15 @@ const RolesModal: React.FC<RolesModalProps> = ({
 
         // Format permissions for backend API - add app prefix
         const formattedPermissions = permissions.map(perm => {
+          // If permission doesn't already have the app prefix, add it
+          if (!perm.startsWith(clientId)) {
+            return `${clientId}.${perm}`;
+          }
+          return perm;
+        });
+
+        // Format denied permissions for backend API - add app prefix
+        const formattedDeniedPermissions = deniedPermissions.map(perm => {
           // If permission doesn't already have the app prefix, add it
           if (!perm.startsWith(clientId)) {
             return `${clientId}.${perm}`;
@@ -489,9 +499,17 @@ const RolesModal: React.FC<RolesModalProps> = ({
         const allPermissions = Array.from(fieldPermissions);
 
         // Use adminService to save permissions to backend with RLS filters
+        console.log('Sending to backend:', {
+          permissions: allPermissions,
+          denied_permissions: formattedDeniedPermissions,
+          description: selectedRole.description || `Role with ${permissions.length} allowed, ${deniedPermissions.length} denied permissions and ${resourceScopes.length} RLS filters`,
+          rls_filters: savedFilters
+        });
+
         const result = await adminService.updateRolePermissions(clientId, selectedRole.name, {
           permissions: allPermissions,
-          description: selectedRole.description || `Role with ${permissions.length} permissions and ${resourceScopes.length} RLS filters`,
+          denied_permissions: formattedDeniedPermissions,
+          description: selectedRole.description || `Role with ${permissions.length} allowed, ${deniedPermissions.length} denied permissions and ${resourceScopes.length} RLS filters`,
           rls_filters: savedFilters
         });
 
@@ -500,7 +518,7 @@ const RolesModal: React.FC<RolesModalProps> = ({
         // Update local state
         setRoles(roles.map(r => r.id === selectedRole.id ? updatedRole : r));
 
-        alert(`Permissions saved successfully! ${result.valid_permissions} permissions were saved to the backend.`);
+        alert(`Permissions saved successfully! ${result.valid_count || result.valid_permissions || 0} allowed and ${result.denied_count || 0} denied permissions were saved to the backend.`);
       } catch (error) {
         console.error('Error saving permissions to backend:', error);
         alert(`Failed to save permissions to backend: ${error.message}\n\nThe permissions have been saved locally but may not be reflected in your token until saved to the backend.`);

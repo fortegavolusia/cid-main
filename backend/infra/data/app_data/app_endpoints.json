@@ -114,7 +114,7 @@
         "path": "/",
         "description": "Health check endpoint",
         "discovered": true,
-        "discovered_at": "2025-09-04T17:16:09.744145",
+        "discovered_at": "2025-09-04T19:06:57.228418",
         "required_permissions": [],
         "required_roles": [],
         "tags": []
@@ -124,7 +124,7 @@
         "path": "/secure/ping",
         "description": "Authenticated ping endpoint that returns user identity",
         "discovered": true,
-        "discovered_at": "2025-09-04T17:16:09.744173",
+        "discovered_at": "2025-09-04T19:06:57.228451",
         "required_permissions": [],
         "required_roles": [],
         "tags": []
@@ -134,7 +134,7 @@
         "path": "/secure/admin",
         "description": "Admin-only endpoint requiring admin permission",
         "discovered": true,
-        "discovered_at": "2025-09-04T17:16:09.744182",
+        "discovered_at": "2025-09-04T19:06:57.228462",
         "required_permissions": [],
         "required_roles": [
           "admin"
@@ -146,14 +146,14 @@
         "path": "/whoami",
         "description": "Returns the authenticated user's identity information",
         "discovered": true,
-        "discovered_at": "2025-09-04T17:16:09.744188",
+        "discovered_at": "2025-09-04T19:06:57.228469",
         "required_permissions": [],
         "required_roles": [],
         "tags": []
       }
     ],
-    "version": "20250904171609",
-    "updated_at": "2025-09-04T17:16:09.744225",
+    "version": "20250904190657",
+    "updated_at": "2025-09-04T19:06:57.228506",
     "updated_by": "discovery-service",
     "has_discovered": true
   }

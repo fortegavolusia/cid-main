@@ -12,7 +12,7 @@ interface PermissionSelectorProps {
   roleName: string;
   currentPermissions: string[];
   currentResourceScopes: string[];
-  onSave: (permissions: string[], resourceScopes: string[], savedFilters: Record<string, Array<{ id: string; expression: string; timestamp: string }>>) => void;
+  onSave: (permissions: string[], deniedPermissions: string[], resourceScopes: string[], savedFilters: Record<string, Array<{ id: string; expression: string; timestamp: string }>>) => void;
 }
 
 interface FieldInfo {
@@ -682,16 +682,19 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
           <button 
             className="save-permissions-btn"
             onClick={() => {
-              // Collect all allowed permissions (endpoints/actions)
+              // Collect allowed and denied permissions (endpoints/actions)
               const permissions: string[] = [];
-              
+              const deniedPermissions: string[] = [];
+
               // Add action-level permissions (Allow/Deny on endpoints)
               Object.entries(actionPermissions).forEach(([actionKey, permission]) => {
                 if (permission === 'allow') {
                   permissions.push(actionKey);
+                } else if (permission === 'deny') {
+                  deniedPermissions.push(actionKey);
                 }
               });
-              
+
               // Collect RLS filters as resource scopes
               const resourceScopes: string[] = [];
               Object.entries(savedFilters).forEach(([filterKey, filterArray]) => {
@@ -702,27 +705,28 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
                   });
                 }
               });
-              
+
               // Save complete role configuration for persistence
               const roleConfig = {
                 clientId,
                 roleName,
                 permissions,  // Allowed endpoints
+                deniedPermissions,  // Denied endpoints
                 resourceScopes,  // RLS filters
                 actionPermissions,  // Full allow/deny state for actions
                 savedFilters,  // Raw filter data
                 timestamp: new Date().toISOString()
               };
-              
+
               // Store unified role configuration
               const unifiedKey = `cids_unified_role_${clientId}_${roleName}`;
               localStorage.setItem(unifiedKey, JSON.stringify(roleConfig));
-              
+
               console.log('Saved role configuration:', roleConfig);
-              
+
               // Call the onSave callback with collected permissions and filters
-              onSave(permissions, resourceScopes, savedFilters);
-              alert(`Permissions saved successfully!\nPermissions: ${permissions.length}\nResource Scopes (RLS Filters): ${resourceScopes.length}`);
+              onSave(permissions, deniedPermissions, resourceScopes, savedFilters);
+              alert(`Permissions saved successfully!\nAllowed: ${permissions.length}\nDenied: ${deniedPermissions.length}\nResource Scopes (RLS Filters): ${resourceScopes.length}`);
             }}
           >
             Save Permissions

@@ -677,7 +677,7 @@
         "phi": false,
         "endpoint_id": "get_user",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:14.615295"
+        "created_at": "2025-08-27 11:18:14.975662"
       },
       "app_fe80739ff4e547fb.users.read.email": {
         "permission_key": "app_fe80739ff4e547fb.users.read.email",
@@ -690,7 +690,7 @@
         "phi": false,
         "endpoint_id": "get_user",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:14.615303"
+        "created_at": "2025-08-27 11:18:14.975672"
       },
       "app_fe80739ff4e547fb.users.read.name": {
         "permission_key": "app_fe80739ff4e547fb.users.read.name",
@@ -703,7 +703,7 @@
         "phi": false,
         "endpoint_id": "get_user",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:14.615308"
+        "created_at": "2025-08-27 11:18:14.975679"
       },
       "app_fe80739ff4e547fb.users.read.department": {
         "permission_key": "app_fe80739ff4e547fb.users.read.department",
@@ -716,7 +716,7 @@
         "phi": false,
         "endpoint_id": "get_user",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:14.615330"
+        "created_at": "2025-08-27 11:18:14.975720"
       },
       "app_fe80739ff4e547fb.users.read.is_active": {
         "permission_key": "app_fe80739ff4e547fb.users.read.is_active",
@@ -729,7 +729,7 @@
         "phi": false,
         "endpoint_id": "get_user",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:14.615349"
+        "created_at": "2025-08-27 11:18:14.975753"
       },
       "app_fe80739ff4e547fb.users.read.created_at": {
         "permission_key": "app_fe80739ff4e547fb.users.read.created_at",
@@ -742,7 +742,7 @@
         "phi": false,
         "endpoint_id": "get_user",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:14.615357"
+        "created_at": "2025-08-27 11:18:14.975769"
       },
       "app_fe80739ff4e547fb.users.read.*": {
         "permission_key": "app_fe80739ff4e547fb.users.read.*",
@@ -755,7 +755,7 @@
         "phi": false,
         "endpoint_id": "list_users",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:14.615286"
+        "created_at": "2025-08-27 11:18:14.975647"
       },
       "app_fe80739ff4e547fb.users.read.salary": {
         "permission_key": "app_fe80739ff4e547fb.users.read.salary",
@@ -768,7 +768,7 @@
         "phi": false,
         "endpoint_id": "get_user",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:14.615312"
+        "created_at": "2025-08-27 11:18:14.975687"
       },
       "app_fe80739ff4e547fb.users.read.ssn": {
         "permission_key": "app_fe80739ff4e547fb.users.read.ssn",
@@ -781,7 +781,7 @@
         "phi": false,
         "endpoint_id": "get_user",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:14.615316"
+        "created_at": "2025-08-27 11:18:14.975695"
       },
       "app_fe80739ff4e547fb.users.read.phone": {
         "permission_key": "app_fe80739ff4e547fb.users.read.phone",
@@ -794,7 +794,7 @@
         "phi": false,
         "endpoint_id": "get_user",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:14.615321"
+        "created_at": "2025-08-27 11:18:14.975703"
       },
       "app_fe80739ff4e547fb.users.read.address": {
         "permission_key": "app_fe80739ff4e547fb.users.read.address",
@@ -807,7 +807,7 @@
         "phi": false,
         "endpoint_id": "get_user",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:14.615325"
+        "created_at": "2025-08-27 11:18:14.975711"
       },
       "app_fe80739ff4e547fb.users.read.medical_records": {
         "permission_key": "app_fe80739ff4e547fb.users.read.medical_records",
@@ -820,7 +820,7 @@
         "phi": true,
         "endpoint_id": "get_user",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:14.615334"
+        "created_at": "2025-08-27 11:18:14.975729"
       },
       "app_fe80739ff4e547fb.users.read.performance_rating": {
         "permission_key": "app_fe80739ff4e547fb.users.read.performance_rating",
@@ -833,7 +833,7 @@
         "phi": false,
         "endpoint_id": "get_user",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:14.615339"
+        "created_at": "2025-08-27 11:18:14.975737"
       },
       "app_fe80739ff4e547fb.users.read.hire_date": {
         "permission_key": "app_fe80739ff4e547fb.users.read.hire_date",
@@ -846,7 +846,7 @@
         "phi": false,
         "endpoint_id": "get_user",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:14.615344"
+        "created_at": "2025-08-27 11:18:14.975745"
       },
       "app_fe80739ff4e547fb.users.read.roles": {
         "permission_key": "app_fe80739ff4e547fb.users.read.roles",
@@ -859,7 +859,7 @@
         "phi": false,
         "endpoint_id": "get_user",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:14.615353"
+        "created_at": "2025-08-27 11:18:14.975761"
       },
       "app_fe80739ff4e547fb.users.read.updated_at": {
         "permission_key": "app_fe80739ff4e547fb.users.read.updated_at",
@@ -872,7 +872,7 @@
         "phi": false,
         "endpoint_id": "get_user",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:14.615362"
+        "created_at": "2025-08-27 11:18:14.975777"
       }
     },
     "total_count": 16,
@@ -894,7 +894,7 @@
         "phi": false,
         "endpoint_id": "root",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715160"
+        "created_at": "2025-09-04 16:44:04.270314"
       },
       "app_c842dc1a7a8c4bb4..read.service": {
         "permission_key": "app_c842dc1a7a8c4bb4..read.service",
@@ -907,7 +907,7 @@
         "phi": false,
         "endpoint_id": "root",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715172"
+        "created_at": "2025-09-04 16:44:04.270332"
       },
       "app_c842dc1a7a8c4bb4..read.*": {
         "permission_key": "app_c842dc1a7a8c4bb4..read.*",
@@ -920,7 +920,7 @@
         "phi": false,
         "endpoint_id": "root",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715182"
+        "created_at": "2025-09-04 16:44:04.270346"
       },
       "app_c842dc1a7a8c4bb4.secure_ping.read.message": {
         "permission_key": "app_c842dc1a7a8c4bb4.secure_ping.read.message",
@@ -933,7 +933,7 @@
         "phi": false,
         "endpoint_id": "secure_ping",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715196"
+        "created_at": "2025-09-04 16:44:04.270367"
       },
       "app_c842dc1a7a8c4bb4.secure_ping.read.identity": {
         "permission_key": "app_c842dc1a7a8c4bb4.secure_ping.read.identity",
@@ -946,7 +946,7 @@
         "phi": false,
         "endpoint_id": "secure_ping",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715202"
+        "created_at": "2025-09-04 16:44:04.270376"
       },
       "app_c842dc1a7a8c4bb4.secure_ping.read.identity.email": {
         "permission_key": "app_c842dc1a7a8c4bb4.secure_ping.read.identity.email",
@@ -959,7 +959,7 @@
         "phi": false,
         "endpoint_id": "secure_ping",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715207"
+        "created_at": "2025-09-04 16:44:04.270385"
       },
       "app_c842dc1a7a8c4bb4.secure_ping.read.identity.name": {
         "permission_key": "app_c842dc1a7a8c4bb4.secure_ping.read.identity.name",
@@ -972,7 +972,7 @@
         "phi": false,
         "endpoint_id": "secure_ping",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715213"
+        "created_at": "2025-09-04 16:44:04.270393"
       },
       "app_c842dc1a7a8c4bb4.secure_ping.read.identity.sub": {
         "permission_key": "app_c842dc1a7a8c4bb4.secure_ping.read.identity.sub",
@@ -985,7 +985,7 @@
         "phi": false,
         "endpoint_id": "secure_ping",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715218"
+        "created_at": "2025-09-04 16:44:04.270401"
       },
       "app_c842dc1a7a8c4bb4.secure_ping.read.identity.permissions": {
         "permission_key": "app_c842dc1a7a8c4bb4.secure_ping.read.identity.permissions",
@@ -998,7 +998,7 @@
         "phi": false,
         "endpoint_id": "secure_ping",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715222"
+        "created_at": "2025-09-04 16:44:04.270409"
       },
       "app_c842dc1a7a8c4bb4.secure_ping.read.*": {
         "permission_key": "app_c842dc1a7a8c4bb4.secure_ping.read.*",
@@ -1011,7 +1011,7 @@
         "phi": false,
         "endpoint_id": "secure_ping",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715233"
+        "created_at": "2025-09-04 16:44:04.270420"
       },
       "app_c842dc1a7a8c4bb4.secure_admin.read.message": {
         "permission_key": "app_c842dc1a7a8c4bb4.secure_admin.read.message",
@@ -1024,7 +1024,7 @@
         "phi": false,
         "endpoint_id": "secure_admin",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715242"
+        "created_at": "2025-09-04 16:44:04.270481"
       },
       "app_c842dc1a7a8c4bb4.secure_admin.read.identity": {
         "permission_key": "app_c842dc1a7a8c4bb4.secure_admin.read.identity",
@@ -1037,7 +1037,7 @@
         "phi": false,
         "endpoint_id": "secure_admin",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715247"
+        "created_at": "2025-09-04 16:44:04.270493"
       },
       "app_c842dc1a7a8c4bb4.secure_admin.read.identity.email": {
         "permission_key": "app_c842dc1a7a8c4bb4.secure_admin.read.identity.email",
@@ -1050,7 +1050,7 @@
         "phi": false,
         "endpoint_id": "secure_admin",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715252"
+        "created_at": "2025-09-04 16:44:04.270502"
       },
       "app_c842dc1a7a8c4bb4.secure_admin.read.identity.permissions": {
         "permission_key": "app_c842dc1a7a8c4bb4.secure_admin.read.identity.permissions",
@@ -1063,7 +1063,7 @@
         "phi": false,
         "endpoint_id": "secure_admin",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715257"
+        "created_at": "2025-09-04 16:44:04.270510"
       },
       "app_c842dc1a7a8c4bb4.secure_admin.read.*": {
         "permission_key": "app_c842dc1a7a8c4bb4.secure_admin.read.*",
@@ -1076,7 +1076,7 @@
         "phi": false,
         "endpoint_id": "secure_admin",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715262"
+        "created_at": "2025-09-04 16:44:04.270519"
       },
       "app_c842dc1a7a8c4bb4.whoami.read.auth_type": {
         "permission_key": "app_c842dc1a7a8c4bb4.whoami.read.auth_type",
@@ -1089,7 +1089,7 @@
         "phi": false,
         "endpoint_id": "whoami",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715269"
+        "created_at": "2025-09-04 16:44:04.270534"
       },
       "app_c842dc1a7a8c4bb4.whoami.read.email": {
         "permission_key": "app_c842dc1a7a8c4bb4.whoami.read.email",
@@ -1102,7 +1102,7 @@
         "phi": false,
         "endpoint_id": "whoami",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715274"
+        "created_at": "2025-09-04 16:44:04.270542"
       },
       "app_c842dc1a7a8c4bb4.whoami.read.name": {
         "permission_key": "app_c842dc1a7a8c4bb4.whoami.read.name",
@@ -1115,7 +1115,7 @@
         "phi": false,
         "endpoint_id": "whoami",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715279"
+        "created_at": "2025-09-04 16:44:04.270550"
       },
       "app_c842dc1a7a8c4bb4.whoami.read.sub": {
         "permission_key": "app_c842dc1a7a8c4bb4.whoami.read.sub",
@@ -1128,7 +1128,7 @@
         "phi": false,
         "endpoint_id": "whoami",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715283"
+        "created_at": "2025-09-04 16:44:04.270557"
       },
       "app_c842dc1a7a8c4bb4.whoami.read.app_client_id": {
         "permission_key": "app_c842dc1a7a8c4bb4.whoami.read.app_client_id",
@@ -1141,7 +1141,7 @@
         "phi": false,
         "endpoint_id": "whoami",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715288"
+        "created_at": "2025-09-04 16:44:04.270565"
       },
       "app_c842dc1a7a8c4bb4.whoami.read.permissions": {
         "permission_key": "app_c842dc1a7a8c4bb4.whoami.read.permissions",
@@ -1154,7 +1154,7 @@
         "phi": false,
         "endpoint_id": "whoami",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715293"
+        "created_at": "2025-09-04 16:44:04.270573"
       },
       "app_c842dc1a7a8c4bb4.whoami.read.valid": {
         "permission_key": "app_c842dc1a7a8c4bb4.whoami.read.valid",
@@ -1167,7 +1167,7 @@
         "phi": false,
         "endpoint_id": "whoami",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715298"
+        "created_at": "2025-09-04 16:44:04.270581"
       },
       "app_c842dc1a7a8c4bb4.whoami.read.*": {
         "permission_key": "app_c842dc1a7a8c4bb4.whoami.read.*",
@@ -1180,12 +1180,12 @@
         "phi": false,
         "endpoint_id": "whoami",
         "auto_generated": true,
-        "created_at": "2025-09-04 17:16:09.715303"
+        "created_at": "2025-09-04 16:44:04.270591"
       }
     },
     "total_count": 23,
     "sensitive_count": 12,
-    "last_discovered": "2025-09-04 17:16:09.715314",
+    "last_discovered": "2025-09-04 19:06:57.212040",
     "discovery_version": "2.0"
   }
 }
