@@ -188,7 +188,7 @@
           "description": "Row-level security filters for data access"
         }
       ],
-      "savedAt": "2025-08-29T13:00:21.902Z",
+      "savedAt": "2025-09-04T13:55:59.688Z",
       "adGroups": [
         "Information Technology Division"
       ],
@@ -197,5 +197,5 @@
       "isDefault": false
     }
   ],
-  "updated_at": "2025-08-29T14:06:39.345471"
+  "updated_at": "2025-09-04T13:55:59.847809"
 }

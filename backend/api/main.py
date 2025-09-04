@@ -729,7 +729,7 @@ async def register_app_admin(request: RegisterAppRequest, authorization: Optiona
     is_admin, claims = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    app_data, client_secret = app_store.register_app(request)
+    app_data = app_store.register_app(request)
     api_key = None
     api_key_metadata = None
     if request.create_api_key:
@@ -762,8 +762,7 @@ async def register_app_admin(request: RegisterAppRequest, authorization: Optiona
 
     # Return the registration response
     response_data = {
-        "app": app_data,
-        "client_secret": client_secret
+        "app": app_data
     }
 
     if api_key:
@@ -890,13 +889,6 @@ async def a2a_token_exchange(request: A2ATokenRequest = Body(None), authorizatio
 
     return JSONResponse({'access_token': access_token, 'token_type': 'Bearer', 'expires_in': ttl_minutes * 60, 'token_id': token_id})
 
-    return JSONResponse({
-        "app": app_data,
-        "client_secret": client_secret,
-        "api_key": api_key,
-        "api_key_metadata": api_key_metadata
-    })
-
 @app.put("/auth/admin/apps/{client_id}")
 async def update_app_admin(client_id: str, request: UpdateAppRequest, authorization: Optional[str] = Header(None)):
     is_admin, claims = check_admin_access(authorization)
@@ -907,15 +899,7 @@ async def update_app_admin(client_id: str, request: UpdateAppRequest, authorizat
         raise HTTPException(status_code=404, detail="App not found")
     return JSONResponse(app_data)
 
-@app.post("/auth/admin/apps/{client_id}/rotate-secret")
-async def rotate_app_secret_admin(client_id: str, authorization: Optional[str] = Header(None)):
-    is_admin, claims = check_admin_access(authorization)
-    if not is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
-    new_secret = app_store.rotate_client_secret(client_id)
-    if not new_secret:
-        raise HTTPException(status_code=404, detail="App not found")
-    return JSONResponse({"client_id": client_id, "client_secret": new_secret, "message": "Client secret has been rotated. Please update your application configuration."})
+
 
 @app.delete("/auth/admin/apps/{client_id}")
 async def delete_app_admin(client_id: str, authorization: Optional[str] = Header(None)):
@@ -1180,7 +1164,7 @@ async def rotate_api_key_admin(client_id: str, key_id: str, authorization: Optio
 
 
 @app.post("/discovery/endpoints/{client_id}")
-async def trigger_discovery(client_id: str, authorization: Optional[str] = Header(None), force: bool = False):
+async def trigger_discovery(client_id: str, authorization: Optional[str] = Header(None), force: bool = True):
     is_admin, claims = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
@@ -1203,7 +1187,7 @@ async def get_permission_tree(client_id: str, authorization: Optional[str] = Hea
 # Enhanced Discovery Endpoints
 
 @app.post("/discovery/batch")
-async def batch_discovery(client_ids: List[str] = Body(...), force: bool = Body(False), authorization: Optional[str] = Header(None)):
+async def batch_discovery(client_ids: List[str] = Body(...), force: bool = Body(True), authorization: Optional[str] = Header(None)):
     """Run discovery on multiple apps simultaneously"""
     is_admin, claims = check_admin_access(authorization)
     if not is_admin:
@@ -1226,97 +1210,10 @@ async def batch_discovery(client_ids: List[str] = Body(...), force: bool = Body(
         logger.error(f"Batch discovery error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Batch discovery failed: {str(e)}")
 
-@app.get("/discovery/history/{client_id}")
-async def get_discovery_history(client_id: str, authorization: Optional[str] = Header(None)):
-    """Get discovery history for a specific app"""
-    is_admin, _ = check_admin_access(authorization)
-    if not is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
 
-    history = enhanced_discovery.get_discovery_history(client_id)
-    if not history:
-        raise HTTPException(status_code=404, detail="No discovery history found for this app")
 
-    # Convert to dict for JSON serialization
-    history_dict = {
-        "app_id": history.app_id,
-        "app_name": history.app_name,
-        "discovery_endpoint": history.discovery_endpoint,
-        "total_attempts": history.total_attempts,
-        "success_rate": history.success_rate,
-        "last_successful_discovery": history.last_successful_discovery.isoformat() if history.last_successful_discovery else None,
-        "recent_attempts": [
-            {
-                "timestamp": attempt.timestamp.isoformat(),
-                "success": attempt.success,
-                "error_type": attempt.error_type.value if attempt.error_type else None,
-                "error_message": attempt.error_message,
-                "response_time_ms": attempt.response_time_ms,
-                "endpoints_found": attempt.endpoints_found,
-                "permissions_generated": attempt.permissions_generated
-            }
-            for attempt in history.attempts[-20:]  # Last 20 attempts
-        ]
-    }
 
-    return JSONResponse(history_dict)
 
-@app.get("/discovery/statistics")
-async def get_discovery_statistics(authorization: Optional[str] = Header(None)):
-    """Get overall discovery statistics"""
-    is_admin, _ = check_admin_access(authorization)
-    if not is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
-
-    stats = enhanced_discovery.get_discovery_statistics()
-    return JSONResponse(stats)
-
-@app.get("/discovery/active")
-async def get_active_discoveries(authorization: Optional[str] = Header(None)):
-    """Get currently active discovery operations"""
-    is_admin, _ = check_admin_access(authorization)
-    if not is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
-
-    active = enhanced_discovery.get_active_discoveries()
-
-    # Convert to serializable format
-    active_dict = {}
-    for app_id, progress in active.items():
-        active_dict[app_id] = {
-            "app_id": progress.app_id,
-            "status": progress.status.value,
-            "current_step": progress.current_step,
-            "progress_percentage": progress.progress_percentage,
-            "start_time": progress.start_time.isoformat() if progress.start_time else None,
-            "estimated_completion": progress.estimated_completion.isoformat() if progress.estimated_completion else None,
-            "error_message": progress.error_message
-        }
-
-    return JSONResponse({"active_discoveries": active_dict})
-
-@app.post("/discovery/test-endpoint")
-async def test_discovery_endpoint(discovery_endpoint: str = Body(...), authorization: Optional[str] = Header(None)):
-    """Test a discovery endpoint without running full discovery"""
-    is_admin, claims = check_admin_access(authorization)
-    if not is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
-
-    audit_logger.log_action(
-        action=AuditAction.DISCOVERY_TRIGGERED,
-        details={
-            'test_endpoint': True,
-            'discovery_endpoint': discovery_endpoint,
-            'triggered_by': claims.get('email') if claims else None
-        }
-    )
-
-    try:
-        result = enhanced_discovery.test_discovery_endpoint(discovery_endpoint)
-        return JSONResponse(result)
-    except Exception as e:
-        logger.error(f"Discovery endpoint test error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Endpoint test failed: {str(e)}")
 
 # ==============================
 # Permissions: roles CRUD (for Admin UI)

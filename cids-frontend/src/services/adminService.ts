@@ -6,8 +6,7 @@ import type {
   APIKeyCreationResponse,
   CreateAPIKeyRequest,
   TokenActivityResponse,
-  AppRegistrationResult,
-  RotateSecretResult
+  AppRegistrationResult
 } from '../types/admin';
 
 class AdminService {
@@ -117,9 +116,7 @@ class AdminService {
     return apiService.delete(`/auth/admin/apps/${clientId}/api-keys/${keyId}`);
   }
 
-  async rotateAppSecret(clientId: string): Promise<RotateSecretResult> {
-    return apiService.post(`/auth/admin/apps/${clientId}/rotate-secret`);
-  }
+
 
   async rotateAPIKey(
     clientId: string,
@@ -159,30 +156,20 @@ class AdminService {
     return apiService.delete(`/permissions/${clientId}/roles/${roleName}`);
   }
 
-  async triggerDiscovery(clientId: string, force: boolean = false): Promise<any> {
+  async triggerDiscovery(clientId: string, force: boolean = true): Promise<any> {
     return apiService.post(`/discovery/endpoints/${clientId}?force=${force}`);
   }
 
   // Enhanced Discovery Methods
-  async batchDiscovery(clientIds: string[], force: boolean = false): Promise<any> {
+  async batchDiscovery(clientIds: string[], force: boolean = true): Promise<any> {
     return apiService.post('/discovery/batch', { client_ids: clientIds, force });
   }
 
-  async getDiscoveryHistory(clientId: string): Promise<any> {
-    return apiService.get(`/discovery/history/${clientId}`);
-  }
 
-  async getDiscoveryStatistics(): Promise<any> {
-    return apiService.get('/discovery/statistics');
-  }
 
-  async getActiveDiscoveries(): Promise<any> {
-    return apiService.get('/discovery/active');
-  }
 
-  async testDiscoveryEndpoint(discoveryEndpoint: string): Promise<any> {
-    return apiService.post('/discovery/test-endpoint', { discovery_endpoint: discoveryEndpoint });
-  }
+
+
 
   async updateAppEndpoints(clientId: string, endpoints: any): Promise<any> {
     return apiService.put(`/auth/admin/apps/${clientId}/endpoints`, endpoints);

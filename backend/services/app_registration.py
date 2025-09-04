@@ -1,7 +1,5 @@
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Union
 from datetime import datetime
-import secrets
-import hashlib
 import uuid
 from pydantic import BaseModel
 import logging
@@ -67,13 +65,12 @@ class SetRoleMappingRequest(BaseModel):
 
 
 APPS_FILE = data_path("registered_apps.json")
-SECRETS_FILE = data_path("app_secrets.json")
 ROLE_MAPPINGS_FILE = data_path("app_role_mappings.json")
 A2A_MAPPINGS_FILE = data_path("a2a_role_mappings.json")
 
 
 def load_data():
-    global registered_apps, app_secrets, app_role_mappings, a2a_role_mappings
+    global registered_apps, app_role_mappings, a2a_role_mappings
     try:
         if APPS_FILE.exists():
             with open(APPS_FILE, 'r') as f:
@@ -100,15 +97,7 @@ def load_data():
     except Exception as e:
         logger.error(f"Error loading registered apps: {e}")
         registered_apps = {}
-    try:
-        if SECRETS_FILE.exists():
-            with open(SECRETS_FILE, 'r') as f:
-                app_secrets = json.load(f)
-        else:
-            app_secrets = {}
-    except Exception as e:
-        logger.error(f"Error loading app secrets: {e}")
-        app_secrets = {}
+
     try:
         if ROLE_MAPPINGS_FILE.exists():
             with open(ROLE_MAPPINGS_FILE, 'r') as f:
@@ -132,15 +121,11 @@ def load_data():
 def save_data():
     try:
         temp_apps = APPS_FILE.with_suffix('.tmp')
-        temp_secrets = SECRETS_FILE.with_suffix('.tmp')
         temp_mappings = ROLE_MAPPINGS_FILE.with_suffix('.tmp')
         temp_a2a_mappings = A2A_MAPPINGS_FILE.with_suffix('.tmp')
         APPS_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(temp_apps, 'w') as f:
             json.dump(registered_apps, f, indent=2)
-            f.write('\n')
-        with open(temp_secrets, 'w') as f:
-            json.dump(app_secrets, f, indent=2)
             f.write('\n')
         with open(temp_mappings, 'w') as f:
             json.dump(app_role_mappings, f, indent=2)
@@ -149,7 +134,6 @@ def save_data():
             json.dump(a2a_role_mappings, f, indent=2)
             f.write('\n')
         temp_apps.replace(APPS_FILE)
-        temp_secrets.replace(SECRETS_FILE)
         temp_mappings.replace(ROLE_MAPPINGS_FILE)
         temp_a2a_mappings.replace(A2A_MAPPINGS_FILE)
     except Exception as e:
@@ -158,7 +142,6 @@ def save_data():
 
 
 registered_apps: Dict[str, dict] = {}
-app_secrets: Dict[str, str] = {}
 app_role_mappings: Dict[str, List[dict]] = {}
 a2a_role_mappings: Dict[str, Dict[str, List[str]]] = {}
 load_data()
@@ -166,21 +149,13 @@ load_data()
 
 class AppRegistrationStore:
     @staticmethod
-    def generate_client_credentials() -> Tuple[str, str]:
-        client_id = f"app_{uuid.uuid4().hex[:16]}"
-        client_secret = secrets.token_urlsafe(32)
-        return client_id, client_secret
+    def generate_client_id() -> str:
+        return f"app_{uuid.uuid4().hex[:16]}"
 
-    @staticmethod
-    def hash_secret(secret: str) -> str:
-        return hashlib.sha256(secret.encode()).hexdigest()
 
-    @staticmethod
-    def verify_secret(secret: str, hashed: str) -> bool:
-        return hashlib.sha256(secret.encode()).hexdigest() == hashed
 
-    def register_app(self, request: RegisterAppRequest) -> Tuple[dict, str]:
-        client_id, client_secret = self.generate_client_credentials()
+    def register_app(self, request: RegisterAppRequest) -> dict:
+        client_id = self.generate_client_id()
         app_data = {
             "client_id": client_id,
             "name": request.name,
@@ -196,10 +171,9 @@ class AppRegistrationStore:
             "discovery_status": None,
         }
         registered_apps[client_id] = app_data
-        app_secrets[client_id] = self.hash_secret(client_secret)
         save_data()
         logger.info(f"Registered new app: {client_id} ({request.name})")
-        return app_data, client_secret
+        return app_data
 
     def get_app(self, client_id: str) -> Optional[dict]:
         return registered_apps.get(client_id)
@@ -228,13 +202,7 @@ class AppRegistrationStore:
         logger.info(f"Updated app: {client_id}")
         return app
 
-    def validate_client_credentials(self, client_id: str, client_secret: str) -> bool:
-        if client_id not in app_secrets:
-            return False
-        app = registered_apps.get(client_id)
-        if not app or not app.get("is_active", False):
-            return False
-        return self.verify_secret(client_secret, app_secrets[client_id])
+
 
     def validate_redirect_uri(self, client_id: str, redirect_uri: str) -> bool:
         app = registered_apps.get(client_id)
@@ -242,23 +210,12 @@ class AppRegistrationStore:
             return False
         return redirect_uri in app.get("redirect_uris", [])
 
-    def rotate_client_secret(self, client_id: str) -> Optional[str]:
-        if client_id not in registered_apps:
-            return None
-        _, new_secret = self.generate_client_credentials()
-        app_secrets[client_id] = self.hash_secret(new_secret)
-        app = registered_apps[client_id]
-        app["updated_at"] = datetime.utcnow().isoformat()
-        save_data()
-        logger.info(f"Rotated client secret for app: {client_id}")
-        return new_secret
+
 
     def delete_app(self, client_id: str) -> bool:
         if client_id not in registered_apps:
             return False
         del registered_apps[client_id]
-        if client_id in app_secrets:
-            del app_secrets[client_id]
         if client_id in app_role_mappings:
             del app_role_mappings[client_id]
         if client_id in a2a_role_mappings:

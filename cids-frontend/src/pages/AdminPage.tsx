@@ -56,6 +56,213 @@ const ErrorMessage = styled.div`
 `;
 
 
+// Component to display structured endpoints data
+const EndpointsDisplay: React.FC<{ data: string }> = ({ data }) => {
+  // If it's an error message, show it simply
+  if (data.includes('No discovered endpoints') || data.includes('Error fetching')) {
+    return (
+      <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>
+        <div style={{ fontSize: '16px', marginBottom: '8px' }}>📭</div>
+        <div>{data}</div>
+      </div>
+    );
+  }
+
+  try {
+    // Parse the structured data
+    const lines = data.split('\n').filter(line => line.trim());
+    const resources: { [key: string]: { actions: { [key: string]: { fields: any[], sensitiveCount: number, hasWildcard: boolean } } } } = {};
+
+    let currentResource = '';
+    let currentAction = '';
+
+    for (const line of lines) {
+      if (line.startsWith('Discovered Resources for')) continue;
+
+      if (!line.startsWith('  ') && !line.startsWith('    ')) {
+        // This is a resource name
+        currentResource = line.trim();
+        if (!resources[currentResource]) {
+          resources[currentResource] = { actions: {} };
+        }
+      } else if (line.startsWith('  ') && !line.startsWith('    ')) {
+        // This is an action
+        const actionLine = line.trim();
+        const match = actionLine.match(/^(\w+)(?:\s+\((\d+)\s+sensitive fields\))?(?:\s+\(has wildcard \*\))?/);
+        if (match && currentResource) {
+          currentAction = match[1];
+          const sensitiveCount = match[2] ? parseInt(match[2]) : 0;
+          const hasWildcard = actionLine.includes('has wildcard');
+
+          if (!resources[currentResource]) {
+            resources[currentResource] = { actions: {} };
+          }
+          if (!resources[currentResource].actions[currentAction]) {
+            resources[currentResource].actions[currentAction] = {
+              fields: [],
+              sensitiveCount,
+              hasWildcard
+            };
+          }
+        }
+      } else if (line.startsWith('    ') && currentResource && currentAction) {
+        // This is a field
+        const fieldLine = line.trim();
+        if (!fieldLine.startsWith('  ')) { // Skip description lines
+          const isSensitive = fieldLine.includes('SENSITIVE');
+          const fieldName = fieldLine.replace(' SENSITIVE', '');
+
+          if (resources[currentResource] && resources[currentResource].actions[currentAction]) {
+            resources[currentResource].actions[currentAction].fields.push({
+              name: fieldName,
+              sensitive: isSensitive
+            });
+          }
+        }
+      }
+    }
+
+    return (
+      <div style={{ padding: '0' }}>
+        {Object.entries(resources).map(([resourceName, resource]) => (
+          <div key={resourceName} style={{ marginBottom: '24px' }}>
+            <div style={{
+              backgroundColor: '#f8f9fa',
+              padding: '12px 20px',
+              borderLeft: '4px solid #007bff',
+              marginBottom: '12px',
+              fontWeight: '600',
+              fontSize: '16px',
+              color: '#333'
+            }}>
+              {resourceName || '/ (Root)'}
+            </div>
+
+            {Object.entries(resource.actions).map(([actionName, action]) => (
+              <div key={actionName} style={{ marginBottom: '16px', marginLeft: '20px' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  marginBottom: '8px',
+                  padding: '8px 12px',
+                  backgroundColor: '#e3f2fd',
+                  borderRadius: '4px',
+                  border: '1px solid #bbdefb'
+                }}>
+                  <span style={{
+                    fontWeight: '500',
+                    color: '#1976d2',
+                    textTransform: 'uppercase',
+                    fontSize: '14px',
+                    letterSpacing: '0.5px'
+                  }}>
+                    {actionName}
+                  </span>
+
+                  {action.sensitiveCount > 0 && (
+                    <span style={{
+                      backgroundColor: '#fff3cd',
+                      color: '#856404',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      border: '1px solid #ffeaa7'
+                    }}>
+                      {action.sensitiveCount} sensitive field{action.sensitiveCount !== 1 ? 's' : ''}
+                    </span>
+                  )}
+
+                  {action.hasWildcard && (
+                    <span style={{
+                      backgroundColor: '#d1ecf1',
+                      color: '#0c5460',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      border: '1px solid #bee5eb'
+                    }}>
+                      has wildcard *
+                    </span>
+                  )}
+                </div>
+
+                {action.fields.length > 0 && (
+                  <div style={{ marginLeft: '12px' }}>
+                    {action.fields.map((field, idx) => (
+                      <div key={idx} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '6px 12px',
+                        marginBottom: '4px',
+                        backgroundColor: field.sensitive ? '#fff5f5' : '#f9f9f9',
+                        borderRadius: '3px',
+                        border: field.sensitive ? '1px solid #fed7d7' : '1px solid #e2e8f0',
+                        fontSize: '14px'
+                      }}>
+                        <code style={{
+                          fontFamily: 'Monaco, Consolas, "Courier New", monospace',
+                          fontSize: '13px',
+                          color: '#2d3748',
+                          backgroundColor: 'transparent'
+                        }}>
+                          {field.name}
+                        </code>
+
+                        {field.sensitive && (
+                          <span style={{
+                            backgroundColor: '#fed7d7',
+                            color: '#c53030',
+                            padding: '1px 6px',
+                            borderRadius: '8px',
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.3px'
+                          }}>
+                            SENSITIVE
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  } catch (error) {
+    console.error('Error parsing endpoints data:', error);
+    // Fallback to simple text display
+    return (
+      <div style={{ padding: '20px' }}>
+        <div style={{ marginBottom: '16px', color: '#666', fontSize: '14px' }}>
+          ⚠️ Could not parse structured data. Showing raw output:
+        </div>
+        <pre style={{
+          margin: 0,
+          fontFamily: 'Monaco, Consolas, "Courier New", monospace',
+          fontSize: '13px',
+          lineHeight: '1.4',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          backgroundColor: '#f8f9fa',
+          padding: '16px',
+          borderRadius: '4px',
+          border: '1px solid #e0e0e0'
+        }}>
+          {data}
+        </pre>
+      </div>
+    );
+  }
+};
+
 const AdminPage: React.FC = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -77,11 +284,18 @@ const AdminPage: React.FC = () => {
   });
 
   // Discovery status tracking
-  const [discoveryStatus, setDiscoveryStatus] = useState<Record<string, 'running' | 'success' | 'error' | 'cached' | 'unknown'>>({});
+  const [discoveryStatus, setDiscoveryStatus] = useState<Record<string, 'running' | 'success' | 'error' | 'unknown'>>({});
 
   const [editModal, setEditModal] = useState({
     isOpen: false,
     app: null as AppInfo | null
+  });
+
+  const [endpointsModal, setEndpointsModal] = useState<{isOpen: boolean, clientId: string, appName: string, data: string}>({
+    isOpen: false,
+    clientId: '',
+    appName: '',
+    data: ''
   });
 
   const [editForm, setEditForm] = useState({
@@ -177,15 +391,7 @@ const AdminPage: React.FC = () => {
     }
   };
 
-  const handleRotateSecret = async (clientId: string) => {
-    if (!confirm('Rotate client secret? Old secret will stop working immediately.')) return;
-    try {
-      const res = await adminService.rotateAppSecret(clientId);
-      alert(`New secret for ${res.client_id}:\n${res.client_secret}`);
-    } catch (e: any) {
-      alert(e.message || 'Failed to rotate secret');
-    }
-  };
+
 
   const handleDeleteApp = async (clientId: string) => {
     if (!confirm('Delete (deactivate) this app?')) return;
@@ -303,16 +509,15 @@ const AdminPage: React.FC = () => {
                     )}
                   </div>
                   <div className="app-actions" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-                    <button className="button" onClick={async()=>{
+                    <button className="button secondary" onClick={async()=>{
                       const data = await adminService.getRoleMappings(app.client_id);
                       if (!data.mappings.length) alert('No role mappings configured for this app.');
                       else alert(`Role Mappings for ${data.app_name}:\n\n${data.mappings.map(m=>`AD Group: ${m.ad_group}  Role: ${m.app_role}`).join('\n')}`);
                     }}>Role Mappings</button>
                     {app.allow_discovery && (
                       <>
-                        <button className="button" onClick={async()=>{
+                        <button className="button secondary" onClick={async()=>{
                           try {
-                            // Try to get permission tree first for detailed view
                             const permTree = await adminService.getAppPermissionTree(app.client_id);
                             if (permTree && permTree.permission_tree && Object.keys(permTree.permission_tree).length > 0) {
                               // Format permission tree for display
@@ -324,7 +529,7 @@ const AdminPage: React.FC = () => {
                                 for (const [action, details] of Object.entries(actions as any)) {
                                   const fields = details.fields || [];
                                   const sensitiveFields = fields.filter((f: any) => f.sensitive || f.pii || f.phi);
-                                  const hasWildcard = fields.some((f: any) => f.field_name === '*');
+                                  const hasWildcard = fields.some((f: any) => f.field_path === '*');
 
                                   output += `  ${action}`;
                                   if (hasWildcard) output += ' (has wildcard *)';
@@ -333,10 +538,10 @@ const AdminPage: React.FC = () => {
 
                                   // Show fields with details
                                   for (const field of fields) {
-                                    if (field.field_name !== '*') {
-                                      output += `    ${field.field_name}`;
+                                    if (field.field_path !== '*') {
+                                      output += `    ${field.field_path}`;
                                       if (field.sensitive || field.pii || field.phi) {
-                                        output += 'SENSITIVE';
+                                        output += ' SENSITIVE';
                                       }
                                       output += '\n';
                                       if (field.description) {
@@ -347,38 +552,38 @@ const AdminPage: React.FC = () => {
                                 }
                                 output += '\n';
                               }
-                              alert(output);
+                              setEndpointsModal({
+                                isOpen: true,
+                                clientId: app.client_id,
+                                appName: app.name,
+                                data: output
+                              });
                             } else {
-                              // Fallback to basic endpoints
-                              const ep = await adminService.getAppEndpoints(app.client_id);
-                              if (!ep || !ep.endpoints || ep.endpoints.length === 0) {
-                                alert('No endpoints registered for this app.');
-                              } else {
-                                alert(`Endpoints for ${app.client_id}:\n\n${ep.endpoints.map((e:any)=>`${e.method} ${e.path} - ${e.description || ''}${e.discovered ? ' (discovered)' : ''}`).join('\n')}`);
-                              }
+                              setEndpointsModal({
+                                isOpen: true,
+                                clientId: app.client_id,
+                                appName: app.name,
+                                data: 'No discovered endpoints found for this app. Run discovery first.'
+                              });
                             }
                           } catch (error) {
-                            // Fallback to basic endpoints on error
-                            try {
-                              const ep = await adminService.getAppEndpoints(app.client_id);
-                              if (!ep || !ep.endpoints || ep.endpoints.length === 0) {
-                                alert('No endpoints registered for this app.');
-                              } else {
-                                alert(`Endpoints for ${app.client_id}:\n\n${ep.endpoints.map((e:any)=>`${e.method} ${e.path} - ${e.description || ''}${e.discovered ? ' (discovered)' : ''}`).join('\n')}`);
-                              }
-                            } catch (fallbackError) {
-                              alert('Error fetching endpoint information.');
-                            }
+                            console.error('Error fetching permission tree:', error);
+                            setEndpointsModal({
+                              isOpen: true,
+                              clientId: app.client_id,
+                              appName: app.name,
+                              data: 'Error fetching discovered endpoints. Run discovery first.'
+                            });
                           }
                         }}>View Endpoints</button>
-                        <button className="button" onClick={() => {
+                        <button className="button secondary" onClick={() => {
                           setApiKeyModal({
                             isOpen: true,
                             clientId: app.client_id,
                             appName: app.name
                           });
                         }}>A2A Roles & Permissions</button>
-                        <button className="button" onClick={() => {
+                        <button className="button secondary" onClick={() => {
                           setRolesModal({
                             isOpen: true,
                             clientId: app.client_id,
@@ -390,7 +595,7 @@ const AdminPage: React.FC = () => {
                           <button className="button secondary" onClick={async()=>{
                             try {
                               setDiscoveryStatus(prev => ({ ...prev, [app.client_id]: 'running' }));
-                              const res = await adminService.triggerDiscovery(app.client_id, false);
+                              const res = await adminService.triggerDiscovery(app.client_id, true);
                               console.log('Discovery response:', res);
 
                               if (res && res.status === 'success') {
@@ -402,9 +607,7 @@ const AdminPage: React.FC = () => {
                                       `• Permissions generated: ${res.permissions_generated || 0}\n` +
                                       `• Response time: ${res.response_time_ms || 0}ms\n` +
                                       `• Discovery version: ${res.discovery_version || 'N/A'}`);
-                              } else if (res && res.status === 'cached') {
-                                setDiscoveryStatus(prev => ({ ...prev, [app.client_id]: 'cached' }));
-                                alert(`📋 Using cached discovery data\n\n${res.message}\n\nCache age: ${res.cache_age_minutes || 0} minutes`);
+
                               } else if (res && res.status === 'error') {
                                 setDiscoveryStatus(prev => ({ ...prev, [app.client_id]: 'error' }));
                                 const errorType = res.error_type ? ` (${res.error_type})` : '';
@@ -421,96 +624,18 @@ const AdminPage: React.FC = () => {
                               alert(`❌ Discovery failed: ${error.message || 'unknown error'}`);
                             }
                           }} disabled={discoveryStatus[app.client_id] === 'running'}>
-                            {discoveryStatus[app.client_id] === 'running' ? '🔄 Running...' : '🔍 Run Discovery'}
+                            {discoveryStatus[app.client_id] === 'running' ? 'Running...' : 'Run Discovery'}
                           </button>
 
-                          <button className="button secondary" onClick={async()=>{
-                            try {
-                              const res = await adminService.triggerDiscovery(app.client_id, true);
-                              console.log('Force discovery response:', res);
 
-                              if (res && res.status === 'success') {
-                                alert(`✅ Force discovery completed!\n\n` +
-                                      `📊 Results:\n` +
-                                      `• Endpoints discovered: ${res.endpoints_discovered}\n` +
-                                      `• Permissions generated: ${res.permissions_generated || 0}\n` +
-                                      `• Response time: ${res.response_time_ms || 0}ms`);
-                              } else if (res && res.status === 'error') {
-                                const errorType = res.error_type ? ` (${res.error_type})` : '';
-                                alert(`❌ Force discovery failed${errorType}\n\nError: ${res.error}`);
-                              }
-                              await loadApps();
-                            } catch (error) {
-                              console.error('Force discovery error:', error);
-                              alert(`❌ Force discovery failed: ${error.message || 'unknown error'}`);
-                            }
-                          }} title="Force discovery (ignore cache)">
-                            🔄 Force
-                          </button>
 
-                          <button className="button secondary" onClick={async()=>{
-                            try {
-                              const history = await adminService.getDiscoveryHistory(app.client_id);
-                              const recentAttempts = history.recent_attempts || [];
-                              const lastSuccess = history.last_successful_discovery ?
-                                new Date(history.last_successful_discovery).toLocaleString() : 'Never';
 
-                              let message = `📈 Discovery History for ${history.app_name}\n\n`;
-                              message += `📊 Statistics:\n`;
-                              message += `• Total attempts: ${history.total_attempts}\n`;
-                              message += `• Success rate: ${(history.success_rate * 100).toFixed(1)}%\n`;
-                              message += `• Last success: ${lastSuccess}\n\n`;
 
-                              if (recentAttempts.length > 0) {
-                                message += `🕒 Recent attempts (last ${Math.min(recentAttempts.length, 5)}):\n`;
-                                recentAttempts.slice(-5).reverse().forEach((attempt, i) => {
-                                  const timestamp = new Date(attempt.timestamp).toLocaleString();
-                                  const status = attempt.success ? '✅' : '❌';
-                                  const error = attempt.error_message ? ` - ${attempt.error_message}` : '';
-                                  message += `${status} ${timestamp}${error}\n`;
-                                });
-                              }
 
-                              alert(message);
-                            } catch (error) {
-                              console.error('History error:', error);
-                              alert(`❌ Failed to load history: ${error.message || 'unknown error'}`);
-                            }
-                          }} title="View discovery history">
-                            📈 History
-                          </button>
-
-                          {app.discovery_endpoint && (
-                            <button className="button secondary" onClick={async()=>{
-                              try {
-                                const result = await adminService.testDiscoveryEndpoint(app.discovery_endpoint);
-
-                                if (result.status === 'success') {
-                                  alert(`✅ Discovery endpoint test passed!\n\n` +
-                                        `📊 Results:\n` +
-                                        `• App name: ${result.app_name}\n` +
-                                        `• Endpoints found: ${result.endpoints_found}\n` +
-                                        `• Services found: ${result.services_found}\n` +
-                                        `• Discovery version: ${result.discovery_version}\n` +
-                                        `• Health check: ${result.health_check?.healthy ? '✅ Healthy' : '❌ Unhealthy'}`);
-                                } else {
-                                  const stage = result.stage ? ` (${result.stage})` : '';
-                                  const errorType = result.error_type ? ` [${result.error_type}]` : '';
-                                  alert(`❌ Discovery endpoint test failed${stage}${errorType}\n\nError: ${result.error}`);
-                                }
-                              } catch (error) {
-                                console.error('Test endpoint error:', error);
-                                alert(`❌ Endpoint test failed: ${error.message || 'unknown error'}`);
-                              }
-                            }} title="Test discovery endpoint">
-                              🧪 Test
-                            </button>
-                          )}
                         </div>
                       </>
                     )}
-                    <button className="button" onClick={()=>handleEditApp(app)}>Edit</button>
-                    <button className="button secondary" onClick={()=>handleRotateSecret(app.client_id)}>Rotate Secret</button>
+                    <button className="button secondary" onClick={()=>handleEditApp(app)}>Edit</button>
                     <button className="button danger" onClick={()=>handleDeleteApp(app.client_id)}>Delete</button>
                   </div>
                 </div>
@@ -520,104 +645,7 @@ const AdminPage: React.FC = () => {
         </SectionContent>
       </InfoSection>
 
-      {/* Discovery Statistics Section */}
-      <InfoSection>
-        <SectionHeader style={{ cursor: 'default', borderBottom: '1px solid var(--border-color)' }}>
-          <h2 style={{ margin: 0 }}>🔍 Discovery Statistics</h2>
-        </SectionHeader>
-        <SectionContent>
-          <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
-            <button className="button secondary" onClick={async () => {
-              try {
-                const stats = await adminService.getDiscoveryStatistics();
-                const message = `📊 Discovery Statistics\n\n` +
-                              `• Total apps: ${stats.total_apps}\n` +
-                              `• Total attempts: ${stats.total_attempts}\n` +
-                              `• Overall success rate: ${(stats.overall_success_rate * 100).toFixed(1)}%\n` +
-                              `• Apps with recent success: ${stats.apps_with_recent_success}\n` +
-                              `• Apps with failures: ${stats.apps_with_failures}\n` +
-                              `• Average response time: ${stats.average_response_time_ms?.toFixed(0) || 0}ms`;
-                alert(message);
-              } catch (error) {
-                console.error('Stats error:', error);
-                alert(`❌ Failed to load statistics: ${error.message || 'unknown error'}`);
-              }
-            }}>
-              📊 View Statistics
-            </button>
 
-            <button className="button secondary" onClick={async () => {
-              try {
-                const active = await adminService.getActiveDiscoveries();
-                const discoveries = active.active_discoveries || {};
-                const count = Object.keys(discoveries).length;
-
-                if (count === 0) {
-                  alert('✅ No active discoveries');
-                  return;
-                }
-
-                let message = `🔄 Active Discoveries (${count})\n\n`;
-                Object.entries(discoveries).forEach(([appId, progress]: [string, any]) => {
-                  message += `• ${appId}: ${progress.current_step} (${progress.progress_percentage}%)\n`;
-                  if (progress.error_message) {
-                    message += `  ❌ Error: ${progress.error_message}\n`;
-                  }
-                });
-
-                alert(message);
-              } catch (error) {
-                console.error('Active discoveries error:', error);
-                alert(`❌ Failed to load active discoveries: ${error.message || 'unknown error'}`);
-              }
-            }}>
-              🔄 Active Discoveries
-            </button>
-
-            <button className="button" onClick={async () => {
-              if (!apps) return;
-
-              const appIds = apps.filter(app => app.allow_discovery).map(app => app.client_id);
-              if (appIds.length === 0) {
-                alert('❌ No apps with discovery enabled');
-                return;
-              }
-
-              const confirmed = confirm(`🚀 Run batch discovery on ${appIds.length} apps?\n\nThis will discover endpoints for all apps with discovery enabled.`);
-              if (!confirmed) return;
-
-              try {
-                const result = await adminService.batchDiscovery(appIds, false);
-                const summary = result.summary;
-
-                let message = `📊 Batch Discovery Results\n\n`;
-                message += `• Total apps: ${summary.total}\n`;
-                message += `• Successful: ${summary.successful}\n`;
-                message += `• Failed: ${summary.failed}\n`;
-                message += `• Cached: ${summary.cached}\n`;
-                message += `• Success rate: ${(summary.success_rate * 100).toFixed(1)}%\n\n`;
-
-                if (summary.failed > 0) {
-                  message += `❌ Failed apps:\n`;
-                  Object.entries(result.batch_results).forEach(([appId, res]: [string, any]) => {
-                    if (res.status === 'error') {
-                      message += `• ${appId}: ${res.error}\n`;
-                    }
-                  });
-                }
-
-                alert(message);
-                await loadApps();
-              } catch (error) {
-                console.error('Batch discovery error:', error);
-                alert(`❌ Batch discovery failed: ${error.message || 'unknown error'}`);
-              }
-            }}>
-              🚀 Batch Discovery
-            </button>
-          </div>
-        </SectionContent>
-      </InfoSection>
 
       {/* App Registration Section */}
       <InfoSection>
@@ -848,6 +876,133 @@ const AdminPage: React.FC = () => {
         clientId={apiKeyModal.clientId}
         appName={apiKeyModal.appName}
       />
+
+      {/* Endpoints Modal */}
+      {endpointsModal.isOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            padding: '24px',
+            maxWidth: '900px',
+            maxHeight: '85vh',
+            width: '95%',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '20px',
+              borderBottom: '2px solid #e0e0e0',
+              paddingBottom: '16px'
+            }}>
+              <h2 style={{ margin: 0, color: '#333', fontSize: '20px', fontWeight: '600' }}>
+                Discovered Endpoints - {endpointsModal.appName}
+              </h2>
+              <button
+                onClick={() => setEndpointsModal({ isOpen: false, clientId: '', appName: '', data: '' })}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#666',
+                  padding: '4px',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '4px'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f0f0f0'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                ×
+              </button>
+            </div>
+            <div style={{
+              flex: 1,
+              overflow: 'auto',
+              backgroundColor: '#fafafa',
+              borderRadius: '6px',
+              border: '1px solid #e0e0e0'
+            }}>
+              <EndpointsDisplay data={endpointsModal.data} />
+            </div>
+            <div style={{
+              marginTop: '20px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '12px'
+            }}>
+              <button
+                className="button secondary"
+                onClick={async () => {
+                  try {
+                    // Get the raw permission tree data from the API
+                    const permTree = await adminService.getAppPermissionTree(endpointsModal.clientId);
+
+                    // Create the JSON export
+                    const exportData = {
+                      app_id: endpointsModal.clientId,
+                      app_name: endpointsModal.appName,
+                      exported_at: new Date().toISOString(),
+                      permission_tree: permTree?.permission_tree || {},
+                      raw_permissions: permTree || {}
+                    };
+
+                    // Create and download the file
+                    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+                      type: 'application/json'
+                    });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `${endpointsModal.appName}_endpoints_${new Date().toISOString().split('T')[0]}.json`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                  } catch (error) {
+                    console.error('Export error:', error);
+                    alert('Failed to export endpoints data');
+                  }
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                📥 Export to JSON
+              </button>
+
+              <button
+                className="button secondary"
+                onClick={() => setEndpointsModal({ isOpen: false, clientId: '', appName: '', data: '' })}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Container>
   );
 };

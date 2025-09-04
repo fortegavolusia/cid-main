@@ -764,113 +764,18 @@ class DiscoveryService:
             }
         }
 
-    def get_discovery_history(self, client_id: str) -> Optional[DiscoveryHistory]:
-        """Get discovery history for a specific app"""
-        return self.discovery_history.get(client_id)
+
 
     def get_all_discovery_history(self) -> Dict[str, DiscoveryHistory]:
         """Get discovery history for all apps"""
         return self.discovery_history.copy()
 
-    def get_discovery_statistics(self) -> Dict[str, Any]:
-        """Get overall discovery statistics"""
-        if not self.discovery_history:
-            return {
-                "total_apps": 0,
-                "total_attempts": 0,
-                "overall_success_rate": 0.0,
-                "apps_with_recent_success": 0,
-                "apps_with_failures": 0
-            }
 
-        total_attempts = sum(h.total_attempts for h in self.discovery_history.values())
-        successful_attempts = sum(
-            sum(1 for a in h.attempts if a.success)
-            for h in self.discovery_history.values()
-        )
-
-        recent_threshold = datetime.utcnow() - timedelta(hours=24)
-        apps_with_recent_success = sum(
-            1 for h in self.discovery_history.values()
-            if h.last_successful_discovery and h.last_successful_discovery > recent_threshold
-        )
-
-        apps_with_failures = sum(
-            1 for h in self.discovery_history.values()
-            if any(not a.success for a in h.attempts[-10:])  # Recent failures
-        )
-
-        return {
-            "total_apps": len(self.discovery_history),
-            "total_attempts": total_attempts,
-            "overall_success_rate": successful_attempts / total_attempts if total_attempts > 0 else 0.0,
-            "apps_with_recent_success": apps_with_recent_success,
-            "apps_with_failures": apps_with_failures,
-            "average_response_time_ms": self._calculate_average_response_time()
-        }
-
-    def _calculate_average_response_time(self) -> float:
-        """Calculate average response time across all successful attempts"""
-        response_times = []
-        for history in self.discovery_history.values():
-            for attempt in history.attempts:
-                if attempt.success and attempt.response_time_ms:
-                    response_times.append(attempt.response_time_ms)
-
-        return sum(response_times) / len(response_times) if response_times else 0.0
-
-    def get_active_discoveries(self) -> Dict[str, DiscoveryProgress]:
-        """Get currently active discovery operations"""
-        return self.active_discoveries.copy()
 
     def update_config(self, new_config: DiscoveryConfig):
         """Update discovery configuration"""
         self.config = new_config
         logger.info(f"Discovery configuration updated: {asdict(new_config)}")
 
-    def test_discovery_endpoint(self, discovery_endpoint: str) -> Dict[str, Any]:
-        """Test a discovery endpoint without running full discovery"""
-        async def _test():
-            # Health check
-            health_result = await self._perform_health_check(discovery_endpoint)
-            if not health_result["healthy"]:
-                return {
-                    "status": "failed",
-                    "stage": "health_check",
-                    "error": health_result.get("error", "Health check failed"),
-                    "details": health_result
-                }
 
-            # Try to fetch discovery data
-            try:
-                service_token = self._create_service_token()
-                discovery_json = await self._fetch_enhanced_discovery(discovery_endpoint, service_token)
-
-                # Validate response
-                if self.config.validate_schema:
-                    discovery_data = await self._validate_discovery_response(discovery_json)
-                else:
-                    discovery_data = DiscoveryResponse(**discovery_json)
-
-                return {
-                    "status": "success",
-                    "endpoints_found": len(discovery_data.endpoints or []),
-                    "services_found": len(discovery_data.services or []),
-                    "app_name": discovery_data.app_name,
-                    "discovery_version": getattr(discovery_data, 'discovery_version', "2.0"),
-                    "health_check": health_result
-                }
-
-            except Exception as e:
-                error_type = self._classify_error(e)
-                return {
-                    "status": "failed",
-                    "stage": "discovery_fetch",
-                    "error": str(e),
-                    "error_type": error_type.value,
-                    "health_check": health_result
-                }
-
-        # Run the test
-        return asyncio.run(_test())
 
