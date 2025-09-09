@@ -5,9 +5,9 @@ from datetime import datetime
 from typing import Optional
 import json
 
-from backend.services.api_keys import api_key_manager, APIKeyTTL
-from backend.services.audit import audit_logger, AuditAction
-from backend.utils.paths import data_path
+from services.api_keys import api_key_manager, APIKeyTTL
+from services.audit import audit_logger, AuditAction
+from utils.paths import data_path
 
 logger = logging.getLogger(__name__)
 

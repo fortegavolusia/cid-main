@@ -18,28 +18,29 @@ import urllib.parse
 from dotenv import load_dotenv, dotenv_values
 from pathlib import Path
 
-from backend.services.jwt import JWTManager
-from backend.services.refresh_tokens import refresh_token_store
-from backend.services.token_activity import token_activity_logger, TokenAction
-from backend.services.app_registration import (
+from services.jwt import JWTManager
+from services.refresh_tokens import refresh_token_store
+from services.token_activity import token_activity_logger, TokenAction
+from services.app_registration import (
     app_store, RegisterAppRequest, UpdateAppRequest,
     AppResponse, AppRegistrationResponse, SetRoleMappingRequest,
     registered_apps, app_role_mappings
 )
-from backend.services.jwks import JWKSHandler
-from backend.services.endpoints import AppEndpointsRegistry, EndpointsUpdate
-from backend.services.roles import RolesManager, RolesUpdate, RoleMappingsUpdate
-from backend.services.policy import PolicyManager, PolicyDocument
-from backend.services.audit import audit_logger, AuditAction
-from backend.services.discovery import DiscoveryService
-from backend.services.discovery import DiscoveryService as EnhancedDiscoveryService
-from backend.services.permission_registry import PermissionRegistry
-from backend.services.token_templates import TokenTemplateManager
-from backend.services.api_keys import api_key_manager, APIKeyTTL
-from backend.background.api_key_rotation import start_rotation_scheduler, rotation_scheduler
-from backend.utils.paths import api_templates_path
-from backend.libs.logging_config import setup_logging, get_logging_config, update_logging_config as apply_logging_update
-from backend.services.log_reader import read_app_logs
+from services.jwks import JWKSHandler
+from services.endpoints import AppEndpointsRegistry, EndpointsUpdate
+from services.roles import RolesManager, RolesUpdate, RoleMappingsUpdate
+from services.policy import PolicyManager, PolicyDocument
+from services.audit import audit_logger, AuditAction
+from services.discovery import DiscoveryService
+from services.discovery import DiscoveryService as EnhancedDiscoveryService
+from services.permission_registry import PermissionRegistry
+from services.token_templates import TokenTemplateManager
+from services.api_keys import api_key_manager, APIKeyTTL
+from background.api_key_rotation import start_rotation_scheduler, rotation_scheduler
+from utils.paths import api_templates_path
+from libs.logging_config import setup_logging, get_logging_config, update_logging_config as apply_logging_update
+from services.log_reader import read_app_logs
+from services.database import db_service
 
 # Request models
 class TokenRequest(BaseModel):
@@ -47,8 +48,11 @@ class TokenRequest(BaseModel):
     refresh_token: Optional[str] = None
 
 class TokenExchangeRequest(BaseModel):
-    code: str
+    code: Optional[str] = None
     redirect_uri: str
+    code_verifier: Optional[str] = None
+    azure_access_token: Optional[str] = None
+    azure_id_token: Optional[str] = None
 
 class RevokeTokenRequest(BaseModel):
     token: str
@@ -133,7 +137,7 @@ class A2ATokenRequest(BaseModel):
 
 # Access log middleware (enabled by default via config)
 try:
-    from backend.middleware.access_log import access_log_middleware
+    from middleware.access_log import access_log_middleware
     app.middleware("http")(access_log_middleware)
 except Exception:
     logging.getLogger(__name__).warning("Access log middleware not loaded")
@@ -154,7 +158,7 @@ logger = logging.getLogger(__name__)
 
 # Ensure infra dirs exist on app import
 try:
-    from backend.utils.paths import ensure_dirs
+    from utils.paths import ensure_dirs
     ensure_dirs()
 except Exception:
     logger.exception("Failed to ensure backend infra directories exist")
@@ -474,23 +478,39 @@ async def token_endpoint(token_request: TokenRequest):
 async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
     try:
         tenant_id, client_id, client_secret = ensure_azure_env()
-        token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(token_url, data={
-                'grant_type': 'authorization_code',
-                'client_id': client_id,
-                'client_secret': client_secret,
-                'code': exchange_request.code,
-                'redirect_uri': exchange_request.redirect_uri,
-                'scope': os.getenv('AZURE_SCOPE', 'openid profile email User.Read')
-            })
-        if response.status_code != 200:
-            error_data = response.json()
-            logger.error(f"Azure token exchange failed: {error_data}")
-            raise HTTPException(status_code=400, detail=error_data.get('error_description', 'Token exchange failed'))
-        azure_token_data = response.json()
-        azure_access_token = azure_token_data.get('access_token')
-        azure_id_token = azure_token_data.get('id_token')
+        
+        # Check if we received Azure tokens directly (SPA flow)
+        if exchange_request.azure_access_token and exchange_request.azure_id_token:
+            azure_access_token = exchange_request.azure_access_token
+            azure_id_token = exchange_request.azure_id_token
+        # Otherwise, exchange code for tokens (traditional flow)
+        elif exchange_request.code:
+            token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                token_data = {
+                    'grant_type': 'authorization_code',
+                    'client_id': client_id,
+                    'code': exchange_request.code,
+                    'redirect_uri': exchange_request.redirect_uri,
+                    'scope': os.getenv('AZURE_SCOPE', 'openid profile email User.Read')
+                }
+                
+                # If code_verifier is provided (PKCE flow), use it instead of client_secret
+                if exchange_request.code_verifier:
+                    token_data['code_verifier'] = exchange_request.code_verifier
+                else:
+                    token_data['client_secret'] = client_secret
+                
+                response = await client.post(token_url, data=token_data)
+            if response.status_code != 200:
+                error_data = response.json()
+                logger.error(f"Azure token exchange failed: {error_data}")
+                raise HTTPException(status_code=400, detail=error_data.get('error_description', 'Token exchange failed'))
+            azure_token_data = response.json()
+            azure_access_token = azure_token_data.get('access_token')
+            azure_id_token = azure_token_data.get('id_token')
+        else:
+            raise HTTPException(status_code=400, detail="Either code or Azure tokens must be provided")
         if not azure_access_token:
             raise HTTPException(status_code=400, detail="No access token received from Azure")
         import base64
@@ -604,6 +624,27 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
             'sub': claims.get('sub')
         })
         token_activity_logger.log_activity(internal_token_id, TokenAction.CREATED, performed_by={'email': user_email, 'sub': claims.get('sub')}, details={'auth_method': 'oauth_code_exchange'})
+        
+        # Log successful login to activity_log
+        db_service.log_activity(
+            activity_type='login',
+            entity_type='user',
+            entity_id=claims.get('sub'),
+            entity_name=claims.get('name'),
+            user_email=user_email,
+            user_id=claims.get('sub'),
+            details={
+                'auth_method': 'oauth_code_exchange',
+                'groups': group_names[:10] if group_names else [],  # Limit groups to avoid too large JSON
+                'is_admin': is_admin,
+                'token_id': internal_token_id
+            },
+            status='success',
+            session_id=internal_token_id,
+            api_endpoint='/auth/token/exchange',
+            http_method='POST'
+        )
+        
         return JSONResponse({'access_token': internal_token, 'refresh_token': refresh_token, 'token_type': 'Bearer', 'expires_in': 1800})
     except HTTPException:
         raise
@@ -710,16 +751,81 @@ async def list_apps(authorization: Optional[str] = Header(None)):
     is_admin, _ = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    apps = app_store.list_apps()
+    
+    # Get apps from Supabase instead of JSON file
+    apps = db_service.get_all_registered_apps()
+    
     # Return as plain list of dicts; shapes match AppResponse
     return JSONResponse(apps)
+
+@app.get("/auth/admin/apps/stats")
+async def get_apps_stats(authorization: Optional[str] = Header(None)):
+    """Get statistics about registered applications from Supabase"""
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Get stats from Supabase
+    stats = db_service.get_registered_apps_stats()
+    
+    # Also get counts for other KPIs (these can be expanded later)
+    # For now, return placeholder values for tokens and API keys
+    return JSONResponse({
+        "apps": {
+            "total": stats['total'],
+            "active": stats['active'],
+            "inactive": stats['inactive']
+        },
+        "tokens": {
+            "active": 142  # TODO: Get from token activity
+        },
+        "api_keys": {
+            "total": 28  # TODO: Get from API key store
+        }
+    })
+
+@app.get("/auth/admin/dashboard/stats")
+async def get_dashboard_stats(authorization: Optional[str] = Header(None)):
+    """Get comprehensive dashboard statistics from database"""
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Get comprehensive stats from database
+    stats = db_service.get_dashboard_stats()
+    
+    return JSONResponse({
+        "apps": {
+            "total": stats.get('apps_total', 0),
+            "active": stats.get('apps_active', 0),
+            "discovered": stats.get('apps_discovered', 0)
+        },
+        "roles": {
+            "total": stats.get('roles_total', 0)
+        },
+        "permissions": {
+            "total": stats.get('permissions_total', 0)
+        },
+        "api_keys": {
+            "total": stats.get('api_keys_total', 0),
+            "active": stats.get('api_keys_active', 0)
+        },
+        "tokens": {
+            "templates": stats.get('token_templates_total', 0)
+        },
+        "activity": {
+            "last_24h": stats.get('activity_last_24h', 0)
+        }
+    })
 
 @app.get("/auth/admin/apps/{client_id}")
 async def get_app_admin(client_id: str, authorization: Optional[str] = Header(None)):
     is_admin, _ = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    app_data = app_store.get_app(client_id)
+    
+    # Get app from Supabase
+    app_data = db_service.get_app_by_id(client_id)
     if not app_data:
         raise HTTPException(status_code=404, detail="App not found")
     return JSONResponse(app_data)
@@ -729,7 +835,46 @@ async def register_app_admin(request: RegisterAppRequest, authorization: Optiona
     is_admin, claims = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    app_data = app_store.register_app(request)
+    
+    # Request client_id from uuid-service
+    try:
+        async with httpx.AsyncClient() as client:
+            uuid_response = await client.post(
+                "http://uuid-service-dev:8002/generate",
+                json={"type": "app", "count": 1},
+                timeout=10.0
+            )
+            uuid_response.raise_for_status()
+            uuid_data = uuid_response.json()
+            client_id = uuid_data.get("id")
+            
+            if not client_id:
+                raise HTTPException(status_code=500, detail="Failed to generate client_id from uuid-service")
+                
+            logging.info(f"Generated client_id from uuid-service: {client_id}")
+    except httpx.RequestError as e:
+        logging.error(f"Failed to connect to uuid-service: {e}")
+        raise HTTPException(status_code=503, detail="UUID service unavailable")
+    except Exception as e:
+        logging.error(f"Error generating client_id: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate client_id")
+    
+    # Create app in Supabase with uuid-service generated ID
+    app_data = {
+        "client_id": client_id,
+        "name": request.name,
+        "description": request.description,
+        "redirect_uris": request.redirect_uris,
+        "owner_email": request.owner_email,
+        "discovery_endpoint": request.discovery_endpoint,
+        "allow_discovery": request.allow_discovery,
+        "is_active": True,
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat()
+    }
+    
+    if not db_service.create_app(app_data):
+        raise HTTPException(status_code=500, detail="Failed to create app")
     api_key = None
     api_key_metadata = None
     if request.create_api_key:
@@ -759,10 +904,34 @@ async def register_app_admin(request: RegisterAppRequest, authorization: Optiona
             'api_key_created': api_key is not None
         }
     )
+    
+    # Also log to activity_log for centralized auditing
+    db_service.log_activity(
+        activity_type='app_registered',
+        entity_type='app',
+        entity_id=app_data["client_id"],
+        entity_name=request.name,
+        user_email=claims.get('email', 'admin'),
+        user_id=claims.get('sub'),
+        details={
+            'description': request.description,
+            'owner_email': request.owner_email,
+            'api_key_created': api_key is not None,
+            'allow_discovery': request.allow_discovery
+        },
+        status='success',
+        api_endpoint='/auth/admin/apps',
+        http_method='POST'
+    )
 
+    # Generate client secret
+    import secrets
+    client_secret = secrets.token_urlsafe(32)
+    
     # Return the registration response
     response_data = {
-        "app": app_data
+        "app": app_data,
+        "client_secret": client_secret
     }
 
     if api_key:
@@ -894,9 +1063,33 @@ async def update_app_admin(client_id: str, request: UpdateAppRequest, authorizat
     is_admin, claims = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    app_data = app_store.update_app(client_id, request)
-    if not app_data:
+    
+    # Check if app exists
+    existing_app = db_service.get_app_by_id(client_id)
+    if not existing_app:
         raise HTTPException(status_code=404, detail="App not found")
+    
+    # Build updates dict
+    updates = {}
+    if request.name is not None:
+        updates['name'] = request.name
+    if request.description is not None:
+        updates['description'] = request.description
+    if request.redirect_uris is not None:
+        updates['redirect_uris'] = request.redirect_uris
+    if request.is_active is not None:
+        updates['is_active'] = request.is_active
+    if request.discovery_endpoint is not None:
+        updates['discovery_endpoint'] = request.discovery_endpoint
+    if request.allow_discovery is not None:
+        updates['allow_discovery'] = request.allow_discovery
+    
+    # Update in Supabase
+    if not db_service.update_app(client_id, updates):
+        raise HTTPException(status_code=500, detail="Failed to update app")
+    
+    # Return updated app
+    app_data = db_service.get_app_by_id(client_id)
     return JSONResponse(app_data)
 
 
@@ -907,9 +1100,13 @@ async def delete_app_admin(client_id: str, authorization: Optional[str] = Header
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    # Check if app exists before deletion
-    if not app_store.get_app(client_id):
+    # Check if app exists in Supabase
+    if not db_service.get_app_by_id(client_id):
         raise HTTPException(status_code=404, detail="App not found")
+    
+    # Delete from Supabase
+    if not db_service.delete_app(client_id):
+        raise HTTPException(status_code=500, detail="Failed to delete app")
 
     # Clean up related data
     # 1. Revoke all API keys for this app
@@ -919,9 +1116,6 @@ async def delete_app_admin(client_id: str, authorization: Optional[str] = Header
 
     # 2. Delete app endpoints
     endpoints_registry.delete_app_endpoints(client_id)
-
-    # 3. Delete the app itself (includes secrets, role mappings, a2a mappings)
-    app_store.delete_app(client_id)
 
     return JSONResponse({"message": "App has been permanently deleted"})
 
@@ -972,8 +1166,28 @@ async def set_role_mappings_admin(client_id: str, request: SetRoleMappingRequest
     is_admin, claims = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    if not app_store.get_app(client_id):
-        raise HTTPException(status_code=404, detail="App not found")
+    
+    # Check if app exists in database first
+    app_data = db_service.get_app_by_id(client_id)
+    app_exists_in_db = app_data is not None
+    
+    if not app_exists_in_db:
+        # Fallback to JSON for legacy apps
+        if not app_store.get_app(client_id):
+            raise HTTPException(status_code=404, detail="App not found")
+    
+    # For database apps, we need to ensure they're also in the JSON for now
+    # This is a temporary solution until we fully migrate role mappings to database
+    if app_exists_in_db and client_id not in registered_apps:
+        # Add the app to registered_apps so role mappings can be saved
+        registered_apps[client_id] = {
+            "client_id": client_id,
+            "name": app_data.get('name'),
+            "owner_email": app_data.get('owner_email'),
+            "created_at": app_data.get('created_at', datetime.now().isoformat()),
+            "is_active": app_data.get('is_active', True)
+        }
+    
     ok = app_store.set_role_mappings(client_id, request.mappings, created_by=claims.get('email', 'admin'))
     if not ok:
         raise HTTPException(status_code=400, detail="Failed to update role mappings")
@@ -984,9 +1198,15 @@ async def get_role_mappings_admin(client_id: str, authorization: Optional[str] =
     is_admin, _ = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    app_data = app_store.get_app(client_id)
+    
+    # Get app from database
+    app_data = db_service.get_app_by_id(client_id)
     if not app_data:
-        raise HTTPException(status_code=404, detail="App not found")
+        # Fallback to JSON for legacy apps
+        app_data = app_store.get_app(client_id)
+        if not app_data:
+            raise HTTPException(status_code=404, detail="App not found")
+    
     mappings = app_store.get_role_mappings(client_id)
     return JSONResponse({"app_name": app_data.get('name'), "client_id": client_id, "mappings": mappings})
 
@@ -1043,7 +1263,8 @@ async def get_azure_groups_admin(authorization: Optional[str] = Header(None), se
         resp = await client.get(query_url, headers=headers)
         if resp.status_code != 200 and search:
             # Fallback to startswith if $search not allowed
-            fallback_url = f"https://graph.microsoft.com/v1.0/groups?$select=id,displayName,description&$filter=startswith(displayName,'{search.replace("'", "")}')&$top={min(top, 999)}"
+            clean_search = search.replace("'", "")
+            fallback_url = f"https://graph.microsoft.com/v1.0/groups?$select=id,displayName,description&$filter=startswith(displayName,'{clean_search}')&$top={min(top, 999)}"
             resp = await client.get(fallback_url, headers={'Authorization': f'Bearer {access_token}'})
         if resp.status_code != 200:
             logger.error(f"Azure groups fetch failed: {resp.status_code} {resp.text}")
@@ -1168,12 +1389,60 @@ async def trigger_discovery(client_id: str, authorization: Optional[str] = Heade
     is_admin, claims = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    audit_logger.log_action(action=AuditAction.DISCOVERY_TRIGGERED, details={'app_client_id': client_id, 'triggered_by': claims.get('email') if claims else None, 'force': force})
+    
+    user_email = claims.get('email') if claims else None
+    app_data = db_service.get_app_by_id(client_id)
+    app_name = app_data.get('name') if app_data else client_id
+    
+    # Log activity to database
+    db_service.log_activity(
+        activity_type='discovery_run',
+        entity_type='app',
+        entity_id=client_id,
+        entity_name=app_name,
+        user_email=user_email,
+        user_id=claims.get('oid') if claims else None,
+        details={'force': force},
+        status='pending'
+    )
+    
+    audit_logger.log_action(action=AuditAction.DISCOVERY_TRIGGERED, details={'app_client_id': client_id, 'triggered_by': user_email, 'force': force})
+    
     try:
         result = await enhanced_discovery.discover_with_fields(client_id, force)
+        
+        # Update discovery timestamp
+        db_service.update_discovery_timestamp(client_id, user_email)
+        
+        # Log success
+        db_service.log_activity(
+            activity_type='discovery_run',
+            entity_type='app',
+            entity_id=client_id,
+            entity_name=app_name,
+            user_email=user_email,
+            user_id=claims.get('oid') if claims else None,
+            details={'force': force, 'endpoints_discovered': result.get('endpoints_discovered', 0)},
+            status='success'
+        )
+        
         return JSONResponse(result)
     except Exception as e:
         logger.error(f"Discovery execution error for {client_id}: {str(e)}")
+        
+        # Log failure
+        db_service.log_activity(
+            activity_type='discovery_run',
+            entity_type='app',
+            entity_id=client_id,
+            entity_name=app_name,
+            user_email=user_email,
+            user_id=claims.get('oid') if claims else None,
+            details={'force': force},
+            status='failure',
+            error_message=str(e)
+        )
+        
         raise HTTPException(status_code=500, detail=f"Discovery failed: {str(e)}")
 
 @app.get("/discovery/v2/permissions/{client_id}/tree")
@@ -1456,7 +1725,7 @@ async def get_audit_logs(authorization: Optional[str] = Header(None), start: Opt
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     # Reuse existing audit reader utility
-    from backend.services.audit import audit_logger, AuditAction
+    from services.audit import audit_logger, AuditAction
     # audit_logger.query_audit_logs supports start/end datetime objects
     from datetime import datetime
 
@@ -1489,7 +1758,7 @@ async def get_token_activity_logs(authorization: Optional[str] = Header(None), s
         raise HTTPException(status_code=403, detail="Admin access required")
     # Read persisted JSONL files
     from pathlib import Path
-    from backend.libs.logging_config import get_logging_config
+    from libs.logging_config import get_logging_config
     import json
 
     cfg = get_logging_config()
@@ -1568,7 +1837,7 @@ async def export_audit_logs(authorization: Optional[str] = Header(None), format:
     is_admin, _ = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    from backend.services.audit import audit_logger
+    from services.audit import audit_logger
     items = audit_logger.query_audit_logs(limit=min(max(1, limit), 50000))
     if format == "csv":
         import csv
@@ -1623,7 +1892,7 @@ async def export_token_activity_logs(authorization: Optional[str] = Header(None)
 async def _sse_event_stream_app():
     import asyncio
     from pathlib import Path
-    from backend.libs.logging_config import get_logging_config
+    from libs.logging_config import get_logging_config
 
     cfg = get_logging_config()
     path = Path(cfg.get("app", {}).get("file", {}).get("path", ""))
@@ -1658,7 +1927,7 @@ async def stream_app_logs(authorization: Optional[str] = Header(None)):
 async def _sse_event_stream_audit():
     import asyncio
     from pathlib import Path
-    from backend.libs.logging_config import get_logging_config
+    from libs.logging_config import get_logging_config
 
     cfg = get_logging_config()
     dir_path = Path(cfg.get("audit", {}).get("path", ""))
@@ -1699,7 +1968,7 @@ async def stream_audit_logs(authorization: Optional[str] = Header(None)):
 async def _sse_event_stream_token_activity():
     import asyncio
     from pathlib import Path
-    from backend.libs.logging_config import get_logging_config
+    from libs.logging_config import get_logging_config
 
     cfg = get_logging_config()
     dir_path = Path(cfg.get("token_activity", {}).get("path", ""))

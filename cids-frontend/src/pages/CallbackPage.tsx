@@ -142,9 +142,9 @@ const CallbackPage: React.FC = () => {
           
           setStatus('success');
           
-          // Redirect to admin page after a brief delay
+          // Redirect to dashboard after a brief delay
           setTimeout(() => {
-            navigate('/admin', { replace: true });
+            navigate('/', { replace: true });
           }, 1500);
           
           return;

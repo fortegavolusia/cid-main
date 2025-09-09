@@ -4,8 +4,8 @@
   "app_fe80739ff4e547fb": {
     "test14": {
       "allowed_permissions": [
-        "app_fe80739ff4e547fb.users.read.created_at",
-        "app_fe80739ff4e547fb.users.read.medical_records"
+        "app_fe80739ff4e547fb.users.read.medical_records",
+        "app_fe80739ff4e547fb.users.read.created_at"
       ],
       "denied_permissions": [],
       "rls_filters": {
@@ -29,10 +29,31 @@
       "allowed_permissions": [],
       "denied_permissions": [],
       "rls_filters": {}
+    },
+    "TEST230": {
+      "allowed_permissions": [
+        "app_fe80739ff4e547fb.users.read.department",
+        "app_fe80739ff4e547fb.users.read.salary",
+        "app_fe80739ff4e547fb.users.read.hire_date",
+        "app_fe80739ff4e547fb.users.read.medical_records",
+        "app_fe80739ff4e547fb.users.read.email",
+        "app_fe80739ff4e547fb.users.read.roles",
+        "app_fe80739ff4e547fb.users.read.created_at",
+        "app_fe80739ff4e547fb.users.read.updated_at",
+        "app_fe80739ff4e547fb.users.read.address",
+        "app_fe80739ff4e547fb.users.read.id",
+        "app_fe80739ff4e547fb.users.read.is_active",
+        "app_fe80739ff4e547fb.users.read.ssn",
+        "app_fe80739ff4e547fb.users.read.name",
+        "app_fe80739ff4e547fb.users.read.performance_rating",
+        "app_fe80739ff4e547fb.users.read.phone"
+      ],
+      "denied_permissions": [],
+      "rls_filters": {}
     }
   },
   "app_affa35367c004335": {
-    "Fdo Test": {
+    "Developer": {
       "allowed_permissions": [],
       "denied_permissions": [],
       "rls_filters": {}
@@ -41,6 +62,13 @@
   "app_c842dc1a7a8c4bb4": {},
   "test_app": {
     "test_role": {
+      "allowed_permissions": [],
+      "denied_permissions": [],
+      "rls_filters": {}
+    }
+  },
+  "app_4a08270dba5d445f": {
+    "Role1": {
       "allowed_permissions": [],
       "denied_permissions": [],
       "rls_filters": {}

@@ -38,6 +38,9 @@ export interface AppInfo {
   allow_discovery?: boolean;
   discovery_endpoint?: string | null;
   last_discovery_at?: string | null;
+  last_discovery_run_at?: string | null;
+  last_discovery_run_by?: string | null;
+  discovery_run_count?: number;
   discovery_status?: 'success' | 'error' | 'timeout' | 'connection_error' | 'unknown' | null;
 }
 

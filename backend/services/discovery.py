@@ -13,17 +13,18 @@ from enum import Enum
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
-from backend.schemas.discovery import (
+from schemas.discovery import (
     DiscoveryResponse, EndpointMetadata, FieldMetadata,
     PermissionMetadata, DiscoveredPermissions,
     generate_permission_key, extract_resource_from_path,
     extract_action_from_method, FieldType
 )
-from backend.utils.paths import data_path
-from backend.services.jwt import JWTManager
-from backend.services.endpoints import AppEndpointsRegistry
-from backend.services.permission_registry import PermissionRegistry
-from backend.services.app_registration import registered_apps, save_data
+from utils.paths import data_path
+from services.jwt import JWTManager
+from services.endpoints import AppEndpointsRegistry
+from services.permission_registry import PermissionRegistry
+from services.app_registration import registered_apps, save_data
+from services.discovery_db import discovery_db
 
 logger = logging.getLogger(__name__)
 
@@ -284,21 +285,29 @@ class DiscoveryService:
 
     async def discover_with_fields(self, client_id: str, force: bool = False) -> Dict[str, Any]:
         """Enhanced discovery with progress tracking, retry logic, and comprehensive error handling"""
+        logger.info(f"[DISCOVERY] Starting discovery for {client_id}, force={force}")
         start_time = datetime.utcnow()
 
         # Initialize progress tracking
         self._update_progress(client_id, DiscoveryStatus.PENDING, "Validating configuration", 0)
 
         try:
-            # Load app config
-            app = registered_apps.get(client_id)
+            # Load app config from DATABASE instead of JSON
+            from services.database import DatabaseService
+            db_service = DatabaseService()
+            app = db_service.get_app_by_id(client_id)
+            
+            logger.info(f"[DISCOVERY] App found from DB: {app is not None}")
             if not app:
-                error_msg = "Application not found"
+                error_msg = "Application not found in database"
+                logger.error(f"[DISCOVERY] {error_msg}")
                 self._update_progress(client_id, DiscoveryStatus.FAILED, "Configuration validation failed", 0, error_msg)
                 return {"status": "error", "error": error_msg, "error_type": "configuration_error"}
 
+            logger.info(f"[DISCOVERY] App allow_discovery: {app.get('allow_discovery', False)}")
             if not app.get("allow_discovery", False):
                 error_msg = "Application does not allow discovery"
+                logger.error(f"[DISCOVERY] {error_msg}")
                 self._update_progress(client_id, DiscoveryStatus.FAILED, "Configuration validation failed", 0, error_msg)
                 return {"status": "error", "error": error_msg, "error_type": "configuration_error"}
 
@@ -366,15 +375,26 @@ class DiscoveryService:
             except Exception as e:
                 logger.warning(f"Failed to register permissions in registry: {e}")
 
-            self._save_permissions()
+            # JSON save disabled - using database as primary storage
+            # self._save_permissions()
+            
+            # Save to database (PRIMARY STORAGE)
+            try:
+                logger.info(f"[DEBUG] Permissions object type: {type(permissions.permissions)}")
+                logger.info(f"[DEBUG] Permissions keys: {list(permissions.permissions.keys())[:5] if hasattr(permissions.permissions, 'keys') else 'Not a dict'}")
+                discovery_db.save_discovered_permissions(client_id, permissions.permissions)
+                logger.info(f"Saved permissions to database for {client_id}")
+            except Exception as e:
+                logger.error(f"Failed to save permissions to database: {e}")
 
             self._update_progress(client_id, DiscoveryStatus.IN_PROGRESS, "Updating app status", 80)
 
-            # Update app discovery status
-            app["last_discovery_at"] = datetime.utcnow().isoformat()
-            app["discovery_status"] = "success"
-            app["discovery_version"] = getattr(discovery_data, 'discovery_version', "2.0")
-            save_data()
+            # Update app discovery status - now handled by database operations
+            # Old JSON-based code commented out:
+            # app["last_discovery_at"] = datetime.utcnow().isoformat()
+            # app["discovery_status"] = "success"
+            # app["discovery_version"] = getattr(discovery_data, 'discovery_version', "2.0")
+            # save_data()
 
             self._update_progress(client_id, DiscoveryStatus.IN_PROGRESS, "Storing metadata", 90)
 
@@ -392,6 +412,39 @@ class DiscoveryService:
                                          permissions.total_count)
 
             self._update_progress(client_id, DiscoveryStatus.SUCCESS, "Discovery completed", 100)
+            
+            # Save discovery to database
+            try:
+                # Convert discovery_data to dict for storage
+                discovery_dict = discovery_json if discovery_json else discovery_data.dict()
+                history_id = discovery_db.save_discovery_history(
+                    client_id, 
+                    discovery_dict,
+                    discovered_by=app.get("owner_email", "system")
+                )
+                
+                # Update app discovery status in database
+                discovery_db.update_app_discovery_status(
+                    client_id, 
+                    user_email=app.get("owner_email")
+                )
+                
+                # Log activity
+                discovery_db.log_discovery_activity(
+                    client_id,
+                    app.get("name", "Unknown App"),
+                    user_email=app.get("owner_email"),
+                    details={
+                        "endpoints_discovered": len(discovery_data.endpoints or []),
+                        "permissions_generated": permissions.total_count,
+                        "history_id": history_id
+                    },
+                    status="success"
+                )
+                
+                logger.info(f"Saved discovery to database with history_id: {history_id}")
+            except Exception as e:
+                logger.error(f"Failed to save discovery to database: {e}")
 
             return {
                 "status": "success",
@@ -410,19 +463,19 @@ class DiscoveryService:
             error_msg = str(e)
             response_time = int((datetime.utcnow() - start_time).total_seconds() * 1000)
 
-            # Update app status based on error type
-            if error_type == DiscoveryErrorType.NETWORK_ERROR:
-                app["discovery_status"] = "connection_error"
-            elif error_type == DiscoveryErrorType.TIMEOUT_ERROR:
-                app["discovery_status"] = "timeout"
-            elif error_type == DiscoveryErrorType.AUTHENTICATION_ERROR:
-                app["discovery_status"] = "auth_error"
-            elif error_type == DiscoveryErrorType.VALIDATION_ERROR:
-                app["discovery_status"] = "validation_error"
-            else:
-                app["discovery_status"] = "error"
-
-            save_data()
+            # Update app status based on error type - now handled by database operations
+            # Old JSON-based code commented out:
+            # if error_type == DiscoveryErrorType.NETWORK_ERROR:
+            #     app["discovery_status"] = "connection_error"
+            # elif error_type == DiscoveryErrorType.TIMEOUT_ERROR:
+            #     app["discovery_status"] = "timeout"
+            # elif error_type == DiscoveryErrorType.AUTHENTICATION_ERROR:
+            #     app["discovery_status"] = "auth_error"
+            # elif error_type == DiscoveryErrorType.VALIDATION_ERROR:
+            #     app["discovery_status"] = "validation_error"
+            # else:
+            #     app["discovery_status"] = "error"
+            # save_data()
 
             # Record failed attempt
             self._record_discovery_attempt(client_id, app, start_time, False, error_type, error_msg, response_time)
@@ -559,7 +612,8 @@ class DiscoveryService:
         if len(history.attempts) > 100:
             history.attempts = history.attempts[-100:]
 
-        self._save_discovery_history()
+        # JSON save disabled - using database as primary storage
+        # self._save_discovery_history()
 
     async def _fetch_enhanced_discovery(self, discovery_url: str, token: str) -> Dict:
         """Fetch discovery data from the app's discovery endpoint"""
@@ -776,6 +830,10 @@ class DiscoveryService:
         """Update discovery configuration"""
         self.config = new_config
         logger.info(f"Discovery configuration updated: {asdict(new_config)}")
+
+
+# Note: The singleton instance 'enhanced_discovery' is created in main.py
+# with the proper dependencies (jwt_manager, endpoints_registry)
 
 
 

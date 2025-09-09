@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, validator
 import re
 import json
 
-from backend.utils.paths import data_path
+from utils.paths import data_path
 
 
 class Endpoint(BaseModel):

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from datetime import datetime
 
-from backend.utils.paths import logs_path, config_path
+from utils.paths import logs_path, config_path
 
 
 DEFAULT_CONFIG: Dict[str, Any] = {

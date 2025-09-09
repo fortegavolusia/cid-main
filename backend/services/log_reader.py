@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from datetime import datetime
 
-from backend.libs.logging_config import get_logging_config
+from libs.logging_config import get_logging_config
 
 
 ISO = "%Y-%m-%dT%H:%M:%S.%fZ"

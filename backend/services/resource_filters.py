@@ -4,7 +4,7 @@ from datetime import datetime
 import json
 import logging
 
-from backend.utils.paths import data_path
+from utils.paths import data_path
 
 logger = logging.getLogger(__name__)
 

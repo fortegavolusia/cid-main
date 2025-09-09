@@ -1,0 +1,1313 @@
+{
+  "app_8173364316bf4910": {
+    "app_id": "app_8173364316bf4910",
+    "permissions": {
+      "app_8173364316bf4910.users.read.department": {
+        "permission_key": "app_8173364316bf4910.users.read.department",
+        "resource": "users",
+        "action": "read",
+        "field_path": "department",
+        "description": "User's department",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754242"
+      },
+      "app_8173364316bf4910.users.read.department.budget": {
+        "permission_key": "app_8173364316bf4910.users.read.department.budget",
+        "resource": "users",
+        "action": "read",
+        "field_path": "department.budget",
+        "description": "Department budget",
+        "sensitive": true,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754249"
+      },
+      "app_8173364316bf4910.users.read.department.id": {
+        "permission_key": "app_8173364316bf4910.users.read.department.id",
+        "resource": "users",
+        "action": "read",
+        "field_path": "department.id",
+        "description": "Read department.id",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754255"
+      },
+      "app_8173364316bf4910.users.read.department.name": {
+        "permission_key": "app_8173364316bf4910.users.read.department.name",
+        "resource": "users",
+        "action": "read",
+        "field_path": "department.name",
+        "description": "Read department.name",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754259"
+      },
+      "app_8173364316bf4910.users.read.email": {
+        "permission_key": "app_8173364316bf4910.users.read.email",
+        "resource": "users",
+        "action": "read",
+        "field_path": "email",
+        "description": "User email address",
+        "sensitive": false,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754263"
+      },
+      "app_8173364316bf4910.users.read.id": {
+        "permission_key": "app_8173364316bf4910.users.read.id",
+        "resource": "users",
+        "action": "read",
+        "field_path": "id",
+        "description": "User ID",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754266"
+      },
+      "app_8173364316bf4910.users.read.name": {
+        "permission_key": "app_8173364316bf4910.users.read.name",
+        "resource": "users",
+        "action": "read",
+        "field_path": "name",
+        "description": "Full name",
+        "sensitive": false,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754270"
+      },
+      "app_8173364316bf4910.users.read.roles": {
+        "permission_key": "app_8173364316bf4910.users.read.roles",
+        "resource": "users",
+        "action": "read",
+        "field_path": "roles",
+        "description": "User roles",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754273"
+      },
+      "app_8173364316bf4910.users.read.salary": {
+        "permission_key": "app_8173364316bf4910.users.read.salary",
+        "resource": "users",
+        "action": "read",
+        "field_path": "salary",
+        "description": "Annual salary",
+        "sensitive": true,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754277"
+      },
+      "app_8173364316bf4910.users.read.ssn": {
+        "permission_key": "app_8173364316bf4910.users.read.ssn",
+        "resource": "users",
+        "action": "read",
+        "field_path": "ssn",
+        "description": "Social Security Number",
+        "sensitive": true,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754280"
+      },
+      "app_8173364316bf4910.users.read.*": {
+        "permission_key": "app_8173364316bf4910.users.read.*",
+        "resource": "users",
+        "action": "read",
+        "field_path": "*",
+        "description": "Read all fields for users",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754285"
+      },
+      "app_8173364316bf4910.users.write.department_id": {
+        "permission_key": "app_8173364316bf4910.users.write.department_id",
+        "resource": "users",
+        "action": "write",
+        "field_path": "department_id",
+        "description": "Write department_id",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "update_user",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754293"
+      },
+      "app_8173364316bf4910.users.write.email": {
+        "permission_key": "app_8173364316bf4910.users.write.email",
+        "resource": "users",
+        "action": "write",
+        "field_path": "email",
+        "description": "Write email",
+        "sensitive": false,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "update_user",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754296"
+      },
+      "app_8173364316bf4910.users.write.name": {
+        "permission_key": "app_8173364316bf4910.users.write.name",
+        "resource": "users",
+        "action": "write",
+        "field_path": "name",
+        "description": "Write name",
+        "sensitive": false,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "update_user",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754300"
+      },
+      "app_8173364316bf4910.users.write.salary": {
+        "permission_key": "app_8173364316bf4910.users.write.salary",
+        "resource": "users",
+        "action": "write",
+        "field_path": "salary",
+        "description": "Requires HR approval",
+        "sensitive": true,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "update_user",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754303"
+      },
+      "app_8173364316bf4910.users.update.*": {
+        "permission_key": "app_8173364316bf4910.users.update.*",
+        "resource": "users",
+        "action": "update",
+        "field_path": "*",
+        "description": "Update all fields for users",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "update_user",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754306"
+      },
+      "app_8173364316bf4910.reports_payroll.read.employees": {
+        "permission_key": "app_8173364316bf4910.reports_payroll.read.employees",
+        "resource": "reports_payroll",
+        "action": "read",
+        "field_path": "employees",
+        "description": "Read employees",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_payroll_report",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754313"
+      },
+      "app_8173364316bf4910.reports_payroll.read.employees[].deductions": {
+        "permission_key": "app_8173364316bf4910.reports_payroll.read.employees[].deductions",
+        "resource": "reports_payroll",
+        "action": "read",
+        "field_path": "employees[].deductions",
+        "description": "Read employees[].deductions",
+        "sensitive": true,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_payroll_report",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754319"
+      },
+      "app_8173364316bf4910.reports_payroll.read.employees[].deductions.insurance": {
+        "permission_key": "app_8173364316bf4910.reports_payroll.read.employees[].deductions.insurance",
+        "resource": "reports_payroll",
+        "action": "read",
+        "field_path": "employees[].deductions.insurance",
+        "description": "Read employees[].deductions.insurance",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_payroll_report",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754324"
+      },
+      "app_8173364316bf4910.reports_payroll.read.employees[].deductions.retirement": {
+        "permission_key": "app_8173364316bf4910.reports_payroll.read.employees[].deductions.retirement",
+        "resource": "reports_payroll",
+        "action": "read",
+        "field_path": "employees[].deductions.retirement",
+        "description": "Read employees[].deductions.retirement",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_payroll_report",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754329"
+      },
+      "app_8173364316bf4910.reports_payroll.read.employees[].deductions.tax": {
+        "permission_key": "app_8173364316bf4910.reports_payroll.read.employees[].deductions.tax",
+        "resource": "reports_payroll",
+        "action": "read",
+        "field_path": "employees[].deductions.tax",
+        "description": "Read employees[].deductions.tax",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_payroll_report",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754334"
+      },
+      "app_8173364316bf4910.reports_payroll.read.employees[].gross_pay": {
+        "permission_key": "app_8173364316bf4910.reports_payroll.read.employees[].gross_pay",
+        "resource": "reports_payroll",
+        "action": "read",
+        "field_path": "employees[].gross_pay",
+        "description": "Read employees[].gross_pay",
+        "sensitive": true,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_payroll_report",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754339"
+      },
+      "app_8173364316bf4910.reports_payroll.read.employees[].id": {
+        "permission_key": "app_8173364316bf4910.reports_payroll.read.employees[].id",
+        "resource": "reports_payroll",
+        "action": "read",
+        "field_path": "employees[].id",
+        "description": "Read employees[].id",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_payroll_report",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754344"
+      },
+      "app_8173364316bf4910.reports_payroll.read.employees[].name": {
+        "permission_key": "app_8173364316bf4910.reports_payroll.read.employees[].name",
+        "resource": "reports_payroll",
+        "action": "read",
+        "field_path": "employees[].name",
+        "description": "Read employees[].name",
+        "sensitive": false,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "get_payroll_report",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754349"
+      },
+      "app_8173364316bf4910.reports_payroll.read.month": {
+        "permission_key": "app_8173364316bf4910.reports_payroll.read.month",
+        "resource": "reports_payroll",
+        "action": "read",
+        "field_path": "month",
+        "description": "Read month",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_payroll_report",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754354"
+      },
+      "app_8173364316bf4910.reports_payroll.read.report_id": {
+        "permission_key": "app_8173364316bf4910.reports_payroll.read.report_id",
+        "resource": "reports_payroll",
+        "action": "read",
+        "field_path": "report_id",
+        "description": "Read report_id",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_payroll_report",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754359"
+      },
+      "app_8173364316bf4910.reports_payroll.read.total_payroll": {
+        "permission_key": "app_8173364316bf4910.reports_payroll.read.total_payroll",
+        "resource": "reports_payroll",
+        "action": "read",
+        "field_path": "total_payroll",
+        "description": "Read total_payroll",
+        "sensitive": true,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_payroll_report",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754364"
+      },
+      "app_8173364316bf4910.reports_payroll.read.*": {
+        "permission_key": "app_8173364316bf4910.reports_payroll.read.*",
+        "resource": "reports_payroll",
+        "action": "read",
+        "field_path": "*",
+        "description": "Read all fields for reports_payroll",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_payroll_report",
+        "auto_generated": true,
+        "created_at": "2025-08-17 12:19:02.754370"
+      }
+    },
+    "total_count": 28,
+    "sensitive_count": 12,
+    "last_discovered": "2025-08-17 12:19:02.754379",
+    "discovery_version": "2.0"
+  },
+  "app_8f777f620aac48d1": {
+    "app_id": "app_8f777f620aac48d1",
+    "permissions": {
+      "app_8f777f620aac48d1.products.read.id": {
+        "permission_key": "app_8f777f620aac48d1.products.read.id",
+        "resource": "products",
+        "action": "read",
+        "field_path": "id",
+        "description": "Product identifier",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_product",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.037536"
+      },
+      "app_8f777f620aac48d1.products.read.name": {
+        "permission_key": "app_8f777f620aac48d1.products.read.name",
+        "resource": "products",
+        "action": "read",
+        "field_path": "name",
+        "description": "Product name",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_product",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.037546"
+      },
+      "app_8f777f620aac48d1.products.read.description": {
+        "permission_key": "app_8f777f620aac48d1.products.read.description",
+        "resource": "products",
+        "action": "read",
+        "field_path": "description",
+        "description": "Product description",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_product",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.037553"
+      },
+      "app_8f777f620aac48d1.products.read.price": {
+        "permission_key": "app_8f777f620aac48d1.products.read.price",
+        "resource": "products",
+        "action": "read",
+        "field_path": "price",
+        "description": "Retail price",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_product",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.037561"
+      },
+      "app_8f777f620aac48d1.products.read.cost": {
+        "permission_key": "app_8f777f620aac48d1.products.read.cost",
+        "resource": "products",
+        "action": "read",
+        "field_path": "cost",
+        "description": "Product cost",
+        "sensitive": true,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_product",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.037568"
+      },
+      "app_8f777f620aac48d1.products.read.inventory": {
+        "permission_key": "app_8f777f620aac48d1.products.read.inventory",
+        "resource": "products",
+        "action": "read",
+        "field_path": "inventory",
+        "description": "Current inventory count",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_product",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.037575"
+      },
+      "app_8f777f620aac48d1.products.read.supplier": {
+        "permission_key": "app_8f777f620aac48d1.products.read.supplier",
+        "resource": "products",
+        "action": "read",
+        "field_path": "supplier",
+        "description": "Supplier name",
+        "sensitive": true,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_product",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.037582"
+      },
+      "app_8f777f620aac48d1.products.read.category": {
+        "permission_key": "app_8f777f620aac48d1.products.read.category",
+        "resource": "products",
+        "action": "read",
+        "field_path": "category",
+        "description": "Product category",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_product",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.037589"
+      },
+      "app_8f777f620aac48d1.products.read.profit_margin": {
+        "permission_key": "app_8f777f620aac48d1.products.read.profit_margin",
+        "resource": "products",
+        "action": "read",
+        "field_path": "profit_margin",
+        "description": "Profit margin percentage",
+        "sensitive": true,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_product",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.037602"
+      },
+      "app_8f777f620aac48d1.products.read.*": {
+        "permission_key": "app_8f777f620aac48d1.products.read.*",
+        "resource": "products",
+        "action": "read",
+        "field_path": "*",
+        "description": "Read all fields for products",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "list_products",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.037518"
+      },
+      "app_8f777f620aac48d1.products.read.created_at": {
+        "permission_key": "app_8f777f620aac48d1.products.read.created_at",
+        "resource": "products",
+        "action": "read",
+        "field_path": "created_at",
+        "description": "Creation timestamp",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_product",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.037596"
+      },
+      "app_8f777f620aac48d1.products.write.name": {
+        "permission_key": "app_8f777f620aac48d1.products.write.name",
+        "resource": "products",
+        "action": "write",
+        "field_path": "name",
+        "description": "Product name",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "create_product",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.037942"
+      },
+      "app_8f777f620aac48d1.products.write.description": {
+        "permission_key": "app_8f777f620aac48d1.products.write.description",
+        "resource": "products",
+        "action": "write",
+        "field_path": "description",
+        "description": "Product description",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "create_product",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.037955"
+      },
+      "app_8f777f620aac48d1.products.write.price": {
+        "permission_key": "app_8f777f620aac48d1.products.write.price",
+        "resource": "products",
+        "action": "write",
+        "field_path": "price",
+        "description": "Retail price",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "create_product",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.037963"
+      },
+      "app_8f777f620aac48d1.products.write.cost": {
+        "permission_key": "app_8f777f620aac48d1.products.write.cost",
+        "resource": "products",
+        "action": "write",
+        "field_path": "cost",
+        "description": "Product cost",
+        "sensitive": true,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "create_product",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.037970"
+      },
+      "app_8f777f620aac48d1.products.write.inventory": {
+        "permission_key": "app_8f777f620aac48d1.products.write.inventory",
+        "resource": "products",
+        "action": "write",
+        "field_path": "inventory",
+        "description": "Initial inventory",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "create_product",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.037977"
+      },
+      "app_8f777f620aac48d1.products.write.supplier": {
+        "permission_key": "app_8f777f620aac48d1.products.write.supplier",
+        "resource": "products",
+        "action": "write",
+        "field_path": "supplier",
+        "description": "Supplier name",
+        "sensitive": true,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "create_product",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.037984"
+      },
+      "app_8f777f620aac48d1.products.write.category": {
+        "permission_key": "app_8f777f620aac48d1.products.write.category",
+        "resource": "products",
+        "action": "write",
+        "field_path": "category",
+        "description": "Product category",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "create_product",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.037995"
+      },
+      "app_8f777f620aac48d1.products.create.*": {
+        "permission_key": "app_8f777f620aac48d1.products.create.*",
+        "resource": "products",
+        "action": "create",
+        "field_path": "*",
+        "description": "Create all fields for products",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "create_product",
+        "auto_generated": true,
+        "created_at": "2025-08-24 20:52:15.038006"
+      }
+    },
+    "total_count": 19,
+    "sensitive_count": 5,
+    "last_discovered": "2025-08-24 20:52:15.038025",
+    "discovery_version": "2.0"
+  },
+  "app_dd8c554784594b11": {
+    "app_id": "app_dd8c554784594b11",
+    "permissions": {
+      "app_dd8c554784594b11.users.read.users": {
+        "permission_key": "app_dd8c554784594b11.users.read.users",
+        "resource": "users",
+        "action": "read",
+        "field_path": "users",
+        "description": "List of users",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "list_users",
+        "auto_generated": true,
+        "created_at": "2025-08-25 12:08:37.769585"
+      },
+      "app_dd8c554784594b11.users.read.*": {
+        "permission_key": "app_dd8c554784594b11.users.read.*",
+        "resource": "users",
+        "action": "read",
+        "field_path": "*",
+        "description": "Read all fields for users",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "list_users",
+        "auto_generated": true,
+        "created_at": "2025-08-25 12:08:37.769599"
+      }
+    },
+    "total_count": 2,
+    "sensitive_count": 0,
+    "last_discovered": "2025-08-25 12:08:37.769634",
+    "discovery_version": "2.0"
+  },
+  "app_fe80739ff4e547fb": {
+    "app_id": "app_fe80739ff4e547fb",
+    "permissions": {
+      "app_fe80739ff4e547fb.users.read.id": {
+        "permission_key": "app_fe80739ff4e547fb.users.read.id",
+        "resource": "users",
+        "action": "read",
+        "field_path": "id",
+        "description": "User ID",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-27 11:18:14.975662"
+      },
+      "app_fe80739ff4e547fb.users.read.email": {
+        "permission_key": "app_fe80739ff4e547fb.users.read.email",
+        "resource": "users",
+        "action": "read",
+        "field_path": "email",
+        "description": "User email",
+        "sensitive": false,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-27 11:18:14.975672"
+      },
+      "app_fe80739ff4e547fb.users.read.name": {
+        "permission_key": "app_fe80739ff4e547fb.users.read.name",
+        "resource": "users",
+        "action": "read",
+        "field_path": "name",
+        "description": "Full name",
+        "sensitive": false,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-27 11:18:14.975679"
+      },
+      "app_fe80739ff4e547fb.users.read.department": {
+        "permission_key": "app_fe80739ff4e547fb.users.read.department",
+        "resource": "users",
+        "action": "read",
+        "field_path": "department",
+        "description": "Department info",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-27 11:18:14.975720"
+      },
+      "app_fe80739ff4e547fb.users.read.is_active": {
+        "permission_key": "app_fe80739ff4e547fb.users.read.is_active",
+        "resource": "users",
+        "action": "read",
+        "field_path": "is_active",
+        "description": "Active status",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-27 11:18:14.975753"
+      },
+      "app_fe80739ff4e547fb.users.read.created_at": {
+        "permission_key": "app_fe80739ff4e547fb.users.read.created_at",
+        "resource": "users",
+        "action": "read",
+        "field_path": "created_at",
+        "description": "Creation date",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-27 11:18:14.975769"
+      },
+      "app_fe80739ff4e547fb.users.read.*": {
+        "permission_key": "app_fe80739ff4e547fb.users.read.*",
+        "resource": "users",
+        "action": "read",
+        "field_path": "*",
+        "description": "Read all fields for users",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "list_users",
+        "auto_generated": true,
+        "created_at": "2025-08-27 11:18:14.975647"
+      },
+      "app_fe80739ff4e547fb.users.read.salary": {
+        "permission_key": "app_fe80739ff4e547fb.users.read.salary",
+        "resource": "users",
+        "action": "read",
+        "field_path": "salary",
+        "description": "Annual salary",
+        "sensitive": true,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-27 11:18:14.975687"
+      },
+      "app_fe80739ff4e547fb.users.read.ssn": {
+        "permission_key": "app_fe80739ff4e547fb.users.read.ssn",
+        "resource": "users",
+        "action": "read",
+        "field_path": "ssn",
+        "description": "Social Security Number",
+        "sensitive": true,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-27 11:18:14.975695"
+      },
+      "app_fe80739ff4e547fb.users.read.phone": {
+        "permission_key": "app_fe80739ff4e547fb.users.read.phone",
+        "resource": "users",
+        "action": "read",
+        "field_path": "phone",
+        "description": "Phone number",
+        "sensitive": false,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-27 11:18:14.975703"
+      },
+      "app_fe80739ff4e547fb.users.read.address": {
+        "permission_key": "app_fe80739ff4e547fb.users.read.address",
+        "resource": "users",
+        "action": "read",
+        "field_path": "address",
+        "description": "Home address",
+        "sensitive": false,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-27 11:18:14.975711"
+      },
+      "app_fe80739ff4e547fb.users.read.medical_records": {
+        "permission_key": "app_fe80739ff4e547fb.users.read.medical_records",
+        "resource": "users",
+        "action": "read",
+        "field_path": "medical_records",
+        "description": "Medical history",
+        "sensitive": false,
+        "pii": false,
+        "phi": true,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-27 11:18:14.975729"
+      },
+      "app_fe80739ff4e547fb.users.read.performance_rating": {
+        "permission_key": "app_fe80739ff4e547fb.users.read.performance_rating",
+        "resource": "users",
+        "action": "read",
+        "field_path": "performance_rating",
+        "description": "Performance score",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-27 11:18:14.975737"
+      },
+      "app_fe80739ff4e547fb.users.read.hire_date": {
+        "permission_key": "app_fe80739ff4e547fb.users.read.hire_date",
+        "resource": "users",
+        "action": "read",
+        "field_path": "hire_date",
+        "description": "Hire date",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-27 11:18:14.975745"
+      },
+      "app_fe80739ff4e547fb.users.read.roles": {
+        "permission_key": "app_fe80739ff4e547fb.users.read.roles",
+        "resource": "users",
+        "action": "read",
+        "field_path": "roles",
+        "description": "User roles",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-27 11:18:14.975761"
+      },
+      "app_fe80739ff4e547fb.users.read.updated_at": {
+        "permission_key": "app_fe80739ff4e547fb.users.read.updated_at",
+        "resource": "users",
+        "action": "read",
+        "field_path": "updated_at",
+        "description": "Last update date",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "get_user",
+        "auto_generated": true,
+        "created_at": "2025-08-27 11:18:14.975777"
+      }
+    },
+    "total_count": 16,
+    "sensitive_count": 7,
+    "last_discovered": "2025-09-04 17:16:14.615374",
+    "discovery_version": "2.0"
+  },
+  "app_c842dc1a7a8c4bb4": {
+    "app_id": "app_c842dc1a7a8c4bb4",
+    "permissions": {
+      "app_c842dc1a7a8c4bb4..read.status": {
+        "permission_key": "app_c842dc1a7a8c4bb4..read.status",
+        "resource": "",
+        "action": "read",
+        "field_path": "status",
+        "description": "Service status",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "root",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270314"
+      },
+      "app_c842dc1a7a8c4bb4..read.service": {
+        "permission_key": "app_c842dc1a7a8c4bb4..read.service",
+        "resource": "",
+        "action": "read",
+        "field_path": "service",
+        "description": "Service name",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "root",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270332"
+      },
+      "app_c842dc1a7a8c4bb4..read.*": {
+        "permission_key": "app_c842dc1a7a8c4bb4..read.*",
+        "resource": "",
+        "action": "read",
+        "field_path": "*",
+        "description": "Read all fields for ",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "root",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270346"
+      },
+      "app_c842dc1a7a8c4bb4.secure_ping.read.message": {
+        "permission_key": "app_c842dc1a7a8c4bb4.secure_ping.read.message",
+        "resource": "secure_ping",
+        "action": "read",
+        "field_path": "message",
+        "description": "Response message",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "secure_ping",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270367"
+      },
+      "app_c842dc1a7a8c4bb4.secure_ping.read.identity": {
+        "permission_key": "app_c842dc1a7a8c4bb4.secure_ping.read.identity",
+        "resource": "secure_ping",
+        "action": "read",
+        "field_path": "identity",
+        "description": "Complete user identity information from CID",
+        "sensitive": true,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "secure_ping",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270376"
+      },
+      "app_c842dc1a7a8c4bb4.secure_ping.read.identity.email": {
+        "permission_key": "app_c842dc1a7a8c4bb4.secure_ping.read.identity.email",
+        "resource": "secure_ping",
+        "action": "read",
+        "field_path": "identity.email",
+        "description": "User email address",
+        "sensitive": false,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "secure_ping",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270385"
+      },
+      "app_c842dc1a7a8c4bb4.secure_ping.read.identity.name": {
+        "permission_key": "app_c842dc1a7a8c4bb4.secure_ping.read.identity.name",
+        "resource": "secure_ping",
+        "action": "read",
+        "field_path": "identity.name",
+        "description": "User full name",
+        "sensitive": false,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "secure_ping",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270393"
+      },
+      "app_c842dc1a7a8c4bb4.secure_ping.read.identity.sub": {
+        "permission_key": "app_c842dc1a7a8c4bb4.secure_ping.read.identity.sub",
+        "resource": "secure_ping",
+        "action": "read",
+        "field_path": "identity.sub",
+        "description": "User subject identifier",
+        "sensitive": false,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "secure_ping",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270401"
+      },
+      "app_c842dc1a7a8c4bb4.secure_ping.read.identity.permissions": {
+        "permission_key": "app_c842dc1a7a8c4bb4.secure_ping.read.identity.permissions",
+        "resource": "secure_ping",
+        "action": "read",
+        "field_path": "identity.permissions",
+        "description": "User permissions list",
+        "sensitive": true,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "secure_ping",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270409"
+      },
+      "app_c842dc1a7a8c4bb4.secure_ping.read.*": {
+        "permission_key": "app_c842dc1a7a8c4bb4.secure_ping.read.*",
+        "resource": "secure_ping",
+        "action": "read",
+        "field_path": "*",
+        "description": "Read all fields for secure_ping",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "secure_ping",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270420"
+      },
+      "app_c842dc1a7a8c4bb4.secure_admin.read.message": {
+        "permission_key": "app_c842dc1a7a8c4bb4.secure_admin.read.message",
+        "resource": "secure_admin",
+        "action": "read",
+        "field_path": "message",
+        "description": "Admin confirmation message",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "secure_admin",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270481"
+      },
+      "app_c842dc1a7a8c4bb4.secure_admin.read.identity": {
+        "permission_key": "app_c842dc1a7a8c4bb4.secure_admin.read.identity",
+        "resource": "secure_admin",
+        "action": "read",
+        "field_path": "identity",
+        "description": "Admin user identity information",
+        "sensitive": true,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "secure_admin",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270493"
+      },
+      "app_c842dc1a7a8c4bb4.secure_admin.read.identity.email": {
+        "permission_key": "app_c842dc1a7a8c4bb4.secure_admin.read.identity.email",
+        "resource": "secure_admin",
+        "action": "read",
+        "field_path": "identity.email",
+        "description": "Admin user email",
+        "sensitive": false,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "secure_admin",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270502"
+      },
+      "app_c842dc1a7a8c4bb4.secure_admin.read.identity.permissions": {
+        "permission_key": "app_c842dc1a7a8c4bb4.secure_admin.read.identity.permissions",
+        "resource": "secure_admin",
+        "action": "read",
+        "field_path": "identity.permissions",
+        "description": "Admin permissions (includes admin)",
+        "sensitive": true,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "secure_admin",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270510"
+      },
+      "app_c842dc1a7a8c4bb4.secure_admin.read.*": {
+        "permission_key": "app_c842dc1a7a8c4bb4.secure_admin.read.*",
+        "resource": "secure_admin",
+        "action": "read",
+        "field_path": "*",
+        "description": "Read all fields for secure_admin",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "secure_admin",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270519"
+      },
+      "app_c842dc1a7a8c4bb4.whoami.read.auth_type": {
+        "permission_key": "app_c842dc1a7a8c4bb4.whoami.read.auth_type",
+        "resource": "whoami",
+        "action": "read",
+        "field_path": "auth_type",
+        "description": "Authentication method used (jwt or api_key)",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "whoami",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270534"
+      },
+      "app_c842dc1a7a8c4bb4.whoami.read.email": {
+        "permission_key": "app_c842dc1a7a8c4bb4.whoami.read.email",
+        "resource": "whoami",
+        "action": "read",
+        "field_path": "email",
+        "description": "User email address",
+        "sensitive": false,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "whoami",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270542"
+      },
+      "app_c842dc1a7a8c4bb4.whoami.read.name": {
+        "permission_key": "app_c842dc1a7a8c4bb4.whoami.read.name",
+        "resource": "whoami",
+        "action": "read",
+        "field_path": "name",
+        "description": "User display name",
+        "sensitive": false,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "whoami",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270550"
+      },
+      "app_c842dc1a7a8c4bb4.whoami.read.sub": {
+        "permission_key": "app_c842dc1a7a8c4bb4.whoami.read.sub",
+        "resource": "whoami",
+        "action": "read",
+        "field_path": "sub",
+        "description": "User subject identifier",
+        "sensitive": false,
+        "pii": true,
+        "phi": false,
+        "endpoint_id": "whoami",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270557"
+      },
+      "app_c842dc1a7a8c4bb4.whoami.read.app_client_id": {
+        "permission_key": "app_c842dc1a7a8c4bb4.whoami.read.app_client_id",
+        "resource": "whoami",
+        "action": "read",
+        "field_path": "app_client_id",
+        "description": "Client ID of the calling application",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "whoami",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270565"
+      },
+      "app_c842dc1a7a8c4bb4.whoami.read.permissions": {
+        "permission_key": "app_c842dc1a7a8c4bb4.whoami.read.permissions",
+        "resource": "whoami",
+        "action": "read",
+        "field_path": "permissions",
+        "description": "List of user permissions",
+        "sensitive": true,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "whoami",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270573"
+      },
+      "app_c842dc1a7a8c4bb4.whoami.read.valid": {
+        "permission_key": "app_c842dc1a7a8c4bb4.whoami.read.valid",
+        "resource": "whoami",
+        "action": "read",
+        "field_path": "valid",
+        "description": "Token validation status",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "whoami",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270581"
+      },
+      "app_c842dc1a7a8c4bb4.whoami.read.*": {
+        "permission_key": "app_c842dc1a7a8c4bb4.whoami.read.*",
+        "resource": "whoami",
+        "action": "read",
+        "field_path": "*",
+        "description": "Read all fields for whoami",
+        "sensitive": false,
+        "pii": false,
+        "phi": false,
+        "endpoint_id": "whoami",
+        "auto_generated": true,
+        "created_at": "2025-09-04 16:44:04.270591"
+      }
+    },
+    "total_count": 23,
+    "sensitive_count": 12,
+    "last_discovered": "2025-09-04 19:06:57.212040",
+    "discovery_version": "2.0"
+  },
+  "app_fba7654e91e6413c": {
+    "employees": {
+      "actions": {
+        "read": {
+          "description": "Get specific employee details",
+          "fields": {
+            "id": {
+              "allowed": true,
+              "sensitivity": {}
+            },
+            "employee_id": {
+              "allowed": true,
+              "sensitivity": {}
+            },
+            "email": {
+              "allowed": true,
+              "sensitivity": {
+                "is_pii": true
+              }
+            },
+            "name": {
+              "allowed": true,
+              "sensitivity": {
+                "is_pii": true
+              }
+            },
+            "department": {
+              "allowed": true,
+              "sensitivity": {}
+            },
+            "position": {
+              "allowed": true,
+              "sensitivity": {}
+            },
+            "salary": {
+              "allowed": true,
+              "sensitivity": {
+                "is_financial": true,
+                "is_sensitive": true
+              }
+            },
+            "ssn": {
+              "allowed": true,
+              "sensitivity": {
+                "is_pii": true,
+                "is_sensitive": true
+              }
+            },
+            "manager_id": {
+              "allowed": true,
+              "sensitivity": {}
+            },
+            "medical_info": {
+              "allowed": true,
+              "sensitivity": {
+                "is_phi": true,
+                "is_sensitive": true
+              }
+            }
+          }
+        },
+        "write": {
+          "description": "Update employee information",
+          "fields": {
+            "id": {
+              "allowed": true,
+              "sensitivity": {}
+            },
+            "updated_at": {
+              "allowed": true,
+              "sensitivity": {}
+            }
+          }
+        },
+        "delete": {
+          "description": "Delete employee",
+          "fields": {
+            "success": {
+              "allowed": true,
+              "sensitivity": {}
+            },
+            "message": {
+              "allowed": true,
+              "sensitivity": {}
+            }
+          }
+        }
+      },
+      "description": "Permissions for employees"
+    },
+    "payments": {
+      "actions": {
+        "read": {
+          "description": "Get current user's payments only",
+          "fields": {
+            "payments": {
+              "allowed": true,
+              "sensitivity": {}
+            }
+          }
+        },
+        "write": {
+          "description": "Create new payment",
+          "fields": {
+            "id": {
+              "allowed": true,
+              "sensitivity": {}
+            },
+            "payment_id": {
+              "allowed": true,
+              "sensitivity": {}
+            },
+            "created_at": {
+              "allowed": true,
+              "sensitivity": {}
+            }
+          }
+        }
+      },
+      "description": "Permissions for payments"
+    }
+  }
+}

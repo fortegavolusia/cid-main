@@ -69,15 +69,15 @@
   },
   "app_fe80739ff4e547fb": {
     "client_id": "app_fe80739ff4e547fb",
-    "name": "test2",
-    "description": "testing 2",
+    "name": "Test",
+    "description": "This app is for testing.",
     "redirect_uris": [
       "http://localhost:8005/callback"
     ],
     "owner_email": "jnbailey@volusia.org",
     "is_active": true,
     "created_at": "2025-08-25T12:22:29.992208",
-    "updated_at": "2025-08-25T12:22:29.992221",
+    "updated_at": "2025-09-05T20:33:57.811689",
     "discovery_endpoint": "http://localhost:8005/discovery/endpoints",
     "allow_discovery": true,
     "last_discovery_at": "2025-09-04T17:16:14.644400",
@@ -86,18 +86,29 @@
   },
   "app_affa35367c004335": {
     "client_id": "app_affa35367c004335",
-    "name": "HR Management Demo",
-    "description": "HR Management Demo - Fernando",
+    "name": "HR Management Demo oREGTGA",
+    "description": "HR Management Demo - Fernando oRTEGA",
     "redirect_uris": [
       "http://localhost:8080/callback.html"
     ],
     "owner_email": "fortega@volusia.gov",
     "is_active": true,
     "created_at": "2025-08-26T12:08:40.647816",
-    "updated_at": "2025-08-26T12:08:40.647825",
+    "updated_at": "2025-09-08T02:55:36.405074",
     "discovery_endpoint": "http://localhost:3001/discovery/endpoints",
     "allow_discovery": true,
     "last_discovery_at": null,
     "discovery_status": "connection_error"
+  },
+  "app_4a08270dba5d445f": {
+    "client_id": "app_4a08270dba5d445f",
+    "name": "JOHN APP",
+    "owner_email": "fortega@volusia.gov",
+    "created_at": "2025-09-08T15:57:18.543726+00:00",
+    "is_active": true,
+    "discovery_endpoint": null,
+    "allow_discovery": false,
+    "last_discovery_at": null,
+    "discovery_status": null
   }
 }

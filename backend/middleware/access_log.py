@@ -6,7 +6,7 @@ from typing import Callable
 from fastapi import Request
 import logging
 
-from backend.libs.logging_config import get_logging_config
+from libs.logging_config import get_logging_config
 
 logger = logging.getLogger("access")
 

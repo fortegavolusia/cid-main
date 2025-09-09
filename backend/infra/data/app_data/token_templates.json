@@ -49,13 +49,19 @@
           "key": "rls_filters",
           "type": "object",
           "description": "Row-level security filters for data access"
+        },
+        {
+          "id": "roles_1757347274320",
+          "key": "roles",
+          "type": "array",
+          "description": "User roles"
         }
       ],
-      "savedAt": "2025-08-29T14:06:39.275Z",
+      "savedAt": "2025-09-08T16:01:20.693Z",
       "adGroups": [],
       "priority": 0,
       "enabled": true,
-      "isDefault": true
+      "isDefault": false
     },
     {
       "name": "test 3",
@@ -186,16 +192,22 @@
           "key": "rls_filters",
           "type": "object",
           "description": "Row-level security filters for data access"
+        },
+        {
+          "id": "groups_1757098272152",
+          "key": "groups",
+          "type": "array",
+          "description": "User groups"
         }
       ],
-      "savedAt": "2025-09-04T13:55:59.688Z",
+      "savedAt": "2025-09-05T18:51:18.168Z",
       "adGroups": [
         "Information Technology Division"
       ],
       "priority": 0,
       "enabled": true,
-      "isDefault": false
+      "isDefault": true
     }
   ],
-  "updated_at": "2025-09-04T13:55:59.847809"
+  "updated_at": "2025-09-08T16:01:20.915508"
 }

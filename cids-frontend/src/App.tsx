@@ -7,11 +7,14 @@ import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import CallbackPage from './pages/CallbackPage';
 import AdminPage from './pages/AdminPage';
+import AdminPageNew from './pages/AdminPageNew';
+import AppAdministration from './pages/AppAdministration';
 import QueryBuilderPage from './pages/QueryBuilderPage';
 import TokenAdministrationPage from './pages/TokenAdministrationPage';
 import CIDAdministrationPage from './pages/CIDAdministrationPage';
 import SessionTimeoutModal from './components/SessionTimeoutModal';
 import { tokenManager } from './services/tokenManager';
+import DesignShowcase from './pages/DesignShowcase';
 import './App.css';
 
 // Create a client
@@ -113,6 +116,16 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <Layout>
+              <AdminPageNew />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/home"
+        element={
+          <ProtectedRoute>
+            <Layout>
               <HomePage />
             </Layout>
           </ProtectedRoute>
@@ -123,7 +136,17 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <Layout>
-              <AdminPage />
+              <AppAdministration />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <AdminPageNew />
             </Layout>
           </ProtectedRoute>
         }
@@ -157,6 +180,10 @@ const AppRoutes: React.FC = () => {
             </Layout>
           </ProtectedRoute>
         }
+      />
+      <Route
+        path="/design-showcase"
+        element={<DesignShowcase />}
       />
 
       <Route path="*" element={<Navigate to="/" replace />} />

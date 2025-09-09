@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Azure AD Login Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #0078d4;
+            padding-bottom: 10px;
+        }
+        .info-box {
+            background: #f0f8ff;
+            border-left: 4px solid #0078d4;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .warning-box {
+            background: #fff8e1;
+            border-left: 4px solid #ff9800;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .success-box {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        button {
+            background: #0078d4;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        button:hover {
+            background: #005a9e;
+        }
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        .url-display {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 4px;
+            word-break: break-all;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        .section {
+            margin: 30px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Azure AD Login Test</h1>
+        
+        <div class="section">
+            <h2>Configuration Status</h2>
+            <div class="success-box">
+                <strong>✅ Configuration Loaded:</strong><br>
+                • Tenant ID: ed785c93-cfd5-4daf-a103-4de951a43b70<br>
+                • Client ID: 0c4550df-c462-4272-9203-ee0ec72b532b<br>
+                • Object ID: d0532b0d-86ba-456a-be33-183fdedac746
+            </div>
+            
+            <div class="warning-box">
+                <strong>⚠️ Missing CLIENT_SECRET:</strong><br>
+                The CLIENT_SECRET is required for the complete authentication flow.<br>
+                You'll be able to login, but the backend won't be able to exchange the code for tokens.
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Test User Login</h2>
+            <p>Click the button below to test the Azure AD login flow:</p>
+            
+            <button onclick="loginWithAzure()">Login with Azure AD</button>
+            
+            <div class="info-box">
+                <strong>What will happen:</strong><br>
+                1. You'll be redirected to Microsoft login page<br>
+                2. Enter your Volusia County credentials<br>
+                3. After successful login, you'll be redirected back<br>
+                4. The URL will contain an authorization code<br>
+                5. This code needs to be exchanged for tokens (requires CLIENT_SECRET)
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Authorization URL</h2>
+            <p>This is the URL that will be used for authentication:</p>
+            <div class="url-display" id="authUrl"></div>
+        </div>
+
+        <div class="section">
+            <h2>Callback Handler</h2>
+            <div id="callbackInfo" style="display: none;">
+                <div class="success-box">
+                    <strong>🎉 Authentication Response Received!</strong><br>
+                    Check the URL parameters for the authorization code.
+                </div>
+                <div class="url-display" id="responseParams"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const config = {
+            tenant_id: 'ed785c93-cfd5-4daf-a103-4de951a43b70',
+            client_id: '0c4550df-c462-4272-9203-ee0ec72b532b',
+            redirect_uri: window.location.origin + window.location.pathname,
+            scope: 'openid profile email User.Read',
+            state: 'test_' + Date.now()
+        };
+
+        // Build authorization URL
+        function buildAuthUrl() {
+            const baseUrl = `https://login.microsoftonline.com/${config.tenant_id}/oauth2/v2.0/authorize`;
+            const params = new URLSearchParams({
+                client_id: config.client_id,
+                response_type: 'code',
+                redirect_uri: config.redirect_uri,
+                response_mode: 'query',
+                scope: config.scope,
+                state: config.state
+            });
+            return `${baseUrl}?${params.toString()}`;
+        }
+
+        // Display the auth URL
+        document.getElementById('authUrl').textContent = buildAuthUrl();
+
+        // Login function
+        function loginWithAzure() {
+            const authUrl = buildAuthUrl();
+            // Store state for verification
+            sessionStorage.setItem('oauth_state', config.state);
+            // Redirect to Azure AD
+            window.location.href = authUrl;
+        }
+
+        // Check for callback parameters
+        function checkCallback() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get('code');
+            const state = urlParams.get('state');
+            const error = urlParams.get('error');
+            
+            if (code || error) {
+                document.getElementById('callbackInfo').style.display = 'block';
+                
+                let responseText = 'Response Parameters:\n\n';
+                
+                if (code) {
+                    responseText += `✅ Authorization Code: ${code}\n`;
+                    responseText += `State: ${state}\n\n`;
+                    responseText += 'Next Step: Exchange this code for tokens using CLIENT_SECRET';
+                }
+                
+                if (error) {
+                    responseText += `❌ Error: ${error}\n`;
+                    const errorDesc = urlParams.get('error_description');
+                    if (errorDesc) {
+                        responseText += `Description: ${errorDesc}\n`;
+                    }
+                }
+                
+                document.getElementById('responseParams').textContent = responseText;
+                
+                // Verify state
+                const savedState = sessionStorage.getItem('oauth_state');
+                if (state && savedState && state !== savedState) {
+                    alert('⚠️ Warning: State mismatch! Possible CSRF attack.');
+                }
+            }
+        }
+
+        // Check on page load
+        checkCallback();
+    </script>
+</body>
+</html>

@@ -26,8 +26,8 @@ class TokenActivityLogger:
         self.activity_logs: Dict[str, List[Dict[str, Any]]] = {}
 
     def log_activity(self, token_id: str, action: TokenAction, performed_by: Optional[Dict[str, Any]] = None, details: Optional[Dict[str, Any]] = None, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> str:
-        from backend.libs.logging_config import get_logging_config
-        from backend.services.token_activity_persist import append_token_activity
+        from libs.logging_config import get_logging_config
+        from services.token_activity_persist import append_token_activity
 
         log_id = str(uuid.uuid4())
         timestamp = datetime.utcnow().isoformat() + 'Z'

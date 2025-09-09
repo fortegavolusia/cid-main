@@ -10,13 +10,19 @@
       "created_at": "2025-09-03T23:54:57.943514",
       "description": "searchy",
       "a2a_only": false
+    },
+    "TEST230": {
+      "created_at": "2025-09-05T18:30:29.413156",
+      "description": "Role with 15 allowed, 0 denied permissions and 0 RLS filters",
+      "a2a_only": true,
+      "updated_at": "2025-09-05T18:49:33.647973"
     }
   },
   "app_affa35367c004335": {
-    "Fdo Test": {
-      "created_at": "2025-09-04T12:25:58.763407",
-      "description": "asdfasdf",
-      "a2a_only": false
+    "Developer": {
+      "created_at": "2025-09-08T15:48:46.101420",
+      "description": "Developer - Test Fernando",
+      "a2a_only": true
     }
   },
   "app_c842dc1a7a8c4bb4": {},
@@ -24,6 +30,13 @@
     "test_role": {
       "created_at": "2025-09-04T19:43:02.997824",
       "description": "Test role"
+    }
+  },
+  "app_4a08270dba5d445f": {
+    "Role1": {
+      "created_at": "2025-09-08T16:26:07.250564",
+      "description": "Role 1 Test",
+      "a2a_only": false
     }
   }
 }

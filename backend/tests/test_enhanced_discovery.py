@@ -12,9 +12,9 @@ from pathlib import Path
 parent_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(parent_dir))
 
-from backend.services.discovery import DiscoveryService, DiscoveryConfig, DiscoveryErrorType
-from backend.services.jwt import JWTManager
-from backend.services.app_registration import registered_apps
+from services.discovery import DiscoveryService, DiscoveryConfig, DiscoveryErrorType
+from services.jwt import JWTManager
+from services.app_registration import registered_apps
 
 
 async def test_discovery_config():

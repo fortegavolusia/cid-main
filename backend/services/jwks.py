@@ -2,7 +2,7 @@
 from typing import Dict, List, Any
 import base64
 
-from backend.services.jwt import JWTManager
+from services.jwt import JWTManager
 
 
 class JWKSHandler:

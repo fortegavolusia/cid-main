@@ -4,8 +4,8 @@
     "json": true,
     "stdout": true,
     "file": {
-      "enabled": true,
-      "path": "/home/jnbailey/Desktop/CID/backend/infra/logs/app/app.log",
+      "enabled": false,
+      "path": "/home/dpi/projects/CID/backend/infra/logs/app/app.log",
       "rotation": {
         "max_bytes": 20000000,
         "backup_count": 10
@@ -17,19 +17,19 @@
     }
   },
   "audit": {
-    "enabled": true,
-    "path": "/home/jnbailey/Desktop/CID/backend/infra/logs/audit",
+    "enabled": false,
+    "path": "/home/dpi/projects/CID/backend/infra/logs/audit",
     "retention_days": 90
   },
   "token_activity": {
-    "enabled": true,
-    "persist_to_disk": true,
-    "path": "/home/jnbailey/Desktop/CID/backend/infra/logs/token_activity",
+    "enabled": false,
+    "persist_to_disk": false,
+    "path": "/home/dpi/projects/CID/backend/infra/logs/token_activity",
     "retention_days": 60
   },
   "access": {
-    "enabled": true,
-    "path": "/home/jnbailey/Desktop/CID/backend/infra/logs/access",
+    "enabled": false,
+    "path": "/home/dpi/projects/CID/backend/infra/logs/access",
     "retention_days": 30
   },
   "privacy": {

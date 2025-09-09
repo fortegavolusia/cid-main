@@ -5,7 +5,7 @@ import json
 import logging
 from enum import Enum
 
-from backend.utils.paths import logs_path
+from utils.paths import logs_path
 
 logger = logging.getLogger(__name__)
 

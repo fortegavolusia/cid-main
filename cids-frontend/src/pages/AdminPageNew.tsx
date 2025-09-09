@@ -1,0 +1,573 @@
+import React, { useState, useEffect } from 'react';
+import styled, { createGlobalStyle } from 'styled-components';
+import { useAuth } from '../contexts/AuthContext';
+import adminService from '../services/adminService';
+import type { AppInfo } from '../types/admin';
+import RolesModal from '../components/RolesModal';
+import APIKeyModal from '../components/APIKeyModal';
+
+// Global styles similar to App Administration
+const GlobalStyles = createGlobalStyle`
+  :root {
+    --bg-color: transparent;
+    --card-bg: #ffffff;
+    --sidebar-bg: #0b3b63;
+    --primary-color: #0b3b63;
+    --secondary-color: #10b981;
+    --text-color: #334155;
+    --secondary-text-color: #64748b;
+    --border-color: #e1e8ed;
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  }
+`;
+
+const MainContent = styled.main`
+  flex-grow: 1;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: transparent;
+`;
+
+const PageHeader = styled.div`
+  background: #0b3b63;
+  padding: 20px 40px;
+  margin: -24px -24px 32px -24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  height: 105px;
+  display: flex;
+  align-items: center;
+`;
+
+const HeaderContent = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+`;
+
+const PageTitle = styled.h1`
+  color: white;
+  font-size: 28px;
+  font-weight: 600;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  
+  i {
+    font-size: 24px;
+    opacity: 0.9;
+  }
+`;
+
+const PageSubtitle = styled.p`
+  color: rgba(255, 255, 255, 0.9);
+  margin: 8px 0 0 0;
+  font-size: 14px;
+`;
+
+
+const DashboardGrid = styled.div`
+  display: grid;
+  grid-template-columns: 2.5fr 1fr;
+  gap: 24px;
+  flex-grow: 1;
+  padding: 0 40px 40px 40px;
+`;
+
+const ContentArea = styled.div`
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+`;
+
+const TopRowCards = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+`;
+
+const BottomRowCards = styled.div`
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px;
+`;
+
+const Card = styled.div`
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e1e8ed;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  }
+`;
+
+const CardHeader = styled.div`
+  display: flex;
+  align-items: center;
+  margin: -24px -24px 20px -24px;
+  padding: 16px 24px;
+  background: #6b7280;
+  border-bottom: 1px solid #e1e8ed;
+  border-radius: 16px 16px 0 0;
+  
+  i {
+    font-size: 1.2rem;
+    margin-right: 12px;
+    color: white;
+  }
+  
+  h3, h4 {
+    margin: 0;
+    font-weight: 600;
+    color: white;
+    font-size: 18px;
+  }
+`;
+
+const KpiGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 20px;
+  margin-top: 15px;
+`;
+
+const KpiItem = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 16px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e1e8ed;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+  
+  i {
+    font-size: 2rem;
+    margin-bottom: 10px;
+    color: #0b3b63;
+  }
+  
+  h5 {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #64748b;
+    font-weight: 500;
+  }
+  
+  .kpi-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #334155;
+  }
+`;
+
+const QuickAccessList = styled.div`
+  display: flex;
+  flex-direction: column;
+`;
+
+const QuickLink = styled.button`
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  background: white;
+  border: 1px solid #e1e8ed;
+  border-radius: 10px;
+  color: #334155;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  font-size: 14px;
+  
+  &:hover {
+    background: #f8fafc;
+    border-color: #0b3b63;
+    transform: translateX(4px);
+  }
+  
+  i {
+    width: 32px;
+    text-align: center;
+    color: #0b3b63;
+    font-size: 1.1rem;
+    margin-right: 12px;
+  }
+`;
+
+const ChartPlaceholder = styled.div`
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e1e8ed;
+  min-height: 250px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 12px;
+  color: #64748b;
+  font-size: 14px;
+`;
+
+const NewsList = styled.div`
+  display: flex;
+  flex-direction: column;
+`;
+
+const NewsItem = styled.a`
+  display: block;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color);
+  text-decoration: none;
+  color: var(--text-color);
+  transition: color 0.3s;
+  
+  &:hover {
+    color: var(--primary-color);
+  }
+`;
+
+const LlmCard = styled(Card)`
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  max-height: 600px;
+`;
+
+const ChatHistory = styled.div`
+  flex-grow: 1;
+  overflow-y: auto;
+  padding-right: 10px;
+  max-height: 400px;
+`;
+
+const Message = styled.div`
+  padding: 15px;
+  margin-bottom: 15px;
+  border-radius: 20px;
+  line-height: 1.6;
+  
+  &.llm-message {
+    background-color: #f0f4f8;
+    color: #444;
+    border-bottom-left-radius: 4px;
+  }
+  
+  &.user-message {
+    background-color: var(--primary-color);
+    color: white;
+    border-bottom-right-radius: 4px;
+    margin-left: 20px;
+  }
+`;
+
+const ChatInputContainer = styled.div`
+  display: flex;
+  margin-top: 20px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 20px;
+`;
+
+const ChatInput = styled.input`
+  flex-grow: 1;
+  padding: 15px 20px;
+  border: 1px solid var(--border-color);
+  border-radius: 30px;
+  margin-right: 10px;
+  font-size: 1rem;
+  outline: none;
+  
+  &:focus {
+    border-color: var(--primary-color);
+  }
+`;
+
+const SendBtn = styled.button`
+  background: #0b3b63;
+  color: white;
+  border: none;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1.2rem;
+  transition: all 0.3s ease;
+  
+  &:hover {
+    background: #0a3357;
+    transform: scale(1.05);
+  }
+`;
+
+const AdminPageNew: React.FC = () => {
+  const { user } = useAuth();
+  const [apps, setApps] = useState<AppInfo[]>([]);
+  const [appStats, setAppStats] = useState({
+    apps: { total: 0, active: 0, inactive: 0 },
+    tokens: { active: 0 },
+    api_keys: { total: 0 }
+  });
+  const [dashboardStats, setDashboardStats] = useState<any>(null);
+  const [showRolesModal, setShowRolesModal] = useState(false);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [messages, setMessages] = useState([
+    { type: 'llm', text: "Hello! I'm your CID assistant. How can I help you manage your identity services today?" }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+
+  useEffect(() => {
+    loadApps();
+    loadStats();
+    loadDashboardStats();
+  }, []);
+
+  const loadApps = async () => {
+    try {
+      const appsData = await adminService.getApps();
+      setApps(appsData);
+    } catch (error) {
+      console.error('Failed to load apps:', error);
+    }
+  };
+
+  const loadStats = async () => {
+    try {
+      const stats = await adminService.getAppsStats();
+      setAppStats(stats);
+    } catch (error) {
+      console.error('Failed to load stats:', error);
+    }
+  };
+
+  const loadDashboardStats = async () => {
+    try {
+      const stats = await adminService.getDashboardStats();
+      setDashboardStats(stats);
+    } catch (error) {
+      console.error('Failed to load dashboard stats:', error);
+    }
+  };
+
+  const handleSendMessage = () => {
+    if (chatInput.trim()) {
+      setMessages([...messages, 
+        { type: 'user', text: chatInput },
+        { type: 'llm', text: 'I understand your request. This feature is coming soon!' }
+      ]);
+      setChatInput('');
+    }
+  };
+
+  return (
+    <>
+      <GlobalStyles />
+      <MainContent>
+        <PageHeader>
+          <HeaderContent>
+            <div>
+              <PageTitle>
+                <i className="fas fa-tachometer-alt"></i>
+                CID Dashboard
+              </PageTitle>
+              <PageSubtitle>Welcome back, {user?.name || 'Administrator'}</PageSubtitle>
+            </div>
+          </HeaderContent>
+        </PageHeader>
+
+        <DashboardGrid>
+          <ContentArea>
+            <TopRowCards>
+              <Card>
+                <CardHeader>
+                  <i className="fas fa-database"></i>
+                  <h4>CID Database Info</h4>
+                </CardHeader>
+                <KpiGrid style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px', padding: '10px' }}>
+                  <KpiItem style={{ border: '1px solid #e0e0e0', borderRadius: '12px', padding: '0', overflow: 'hidden', background: '#ffffff' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 0', background: '#0b3b63', color: 'white', width: '100%' }}>
+                      <h5 style={{ margin: 0, fontSize: '0.75rem', color: 'white', fontWeight: '600', textAlign: 'center', whiteSpace: 'nowrap' }}>Registered Apps</h5>
+                    </div>
+                    <div style={{ padding: '15px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+                        <div style={{ textAlign: 'center' }}>
+                          <div className="kpi-value" style={{ color: '#2ecc71', fontSize: '1.5rem', fontWeight: 'bold' }}>{appStats.apps.active}</div>
+                          <div style={{ fontSize: '0.65rem', color: '#2ecc71', marginTop: '2px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active</div>
+                        </div>
+                        <div style={{ color: '#95a5a6', fontSize: '0.9rem' }}>/</div>
+                        <div style={{ textAlign: 'center' }}>
+                          <div className="kpi-value" style={{ color: '#e74c3c', fontSize: '1.5rem', fontWeight: 'bold' }}>{appStats.apps.inactive}</div>
+                          <div style={{ fontSize: '0.65rem', color: '#e74c3c', marginTop: '2px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Inactive</div>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: '#7f8c8d', marginTop: '8px', fontWeight: '500' }}>
+                        Total: {appStats.apps.total}
+                      </div>
+                    </div>
+                  </KpiItem>
+                  
+                  <KpiItem style={{ border: '1px solid #e0e0e0', borderRadius: '12px', padding: '0', overflow: 'hidden', background: '#ffffff' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 0', background: '#0b3b63', color: 'white', width: '100%' }}>
+                      <h5 style={{ margin: 0, fontSize: '0.75rem', color: 'white', fontWeight: '600', textAlign: 'center', whiteSpace: 'nowrap' }}>Apps Discovered</h5>
+                    </div>
+                    <div style={{ padding: '15px' }}>
+                      <div className="kpi-value" style={{ color: '#3498db', fontSize: '2.2rem', fontWeight: 'bold' }}>{dashboardStats?.apps?.discovered || 0}</div>
+                      <div style={{ fontSize: '0.7rem', color: '#7f8c8d', marginTop: '5px' }}>With endpoints</div>
+                    </div>
+                  </KpiItem>
+                  
+                  <KpiItem style={{ border: '1px solid #e0e0e0', borderRadius: '12px', padding: '0', overflow: 'hidden', background: '#ffffff' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 0', background: '#0b3b63', color: 'white', width: '100%' }}>
+                      <h5 style={{ margin: 0, fontSize: '0.75rem', color: 'white', fontWeight: '600', textAlign: 'center', whiteSpace: 'nowrap' }}>Total Roles</h5>
+                    </div>
+                    <div style={{ padding: '15px' }}>
+                      <div className="kpi-value" style={{ color: '#9b59b6', fontSize: '2.2rem', fontWeight: 'bold' }}>{dashboardStats?.roles?.total || 0}</div>
+                      <div style={{ fontSize: '0.7rem', color: '#7f8c8d', marginTop: '5px' }}>Distinct roles</div>
+                    </div>
+                  </KpiItem>
+                  
+                  <KpiItem style={{ border: '1px solid #e0e0e0', borderRadius: '12px', padding: '0', overflow: 'hidden', background: '#ffffff' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 0', background: '#0b3b63', color: 'white', width: '100%' }}>
+                      <h5 style={{ margin: 0, fontSize: '0.75rem', color: 'white', fontWeight: '600', textAlign: 'center', whiteSpace: 'nowrap' }}>Permissions</h5>
+                    </div>
+                    <div style={{ padding: '15px' }}>
+                      <div className="kpi-value" style={{ color: '#e67e22', fontSize: '2.2rem', fontWeight: 'bold' }}>{dashboardStats?.permissions?.total || 0}</div>
+                      <div style={{ fontSize: '0.7rem', color: '#7f8c8d', marginTop: '5px' }}>Unique perms</div>
+                    </div>
+                  </KpiItem>
+                  
+                  <KpiItem style={{ border: '1px solid #e0e0e0', borderRadius: '12px', padding: '0', overflow: 'hidden', background: '#ffffff' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 0', background: '#0b3b63', color: 'white', width: '100%' }}>
+                      <h5 style={{ margin: 0, fontSize: '0.75rem', color: 'white', fontWeight: '600', textAlign: 'center', whiteSpace: 'nowrap' }}>Api Keys</h5>
+                    </div>
+                    <div style={{ padding: '15px' }}>
+                      <div className="kpi-value" style={{ color: '#f39c12', fontSize: '2.2rem', fontWeight: 'bold' }}>{dashboardStats?.api_keys?.active || 0}</div>
+                      <div style={{ fontSize: '0.7rem', color: '#7f8c8d', marginTop: '5px' }}>
+                        Active / Total: {dashboardStats?.api_keys?.total || 0}
+                      </div>
+                    </div>
+                  </KpiItem>
+                </KpiGrid>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <i className="fas fa-external-link-alt"></i>
+                  <h4>Quick Actions</h4>
+                </CardHeader>
+                <QuickAccessList>
+                  <QuickLink onClick={() => window.location.href = '/admin'}>
+                    <i className="fas fa-cog"></i>
+                    App Administration
+                  </QuickLink>
+                  <QuickLink onClick={() => window.location.href = '/token-admin'}>
+                    <i className="fas fa-coins"></i>
+                    Token Administration
+                  </QuickLink>
+                  <QuickLink onClick={() => setShowRolesModal(true)}>
+                    <i className="fas fa-user-shield"></i>
+                    Manage Roles
+                  </QuickLink>
+                  <QuickLink onClick={() => setShowApiKeyModal(true)}>
+                    <i className="fas fa-key"></i>
+                    API Keys
+                  </QuickLink>
+                  <QuickLink onClick={() => window.location.href = '/query-builder'}>
+                    <i className="fas fa-database"></i>
+                    Query Builder
+                  </QuickLink>
+                </QuickAccessList>
+              </Card>
+            </TopRowCards>
+
+            <BottomRowCards>
+              <Card>
+                <CardHeader>
+                  <i className="fas fa-chart-pie"></i>
+                  <h4>Token Usage Chart</h4>
+                </CardHeader>
+                <ChartPlaceholder>
+                  <p>Token usage analytics for the last 30 days</p>
+                </ChartPlaceholder>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <i className="fas fa-newspaper"></i>
+                  <h4>System Updates</h4>
+                </CardHeader>
+                <NewsList>
+                  <NewsItem href="#">New security policy activated</NewsItem>
+                  <NewsItem href="#">Token refresh interval updated</NewsItem>
+                  <NewsItem href="#">API rate limits adjusted</NewsItem>
+                  <NewsItem href="#">Maintenance scheduled for Sunday</NewsItem>
+                </NewsList>
+              </Card>
+            </BottomRowCards>
+          </ContentArea>
+
+          <LlmCard>
+            <CardHeader>
+              <i className="fas fa-comments"></i>
+              <h3>CID Assistant</h3>
+            </CardHeader>
+            <ChatHistory>
+              {messages.map((msg, idx) => (
+                <Message key={idx} className={`${msg.type}-message`}>
+                  <span>{msg.text}</span>
+                </Message>
+              ))}
+            </ChatHistory>
+            <ChatInputContainer>
+              <ChatInput 
+                type="text" 
+                placeholder="Ask about tokens, permissions, or apps..."
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+              />
+              <SendBtn onClick={handleSendMessage}>
+                <i className="fas fa-paper-plane"></i>
+              </SendBtn>
+            </ChatInputContainer>
+          </LlmCard>
+        </DashboardGrid>
+      </MainContent>
+
+      {showRolesModal && apps.length > 0 && (
+        <RolesModal
+          isOpen={showRolesModal}
+          onClose={() => setShowRolesModal(false)}
+          clientId={apps[0].client_id}
+          appName={apps[0].name}
+        />
+      )}
+      
+      {showApiKeyModal && apps.length > 0 && (
+        <APIKeyModal
+          isOpen={showApiKeyModal}
+          onClose={() => setShowApiKeyModal(false)}
+          clientId={apps[0].client_id}
+          appName={apps[0].name}
+        />
+      )}
+    </>
+  );
+};
+
+export default AdminPageNew;

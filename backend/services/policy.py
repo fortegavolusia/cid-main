@@ -5,7 +5,7 @@ import json
 import logging
 from pydantic import BaseModel, Field
 
-from backend.utils.paths import data_path
+from utils.paths import data_path
 
 logger = logging.getLogger(__name__)
 

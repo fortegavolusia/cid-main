@@ -6,8 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
-from backend.libs.logging_config import get_logging_config
-from backend.utils.paths import logs_path
+from libs.logging_config import get_logging_config
+from utils.paths import logs_path
 
 
 def _current_file() -> Path:

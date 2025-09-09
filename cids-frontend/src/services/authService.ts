@@ -6,9 +6,9 @@ import type {
 } from '../types/auth';
 
 class AuthService {
-  private readonly AZURE_CLIENT_ID = '85d64713-e09e-4ddd-8677-90a2a3b7f668';
+  private readonly AZURE_CLIENT_ID = '0c4550df-c462-4272-9203-ee0ec72b532b';
   private readonly AZURE_TENANT_ID = 'ed785c93-cfd5-4daf-a103-4de951a43b70';
-  private readonly AZURE_REDIRECT_URI = 'https://10.1.5.58:3000/auth/callback';
+  private readonly AZURE_REDIRECT_URI = 'http://localhost:3000/auth/callback';
   private readonly AZURE_SCOPE = 'openid profile email User.Read';
 
 	  // Decode JWT to read expiry (client-side, no verification)
@@ -29,10 +29,15 @@ class AuthService {
 	  }
 
 
-  // Initiate login flow - Direct OAuth with Azure AD
+  // Initiate login flow - Direct OAuth with Azure AD with PKCE
   async login(): Promise<void> {
     const state = this.generateRandomString(32);
+    const codeVerifier = this.generateCodeVerifier();
+    const codeChallenge = await this.generateCodeChallenge(codeVerifier);
+    
+    // Store state and code verifier for later use
     localStorage.setItem('oauth_state', state);
+    localStorage.setItem('code_verifier', codeVerifier);
 
     const authUrl = new URL(`https://login.microsoftonline.com/${this.AZURE_TENANT_ID}/oauth2/v2.0/authorize`);
     authUrl.searchParams.append('client_id', this.AZURE_CLIENT_ID);
@@ -41,6 +46,8 @@ class AuthService {
     authUrl.searchParams.append('scope', this.AZURE_SCOPE);
     authUrl.searchParams.append('state', state);
     authUrl.searchParams.append('response_mode', 'query');
+    authUrl.searchParams.append('code_challenge', codeChallenge);
+    authUrl.searchParams.append('code_challenge_method', 'S256');
 
     window.location.href = authUrl.toString();
   }
@@ -55,12 +62,75 @@ class AuthService {
     return result;
   }
 
+  // Generate code verifier for PKCE
+  private generateCodeVerifier(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+    let result = '';
+    for (let i = 0; i < 128; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  }
+
+  // Generate code challenge from verifier
+  private async generateCodeChallenge(verifier: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(verifier);
+    const digest = await window.crypto.subtle.digest('SHA-256', data);
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(digest)));
+    // Convert to URL-safe base64
+    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  }
+
   // Exchange authorization code for token
   async exchangeCodeForToken(code: string): Promise<LoginResponse> {
-    return apiService.post<LoginResponse>('/auth/token/exchange', {
-      code,
-      redirect_uri: this.AZURE_REDIRECT_URI
-    });
+    // Get the stored code_verifier
+    const codeVerifier = localStorage.getItem('code_verifier');
+    
+    // For SPA, we need to exchange the code directly with Azure AD
+    const tokenEndpoint = `https://login.microsoftonline.com/${this.AZURE_TENANT_ID}/oauth2/v2.0/token`;
+    
+    const params = new URLSearchParams();
+    params.append('client_id', this.AZURE_CLIENT_ID);
+    params.append('scope', this.AZURE_SCOPE);
+    params.append('code', code);
+    params.append('redirect_uri', this.AZURE_REDIRECT_URI);
+    params.append('grant_type', 'authorization_code');
+    
+    if (codeVerifier) {
+      params.append('code_verifier', codeVerifier);
+      localStorage.removeItem('code_verifier');
+    }
+    
+    try {
+      // Exchange code with Azure AD directly
+      const azureResponse = await fetch(tokenEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params.toString()
+      });
+      
+      if (!azureResponse.ok) {
+        const error = await azureResponse.json();
+        throw new Error(error.error_description || 'Failed to exchange code');
+      }
+      
+      const azureTokens = await azureResponse.json();
+      
+      // Now send the Azure tokens to our backend to get CID tokens
+      const payload = {
+        azure_access_token: azureTokens.access_token,
+        azure_id_token: azureTokens.id_token,
+        redirect_uri: this.AZURE_REDIRECT_URI
+      };
+      
+      return apiService.post<LoginResponse>('/auth/token/exchange', payload);
+    } catch (error) {
+      console.error('Token exchange error:', error);
+      throw error;
+    }
   }
 
   // Handle logout

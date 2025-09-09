@@ -82,6 +82,25 @@ class AdminService {
     return apiService.get('/auth/admin/apps');
   }
 
+  async getAppsStats(): Promise<{
+    apps: { total: number; active: number; inactive: number };
+    tokens: { active: number };
+    api_keys: { total: number };
+  }> {
+    return apiService.get('/auth/admin/apps/stats');
+  }
+
+  async getDashboardStats(): Promise<{
+    apps: { total: number; active: number; discovered: number };
+    roles: { total: number };
+    permissions: { total: number };
+    api_keys: { total: number; active: number };
+    tokens: { templates: number };
+    activity: { last_24h: number };
+  }> {
+    return apiService.get('/auth/admin/dashboard/stats');
+  }
+
   async getApp(clientId: string): Promise<AppInfo> {
     return apiService.get(`/auth/admin/apps/${clientId}`);
   }

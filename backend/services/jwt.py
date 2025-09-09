@@ -8,7 +8,7 @@ from cryptography.hazmat.backends import default_backend
 from authlib.jose import jwt, JsonWebKey
 import logging
 
-from backend.services.token_templates import TokenTemplateManager
+from services.token_templates import TokenTemplateManager
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)

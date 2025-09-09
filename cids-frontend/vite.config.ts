@@ -1,21 +1,16 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
-import fs from 'fs'
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const target = env.VITE_API_ORIGIN || 'https://10.1.5.58:8000'
+  const target = env.VITE_API_ORIGIN || 'http://localhost:8001'
 
   return {
     plugins: [react()],
     server: {
       host: '0.0.0.0', // Allow access from any IP
       port: 3000,
-      https: {
-        key: fs.readFileSync('./key.pem'),
-        cert: fs.readFileSync('./cert.pem'),
-      },
       proxy: {
         '/auth/token': {
           target,

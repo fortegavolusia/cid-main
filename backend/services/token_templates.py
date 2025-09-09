@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
 
-from backend.utils.paths import data_path, config_path
+from utils.paths import data_path, config_path
 
 logger = logging.getLogger(__name__)
 

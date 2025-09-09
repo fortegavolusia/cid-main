@@ -1,109 +1,99 @@
 {
-  "app_8173364316bf4910": {
+  "app_fba7654e91e6413c": {
     "endpoints": [
       {
         "method": "GET",
-        "path": "/",
-        "description": "Home page",
+        "path": "/api/employees",
+        "description": "List all employees with filtering",
         "discovered": true,
-        "discovered_at": "2025-08-16T12:00:16.509758",
-        "required_permissions": [],
-        "required_roles": [],
-        "tags": [
-          "ui"
-        ]
-      },
-      {
-        "method": "GET",
-        "path": "/api/profile",
-        "description": "Get user profile - requires authentication",
-        "discovered": true,
-        "discovered_at": "2025-08-16T12:00:16.509773",
-        "required_permissions": [
-          "profile.read"
-        ],
-        "required_roles": [],
-        "tags": [
-          "api",
-          "user"
-        ]
-      },
-      {
-        "method": "GET",
-        "path": "/api/admin",
-        "description": "Admin dashboard - requires admin role",
-        "discovered": true,
-        "discovered_at": "2025-08-16T12:00:16.509779",
-        "required_permissions": [
-          "admin.read"
-        ],
-        "required_roles": [
-          "admin"
-        ],
-        "tags": [
-          "api",
-          "admin"
-        ]
-      }
-    ],
-    "version": "20250816120016",
-    "updated_at": "2025-08-16T12:00:16.509817",
-    "updated_by": "discovery-service",
-    "has_discovered": true
-  },
-  "app_dd8c554784594b11": {
-    "endpoints": [
-      {
-        "method": "GET",
-        "path": "/api/users",
-        "description": "List all users",
-        "discovered": true,
-        "discovered_at": "2025-08-25T12:08:37.775090",
+        "discovered_at": "2025-09-09T03:42:50.148328",
         "required_permissions": [],
         "required_roles": [],
         "tags": []
       },
       {
         "method": "GET",
-        "path": "/api/users/{user_id}",
-        "description": "Get specific user details",
+        "path": "/api/employees/{employee_id}",
+        "description": "Get specific employee details",
         "discovered": true,
-        "discovered_at": "2025-08-25T12:08:37.775113",
+        "discovered_at": "2025-09-09T03:42:50.148352",
         "required_permissions": [],
         "required_roles": [],
         "tags": []
-      }
-    ],
-    "version": "20250825120837",
-    "updated_at": "2025-08-25T12:08:37.775140",
-    "updated_by": "discovery-service",
-    "has_discovered": true
-  },
-  "app_fe80739ff4e547fb": {
-    "endpoints": [
+      },
       {
-        "method": "GET",
-        "path": "/api/users",
-        "description": "List all users",
+        "method": "POST",
+        "path": "/api/employees",
+        "description": "Create new employee",
         "discovered": true,
-        "discovered_at": "2025-09-04T17:16:14.658462",
+        "discovered_at": "2025-09-09T03:42:50.148358",
+        "required_permissions": [],
+        "required_roles": [],
+        "tags": []
+      },
+      {
+        "method": "PUT",
+        "path": "/api/employees/{employee_id}",
+        "description": "Update employee information",
+        "discovered": true,
+        "discovered_at": "2025-09-09T03:42:50.148361",
+        "required_permissions": [],
+        "required_roles": [],
+        "tags": []
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/employees/{employee_id}",
+        "description": "Delete employee",
+        "discovered": true,
+        "discovered_at": "2025-09-09T03:42:50.148365",
         "required_permissions": [],
         "required_roles": [],
         "tags": []
       },
       {
         "method": "GET",
-        "path": "/api/users/{user_id}",
-        "description": "Get specific user details",
+        "path": "/api/payments",
+        "description": "List all payments - RLS applied",
         "discovered": true,
-        "discovered_at": "2025-09-04T17:16:14.658488",
+        "discovered_at": "2025-09-09T03:42:50.148368",
+        "required_permissions": [],
+        "required_roles": [],
+        "tags": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/payments/{payment_id}",
+        "description": "Get specific payment details",
+        "discovered": true,
+        "discovered_at": "2025-09-09T03:42:50.148372",
+        "required_permissions": [],
+        "required_roles": [],
+        "tags": []
+      },
+      {
+        "method": "POST",
+        "path": "/api/payments",
+        "description": "Create new payment",
+        "discovered": true,
+        "discovered_at": "2025-09-09T03:42:50.148377",
+        "required_permissions": [],
+        "required_roles": [],
+        "tags": []
+      },
+      {
+        "method": "GET",
+        "path": "/api/my-payments",
+        "description": "Get current user's payments only",
+        "discovered": true,
+        "discovered_at": "2025-09-09T03:42:50.148381",
         "required_permissions": [],
         "required_roles": [],
         "tags": []
       }
     ],
-    "version": "20250904171614",
-    "updated_at": "2025-09-04T17:16:14.658522",
+    "version": "20250909034250",
+    "updated_at": "2025-09-09T03:42:50.148414",
     "updated_by": "discovery-service",
     "has_discovered": true
   }

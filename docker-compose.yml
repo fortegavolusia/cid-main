@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  cid-backend:
+    container_name: cid-backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8000"
+    environment:
+      # Azure AD Configuration
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
+      AZURE_OBJECT_ID: ${AZURE_OBJECT_ID}
+      
+      # Admin Configuration
+      ADMIN_EMAILS: ${ADMIN_EMAILS}
+      ADMIN_GROUP_IDS: ${ADMIN_GROUP_IDS}
+      
+      # Development Configuration
+      DEV_CROSS_ORIGIN: "true"
+      PERSIST_KEYS: "true"
+      
+      # Database Configuration (Supabase)
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+      
+      # PostgreSQL Direct Connection
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      
+      # Service Configuration
+      HOST_LOCAL: "0.0.0.0"
+      API_PORT: "8000"
+    volumes:
+      - ./backend:/app
+      - ./backend/infra/data:/app/infra/data
+    networks:
+      - cid-network
+      - supabase_network_mi-proyecto-supabase
+      - uuid-service_uuid-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/auth/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  cid-frontend:
+    container_name: cid-frontend
+    build:
+      context: ./cids-frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_ORIGIN: http://10.1.5.133:8001
+      NODE_ENV: development
+    volumes:
+      - ./cids-frontend:/app
+      - /app/node_modules
+    networks:
+      - cid-network
+    depends_on:
+      - cid-backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  cid-network:
+    driver: bridge
+  supabase_network_mi-proyecto-supabase:
+    external: true
+  uuid-service_uuid-network:
+    external: true

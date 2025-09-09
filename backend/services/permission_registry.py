@@ -7,8 +7,8 @@ import json
 import logging
 from collections import defaultdict
 
-from backend.schemas.discovery import PermissionMetadata
-from backend.utils.paths import data_path
+from schemas.discovery import PermissionMetadata
+from utils.paths import data_path
 
 logger = logging.getLogger(__name__)
 
