@@ -133,14 +133,29 @@ class AuthService {
     }
   }
 
-  // Handle logout
+  // Handle logout with enhanced security - revoke tokens
   async logout(): Promise<void> {
     try {
-      await apiService.get('/auth/logout');
+      // Get refresh token to send for revocation
+      const refreshToken = localStorage.getItem('refresh_token');
+
+      // Call logout endpoint with refresh token for complete revocation
+      await apiService.post('/auth/logout', {
+        refresh_token: refreshToken
+      });
+
+      console.log('Logout successful, tokens revoked');
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
+      // Clear all tokens from localStorage
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+
+      // Clear token from API service
       apiService.clearAuthToken();
+
+      // Redirect to login
       window.location.href = '/';
     }
   }

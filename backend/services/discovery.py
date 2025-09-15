@@ -28,9 +28,10 @@ from services.discovery_db import discovery_db
 
 logger = logging.getLogger(__name__)
 
-PERMISSIONS_FILE = data_path("discovered_permissions.json")
-FIELD_METADATA_FILE = data_path("field_metadata.json")
-DISCOVERY_HISTORY_FILE = data_path("discovery_history.json")
+# JSON FILES DISABLED - USING DATABASE ONLY
+# PERMISSIONS_FILE = data_path("discovered_permissions.json")
+# FIELD_METADATA_FILE = data_path("field_metadata.json")
+# DISCOVERY_HISTORY_FILE = data_path("discovery_history.json")
 
 
 class DiscoveryErrorType(Enum):
@@ -62,7 +63,7 @@ class DiscoveryConfig:
     base_retry_delay: float = 1.0
     max_retry_delay: float = 30.0
     retry_exponential_base: float = 2.0
-    enable_health_check: bool = True
+    enable_health_check: bool = False  # Temporarily disabled
     health_check_timeout: int = 5
     validate_schema: bool = True
     cache_duration_minutes: int = 60
@@ -122,79 +123,32 @@ class DiscoveryService:
         self._load_discovery_history()
 
     def _load_permissions(self):
-        """Load cached permissions from disk"""
+        """NO JSON FILES - Load from database only"""
         try:
-            if PERMISSIONS_FILE.exists():
-                with open(PERMISSIONS_FILE, 'r') as f:
-                    data = json.load(f)
-                    for app_id, perm_data in data.items():
-                        self.permissions_cache[app_id] = DiscoveredPermissions(**perm_data)
-                logger.info(f"Loaded permissions for {len(self.permissions_cache)} apps")
+            # NO JSON FILES - permissions come from database
+            self.permissions_cache = {}
         except Exception as e:
             logger.error(f"Error loading permissions: {e}")
             self.permissions_cache = {}
 
     def _save_permissions(self):
-        """Save permissions cache to disk"""
-        try:
-            PERMISSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
-            data = {app_id: perms.dict() for app_id, perms in self.permissions_cache.items()}
-            with open(PERMISSIONS_FILE, 'w') as f:
-                json.dump(data, f, indent=2, default=str)
-            logger.debug(f"Saved permissions for {len(self.permissions_cache)} apps")
-        except Exception as e:
-            logger.error(f"Error saving permissions: {e}")
+        """NO JSON FILES - Save to database only"""
+        # NO JSON FILES - permissions saved to database
+        pass
 
     def _load_discovery_history(self):
-        """Load discovery history from disk"""
+        """NO JSON FILES - Load from database only"""
         try:
-            if DISCOVERY_HISTORY_FILE.exists():
-                with open(DISCOVERY_HISTORY_FILE, 'r') as f:
-                    data = json.load(f)
-                    for app_id, history_data in data.items():
-                        # Convert datetime strings back to datetime objects
-                        attempts = []
-                        for attempt_data in history_data.get('attempts', []):
-                            attempt_data['timestamp'] = datetime.fromisoformat(attempt_data['timestamp'])
-                            if attempt_data.get('error_type'):
-                                attempt_data['error_type'] = DiscoveryErrorType(attempt_data['error_type'])
-                            attempts.append(DiscoveryAttempt(**attempt_data))
-
-                        history_data['attempts'] = attempts
-                        if history_data.get('last_successful_discovery'):
-                            history_data['last_successful_discovery'] = datetime.fromisoformat(
-                                history_data['last_successful_discovery']
-                            )
-
-                        self.discovery_history[app_id] = DiscoveryHistory(**history_data)
-                logger.info(f"Loaded discovery history for {len(self.discovery_history)} apps")
+            # NO JSON FILES - history comes from database
+            self.discovery_history = {}
         except Exception as e:
             logger.error(f"Error loading discovery history: {e}")
             self.discovery_history = {}
 
     def _save_discovery_history(self):
-        """Save discovery history to disk"""
-        try:
-            DISCOVERY_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-            data = {}
-            for app_id, history in self.discovery_history.items():
-                history_dict = asdict(history)
-                # Convert datetime objects to strings for JSON serialization
-                for attempt in history_dict['attempts']:
-                    attempt['timestamp'] = attempt['timestamp'].isoformat()
-                    if attempt['error_type']:
-                        attempt['error_type'] = attempt['error_type'].value
-
-                if history_dict['last_successful_discovery']:
-                    history_dict['last_successful_discovery'] = history_dict['last_successful_discovery'].isoformat()
-
-                data[app_id] = history_dict
-
-            with open(DISCOVERY_HISTORY_FILE, 'w') as f:
-                json.dump(data, f, indent=2, default=str)
-            logger.debug(f"Saved discovery history for {len(self.discovery_history)} apps")
-        except Exception as e:
-            logger.error(f"Error saving discovery history: {e}")
+        """NO JSON FILES - Save to database only"""
+        # NO JSON FILES - history saved to database
+        pass
 
     def register_progress_callback(self, app_id: str, callback: Callable[[DiscoveryProgress], None]):
         """Register a callback to receive progress updates for an app's discovery"""
@@ -283,9 +237,9 @@ class DiscoveryService:
 
         raise last_exception
 
-    async def discover_with_fields(self, client_id: str, force: bool = False) -> Dict[str, Any]:
+    async def discover_with_fields(self, client_id: str, force: bool = False, user_email: str = None) -> Dict[str, Any]:
         """Enhanced discovery with progress tracking, retry logic, and comprehensive error handling"""
-        logger.info(f"[DISCOVERY] Starting discovery for {client_id}, force={force}")
+        logger.info(f"[DISCOVERY] Starting discovery for {client_id}, force={force}, user={user_email}")
         start_time = datetime.utcnow()
 
         # Initialize progress tracking
@@ -377,15 +331,6 @@ class DiscoveryService:
 
             # JSON save disabled - using database as primary storage
             # self._save_permissions()
-            
-            # Save to database (PRIMARY STORAGE)
-            try:
-                logger.info(f"[DEBUG] Permissions object type: {type(permissions.permissions)}")
-                logger.info(f"[DEBUG] Permissions keys: {list(permissions.permissions.keys())[:5] if hasattr(permissions.permissions, 'keys') else 'Not a dict'}")
-                discovery_db.save_discovered_permissions(client_id, permissions.permissions)
-                logger.info(f"Saved permissions to database for {client_id}")
-            except Exception as e:
-                logger.error(f"Failed to save permissions to database: {e}")
 
             self._update_progress(client_id, DiscoveryStatus.IN_PROGRESS, "Updating app status", 80)
 
@@ -413,41 +358,57 @@ class DiscoveryService:
 
             self._update_progress(client_id, DiscoveryStatus.SUCCESS, "Discovery completed", 100)
             
-            # Save discovery to database
+            # Save discovery to database FIRST to get discovery_id
+            discovery_id = None
             try:
                 # Convert discovery_data to dict for storage
                 discovery_dict = discovery_json if discovery_json else discovery_data.dict()
-                history_id = discovery_db.save_discovery_history(
+                discovery_id = discovery_db.save_discovery_history(
                     client_id, 
                     discovery_dict,
-                    discovered_by=app.get("owner_email", "system")
+                    discovered_by=user_email or app.get("owner_email", "system")
                 )
+                logger.info(f"Saved discovery to database with discovery_id: {discovery_id}")
+                
+                # Now save permissions with the discovery_id
+                if discovery_id:
+                    logger.info(f"[DEBUG] Saving permissions with discovery_id: {discovery_id}")
+                    logger.info(f"[DEBUG] Permissions object type: {type(permissions.permissions)}")
+                    logger.info(f"[DEBUG] Permissions keys: {list(permissions.permissions.keys())[:5] if hasattr(permissions.permissions, 'keys') else 'Not a dict'}")
+                    discovery_db.save_discovered_permissions(client_id, permissions.permissions, discovery_id)
+                    logger.info(f"Saved permissions to database for {client_id} with discovery_id: {discovery_id}")
                 
                 # Update app discovery status in database
                 discovery_db.update_app_discovery_status(
                     client_id, 
-                    user_email=app.get("owner_email")
+                    user_email=user_email or app.get("owner_email")
                 )
                 
-                # Log activity
+                # Log activity with discovery_id
                 discovery_db.log_discovery_activity(
                     client_id,
                     app.get("name", "Unknown App"),
-                    user_email=app.get("owner_email"),
+                    user_email=user_email or app.get("owner_email"),
                     details={
                         "endpoints_discovered": len(discovery_data.endpoints or []),
                         "permissions_generated": permissions.total_count,
-                        "history_id": history_id
+                        "discovery_id": discovery_id
                     },
-                    status="success"
+                    status="success",
+                    discovery_id=discovery_id
                 )
                 
-                logger.info(f"Saved discovery to database with history_id: {history_id}")
+                # STEP 5: Generate category-based permissions after all field_metadata is saved
+                logger.info(f"[DISCOVERY] Step 5: Starting category permission generation for {client_id}")
+                categories_created = discovery_db.generate_category_permissions(client_id, discovery_id)
+                logger.info(f"[DISCOVERY] Category permissions created: {categories_created}")
+                
             except Exception as e:
                 logger.error(f"Failed to save discovery to database: {e}")
 
             return {
                 "status": "success",
+                "discovery_id": discovery_id,
                 "endpoints_discovered": len(discovery_data.endpoints or []),
                 "endpoints_stored": endpoints_stored,
                 "services_discovered": len(discovery_data.services or []),
@@ -479,6 +440,22 @@ class DiscoveryService:
 
             # Record failed attempt
             self._record_discovery_attempt(client_id, app, start_time, False, error_type, error_msg, response_time)
+            
+            # Log failure to activity_log with error details
+            try:
+                discovery_db.log_discovery_activity(
+                    client_id,
+                    app.get("name", "Unknown App"),
+                    user_email=user_email or app.get("owner_email"),
+                    details={
+                        "error_type": error_type.value,
+                        "response_time_ms": response_time
+                    },
+                    status="failed",
+                    error_message=error_msg
+                )
+            except Exception as log_err:
+                logger.error(f"Failed to log discovery error: {log_err}")
 
             # Update progress
             self._update_progress(client_id, DiscoveryStatus.FAILED, f"Discovery failed: {error_type.value}", 0, error_msg)
@@ -701,22 +678,19 @@ class DiscoveryService:
                     self._process_fields(app_id, resource, action, field_meta.items.fields, endpoint_id, permissions, f"{field_path}[]")
 
     async def _store_field_metadata(self, app_id: str, discovery: DiscoveryResponse):
+        # NO JSON FILES - metadata stored in database via discovery_db
         try:
-            metadata = {}
-            if FIELD_METADATA_FILE.exists():
-                with open(FIELD_METADATA_FILE, 'r') as f:
-                    metadata = json.load(f)
-            metadata[app_id] = {
+            # Store metadata in database instead of file
+            metadata = {
                 "app_name": discovery.app_name,
                 "last_updated": discovery.last_updated.isoformat(),
                 "endpoints": discovery.dict().get("endpoints", []),
                 "services": discovery.dict().get("services", []),
             }
-            FIELD_METADATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with open(FIELD_METADATA_FILE, 'w') as f:
-                json.dump(metadata, f, indent=2, default=str)
+            # This is already handled by discovery_db.save_discovery_result()
+            logger.debug(f"Field metadata for {app_id} stored in database")
         except Exception as e:
-            logger.error(f"Error storing field metadata: {e}")
+            logger.error(f"Error processing field metadata: {e}")
 
     # Exposed helper methods for UI/administration
     def get_app_permissions(self, app_id: str) -> Optional[DiscoveredPermissions]:

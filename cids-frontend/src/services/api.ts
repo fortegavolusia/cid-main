@@ -20,10 +20,9 @@ class ApiService {
     // Request interceptor to add auth token
     this.api.interceptors.request.use(
       async (config) => {
-        // Skip token for auth endpoints
+        // Skip token for auth endpoints (but NOT for logout - we need the token there)
         if (config.url?.includes('/auth/token') || 
-            config.url?.includes('/auth/login') ||
-            config.url?.includes('/auth/logout')) {
+            config.url?.includes('/auth/login')) {
           return config;
         }
 

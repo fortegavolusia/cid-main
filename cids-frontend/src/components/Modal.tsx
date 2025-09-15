@@ -5,6 +5,7 @@ interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
+  subtitle?: string;
   children: React.ReactNode;
   width?: string;
   maxHeight?: string;
@@ -13,7 +14,8 @@ interface ModalProps {
 const Modal: React.FC<ModalProps> = ({ 
   isOpen, 
   onClose, 
-  title, 
+  title,
+  subtitle, 
   children, 
   width = '80%',
   maxHeight = '80vh' 
@@ -46,7 +48,10 @@ const Modal: React.FC<ModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header">
-          <h2>{title}</h2>
+          <div className="modal-title-group">
+            <h2>{title}</h2>
+            {subtitle && <p className="modal-subtitle">{subtitle}</p>}
+          </div>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         <div className="modal-body">

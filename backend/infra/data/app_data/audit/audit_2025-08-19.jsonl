@@ -1,9 +1,0 @@
-{"timestamp": "2025-08-19T11:57:18.242384", "action": "discovery.triggered", "details": {"app_client_id": "app_8f777f620aac48d1", "triggered_by": "jnbailey@volusia.gov", "force": false, "version": "v2"}}
-{"timestamp": "2025-08-19T17:26:17.769202", "action": "discovery.triggered", "details": {"app_client_id": "app_8f777f620aac48d1", "triggered_by": "jnbailey@volusia.gov", "force": false, "version": "v2"}}
-{"timestamp": "2025-08-19T18:46:42.806065", "action": "discovery.triggered", "details": {"app_client_id": "app_8f777f620aac48d1", "triggered_by": "jnbailey@volusia.gov", "force": false, "version": "v2"}}
-{"timestamp": "2025-08-19T18:47:00.042010", "action": "discovery.triggered", "details": {"app_client_id": "app_8f777f620aac48d1", "triggered_by": "jnbailey@volusia.gov", "force": false, "version": "v2"}}
-{"timestamp": "2025-08-19T18:47:07.156694", "action": "role.deleted", "details": {"app_client_id": "app_8f777f620aac48d1", "role_name": "Product Manager", "deleted_by": "jnbailey@volusia.gov"}}
-{"timestamp": "2025-08-19T18:49:12.353325", "action": "discovery.triggered", "details": {"app_client_id": "app_8f777f620aac48d1", "triggered_by": "jnbailey@volusia.gov", "force": false, "version": "v2"}}
-{"timestamp": "2025-08-19T18:49:37.356324", "action": "discovery.triggered", "details": {"app_client_id": "app_8f777f620aac48d1", "triggered_by": "jnbailey@volusia.gov", "force": false, "version": "v2"}}
-{"timestamp": "2025-08-19T18:50:07.171148", "action": "discovery.triggered", "details": {"app_client_id": "app_8f777f620aac48d1", "triggered_by": "jnbailey@volusia.gov", "force": false, "version": "v2"}}
-{"timestamp": "2025-08-19T23:23:36.511781", "action": "discovery.triggered", "details": {"app_client_id": "app_8f777f620aac48d1", "triggered_by": "jnbailey@volusia.gov", "force": false, "version": "v2"}}

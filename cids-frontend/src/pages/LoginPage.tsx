@@ -14,6 +14,23 @@ const MaterialGlobalStyle = createGlobalStyle`
   }
 `;
 
+// Version ribbon in corner
+const VersionRibbon = styled.div`
+  position: absolute;
+  top: 10px;
+  right: -40px;
+  width: 150px;
+  padding: 5px 0;
+  background: #f0f0f0;
+  color: #a2b5c4ff;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  transform: rotate(45deg);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+  z-index: 10;
+`;
+
 const LoginContainer = styled.div`
   display: flex;
   justify-content: center;
@@ -57,8 +74,8 @@ const Logo = styled.img`
 `;
 
 const LoginButton = styled.button`
-  background: ${materialTheme.colors.primary};
-  color: ${materialTheme.colors.onPrimary};
+  background: #0b3b63;
+  color: #ffffff;
   border: none;
   padding: 14px 24px;
   border-radius: ${materialTheme.borderRadius.md};
@@ -89,7 +106,7 @@ const LoginButton = styled.button`
   }
 
   &:hover {
-    background: ${materialTheme.colors.primaryDark};
+    background: #094054;
     box-shadow: ${materialTheme.elevation[4]};
     transform: translateY(-1px);
   }
@@ -153,20 +170,33 @@ const Subtitle = styled.p`
   z-index: 1;
 `;
 
-// Version badge
-const VersionBadge = styled.div`
-  position: absolute;
-  top: ${materialTheme.spacing.md};
-  right: ${materialTheme.spacing.md};
-  background: transparent;
-  color: #b0b0b0;
-  padding: 4px 12px;
-  border-radius: ${materialTheme.borderRadius.full};
-  font-size: ${materialTheme.typography.labelSmall.fontSize};
-  font-weight: ${materialTheme.typography.labelSmall.fontWeight};
-  letter-spacing: ${materialTheme.typography.labelSmall.letterSpacing};
+const SecurityNotice = styled.div`
+  background: #fff3e0;
+  border: 1px solid #ffb74d;
+  border-radius: ${materialTheme.borderRadius.sm};
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  position: relative;
   z-index: 1;
+  
+  .security-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    color: #f57c00;
+    font-weight: 600;
+    font-size: 14px;
+  }
+  
+  .security-text {
+    font-size: 12px;
+    color: #6d4c41;
+    line-height: 1.5;
+    text-align: left;
+  }
 `;
+
 
 const LoginPage: React.FC = () => {
   const { login, loading, error, clearError } = useAuth();
@@ -181,10 +211,24 @@ const LoginPage: React.FC = () => {
       <MaterialGlobalStyle />
       <LoginContainer>
         <LoginCard>
-          <VersionBadge>v1.0.0</VersionBadge>
+          <VersionRibbon>v1.0.0</VersionRibbon>
           <Logo src={logo} alt="Volusia County Logo" />
           <Title>Volusia County Services</Title>
           <Subtitle>Centralized Identity Discovery Service</Subtitle>
+
+          <SecurityNotice>
+            <div className="security-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
+              </svg>
+              <span>SECURITY NOTICE</span>
+            </div>
+            <div className="security-text">
+              All authentication activities and system access are monitored and logged by Volusia County's Security System. 
+              Unauthorized access attempts will be reported to the appropriate authorities. By proceeding, you acknowledge 
+              that your activities may be audited for security and compliance purposes.
+            </div>
+          </SecurityNotice>
 
           {error && (
             <ErrorMessage>
@@ -194,7 +238,7 @@ const LoginPage: React.FC = () => {
 
           <LoginButton onClick={handleLogin} disabled={loading}>
             {loading && <LoadingSpinner />}
-            {loading ? 'Redirecting...' : 'Sign in with Azure AD'}
+            {loading ? 'Redirecting to Azure AD...' : 'Sign in with Azure AD'}
           </LoginButton>
         </LoginCard>
       </LoginContainer>

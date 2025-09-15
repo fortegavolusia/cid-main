@@ -44,6 +44,27 @@ class AdminService {
     return apiService.get(`/auth/admin/logs/token-activity${usp.toString() ? `?${usp.toString()}` : ''}`);
   }
 
+  async getActivityStats(): Promise<{ items: Array<{ type: string; count: number }>; count: number }> {
+    return apiService.get('/auth/admin/logs/activity-stats');
+  }
+
+  async getActivityLogCount(userEmail?: string): Promise<{ count: number }> {
+    const params = userEmail ? `?user_email=${encodeURIComponent(userEmail)}` : '';
+    return apiService.get(`/auth/admin/logs/activity-count${params}`);
+  }
+
+  async logAppUsage(appName: string, clientId: string): Promise<void> {
+    try {
+      await apiService.post('/auth/admin/log-app-usage', {
+        app_name: appName,
+        client_id: clientId,
+        action: `flw.${appName.toLowerCase()}`
+      });
+    } catch (error) {
+      console.error('Failed to log app usage:', error);
+    }
+  }
+
   async exportLogs(kind: 'app' | 'audit' | 'token-activity', format: 'ndjson' | 'csv' = 'ndjson', limit: number = 50000): Promise<Blob> {
     const path = kind === 'app' ? '/auth/admin/logs/app/export' : kind === 'audit' ? '/auth/admin/logs/audit/export' : '/auth/admin/logs/token-activity/export';
     const usp = new URLSearchParams({ format, limit: String(limit) });
@@ -90,14 +111,7 @@ class AdminService {
     return apiService.get('/auth/admin/apps/stats');
   }
 
-  async getDashboardStats(): Promise<{
-    apps: { total: number; active: number; discovered: number };
-    roles: { total: number };
-    permissions: { total: number };
-    api_keys: { total: number; active: number };
-    tokens: { templates: number };
-    activity: { last_24h: number };
-  }> {
+  async getDashboardStats(): Promise<any> {
     return apiService.get('/auth/admin/dashboard/stats');
   }
 
@@ -135,7 +149,9 @@ class AdminService {
     return apiService.delete(`/auth/admin/apps/${clientId}/api-keys/${keyId}`);
   }
 
-
+  async checkActiveApiKey(clientId: string): Promise<{ has_active_key: boolean }> {
+    return apiService.get(`/auth/admin/apps/${clientId}/has-active-api-key`);
+  }
 
   async rotateAPIKey(
     clientId: string,
@@ -176,7 +192,25 @@ class AdminService {
   }
 
   async triggerDiscovery(clientId: string, force: boolean = true): Promise<any> {
-    return apiService.post(`/discovery/endpoints/${clientId}?force=${force}`);
+    console.log('🚀 [DISCOVERY] ===== INICIANDO PROCESO DE DISCOVERY =====');
+    console.log('📋 [DISCOVERY] Client ID:', clientId);
+    console.log('🔄 [DISCOVERY] Force discovery:', force);
+    console.log('📝 [DISCOVERY] PASOS DEL PROCESO:');
+    console.log('  1️⃣ Obtener endpoints de la aplicación');
+    console.log('  2️⃣ Guardar discovered_permissions (base)');
+    console.log('  3️⃣ Guardar endpoints en discovery_endpoints');
+    console.log('  4️⃣ Guardar field_metadata con flags de sensibilidad');
+    console.log('  5️⃣ Actualizar estado de activity_log');
+    console.log('  6️⃣ RECLASIFICACIÓN: Generar permisos por categoría (pii, phi, financial, sensitive)');
+    console.log('⏳ [DISCOVERY] Enviando petición al backend...');
+    
+    const result = await apiService.post(`/discovery/endpoints/${clientId}?force=${force}`);
+    
+    console.log('✅ [DISCOVERY] Respuesta recibida:', result);
+    console.log('🎯 [DISCOVERY] RECLASIFICACIÓN COMPLETADA - Revisa discovered_permissions para ver categorías');
+    console.log('🔍 [DISCOVERY] Verifica en la BD: SELECT resource, action, category FROM cids.discovered_permissions');
+    
+    return result;
   }
 
   // Enhanced Discovery Methods
@@ -201,6 +235,10 @@ class AdminService {
 
   async getAppPermissionTree(clientId: string): Promise<any> {
     return apiService.get(`/discovery/v2/permissions/${clientId}/tree`);
+  }
+
+  async getPermissionsByCategory(clientId: string): Promise<any> {
+    return apiService.get(`/discovery/permissions/${clientId}/categories`);
   }
 
   // Roles (Admin)
@@ -240,6 +278,10 @@ class AdminService {
     params.append('top', top.toString());
 
     return apiService.get(`/auth/admin/azure-groups?${params.toString()}`);
+  }
+
+  async refreshCache(): Promise<{ status: string; message: string }> {
+    return apiService.post('/auth/admin/refresh-cache');
   }
 
   // Rotation Management
@@ -305,6 +347,46 @@ class AdminService {
     return apiService.post('/auth/token/a2a', body || {}, {
       headers: { Authorization: `Bearer ${apiKey}` }
     });
+  }
+
+  // User Photo Management
+  async getUserPhoto(email: string): Promise<{ has_photo: boolean; photo_path: string | null }> {
+    return apiService.get(`/api/user/photo/${encodeURIComponent(email)}`);
+  }
+
+  // A2A Permission Management
+  async getA2aPermissions(): Promise<any[]> {
+    console.log('🚀 [AdminService] Fetching A2A permissions from backend...');
+    try {
+      const response = await apiService.get('/auth/admin/a2a-permissions');
+      console.log('✅ [AdminService] A2A permissions fetched:', response);
+      return response;
+    } catch (error) {
+      console.error('❌ [AdminService] Error fetching A2A permissions:', error);
+      throw error;
+    }
+  }
+
+  async createA2aPermission(data: any): Promise<any> {
+    return apiService.post('/auth/admin/a2a-permissions', data);
+  }
+
+  async updateA2aPermission(id: string, data: any): Promise<any> {
+    return apiService.put(`/auth/admin/a2a-permissions/${id}`, data);
+  }
+
+  async deleteA2aPermission(id: string): Promise<void> {
+    return apiService.delete(`/auth/admin/a2a-permissions/${id}`);
+  }
+
+  async getRegisteredApps(): Promise<any[]> {
+    try {
+      const response = await apiService.get('/auth/admin/apps');
+      return response || [];
+    } catch (error) {
+      console.error('Failed to get registered apps:', error);
+      return [];
+    }
   }
 }
 

@@ -19,9 +19,12 @@
     "@vitejs/plugin-react": "^4.7.0",
     "antd": "^5.27.1",
     "axios": "^1.11.0",
+    "lucide-react": "^0.544.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^6.30.1",
+    "remark-gfm": "^4.0.1",
     "styled-components": "^6.1.19",
     "vite": "^4.5.14"
   },

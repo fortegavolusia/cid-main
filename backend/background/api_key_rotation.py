@@ -8,58 +8,32 @@ import json
 from services.api_keys import api_key_manager, APIKeyTTL
 from services.audit import audit_logger, AuditAction
 from utils.paths import data_path
+from services.database import db_service
 
 logger = logging.getLogger(__name__)
 
-ROTATION_POLICY_FILE = data_path("rotation_policies.json")
 NOTIFICATIONS_FILE = data_path("rotation_notifications.jsonl")
 
 
 class APIKeyRotationScheduler:
     def __init__(self):
         self.running = False
-        self.rotation_policies = {}
-        self._load_policies()
 
-    def _load_policies(self):
-        try:
-            if ROTATION_POLICY_FILE.exists():
-                with open(ROTATION_POLICY_FILE, 'r') as f:
-                    self.rotation_policies = json.load(f)
-            else:
-                self.rotation_policies = {
-                    "default": {
-                        "days_before_expiry": 7,
-                        "grace_period_hours": 24,
-                        "auto_rotate": True,
-                        "notify_webhook": None,
-                    }
-                }
-                self._save_policies()
-        except Exception as e:
-            logger.error(f"Error loading rotation policies: {e}")
-            self.rotation_policies = {}
-
-    def _save_policies(self):
-        try:
-            ROTATION_POLICY_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with open(ROTATION_POLICY_FILE, 'w') as f:
-                json.dump(self.rotation_policies, f, indent=2)
-        except Exception as e:
-            logger.error(f"Error saving rotation policies: {e}")
+    # Methods removed - using database now
 
     def set_app_rotation_policy(self, app_client_id: str, days_before_expiry: int = 7, grace_period_hours: int = 24, auto_rotate: bool = True, notify_webhook: Optional[str] = None):
-        self.rotation_policies[app_client_id] = {
-            "days_before_expiry": days_before_expiry,
-            "grace_period_hours": grace_period_hours,
-            "auto_rotate": auto_rotate,
-            "notify_webhook": notify_webhook,
-        }
-        self._save_policies()
-        logger.info(f"Updated rotation policy for app {app_client_id}")
+        success = db_service.save_rotation_policy(
+            app_client_id=app_client_id,
+            days_before_expiry=days_before_expiry,
+            grace_period_hours=grace_period_hours,
+            auto_rotate=auto_rotate,
+            notify_webhook=notify_webhook
+        )
+        if success:
+            logger.info(f"Updated rotation policy for app {app_client_id}")
 
     def get_app_rotation_policy(self, app_client_id: str) -> dict:
-        return self.rotation_policies.get(app_client_id, self.rotation_policies.get("default", {}))
+        return db_service.get_rotation_policy(app_client_id)
 
     async def check_and_rotate_keys(self):
         logger.info("Checking for API keys needing rotation...")

@@ -119,26 +119,28 @@ def load_data():
 
 
 def save_data():
-    try:
-        temp_apps = APPS_FILE.with_suffix('.tmp')
-        temp_mappings = ROLE_MAPPINGS_FILE.with_suffix('.tmp')
-        temp_a2a_mappings = A2A_MAPPINGS_FILE.with_suffix('.tmp')
-        APPS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(temp_apps, 'w') as f:
-            json.dump(registered_apps, f, indent=2)
-            f.write('\n')
-        with open(temp_mappings, 'w') as f:
-            json.dump(app_role_mappings, f, indent=2)
-            f.write('\n')
-        with open(temp_a2a_mappings, 'w') as f:
-            json.dump(a2a_role_mappings, f, indent=2)
-            f.write('\n')
-        temp_apps.replace(APPS_FILE)
-        temp_mappings.replace(ROLE_MAPPINGS_FILE)
-        temp_a2a_mappings.replace(A2A_MAPPINGS_FILE)
-    except Exception as e:
-        logger.error(f"Error saving data: {e}", exc_info=True)
-        raise
+    # NO GUARDAR EN JSON - Solo usar base de datos
+    pass
+    # try:
+    #     temp_apps = APPS_FILE.with_suffix('.tmp')
+    #     temp_mappings = ROLE_MAPPINGS_FILE.with_suffix('.tmp')
+    #     temp_a2a_mappings = A2A_MAPPINGS_FILE.with_suffix('.tmp')
+    #     APPS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    #     with open(temp_apps, 'w') as f:
+    #         json.dump(registered_apps, f, indent=2)
+    #         f.write('\n')
+    #     with open(temp_mappings, 'w') as f:
+    #         json.dump(app_role_mappings, f, indent=2)
+    #         f.write('\n')
+    #     with open(temp_a2a_mappings, 'w') as f:
+    #         json.dump(a2a_role_mappings, f, indent=2)
+    #         f.write('\n')
+    #     temp_apps.replace(APPS_FILE)
+    #     temp_mappings.replace(ROLE_MAPPINGS_FILE)
+    #     temp_a2a_mappings.replace(A2A_MAPPINGS_FILE)
+    # except Exception as e:
+    #     logger.error(f"Error saving data: {e}", exc_info=True)
+    #     raise
 
 
 registered_apps: Dict[str, dict] = {}
@@ -225,35 +227,131 @@ class AppRegistrationStore:
         return True
 
     def set_role_mappings(self, client_id: str, mappings: Dict[str, Union[str, List[str]]], created_by: str) -> bool:
+        """Save role mappings to app_role_mappings table"""
         if client_id not in registered_apps:
-            return False
-        app_role_mappings[client_id] = []
-        for ad_group, app_roles in mappings.items():
-            if isinstance(app_roles, str):
-                app_roles = [app_roles]
-            for app_role in app_roles:
-                mapping = {
-                    "ad_group": ad_group,
-                    "app_role": app_role,
-                    "created_by": created_by,
-                    "created_at": datetime.utcnow().isoformat(),
-                }
-                app_role_mappings[client_id].append(mapping)
-        save_data()
-        return True
+            # Check database for app
+            from services.database import db_service
+            app = db_service.get_app_by_id(client_id)
+            if not app:
+                return False
+        
+        try:
+            from services.database import db_service
+            import uuid
+            
+            # Clear existing mappings for this client
+            db_service.execute_update("""
+                DELETE FROM cids.app_role_mappings 
+                WHERE client_id = %s
+            """, (client_id,))
+            
+            # Add new mappings
+            for ad_group, app_roles in mappings.items():
+                if isinstance(app_roles, str):
+                    app_roles = [app_roles]
+                for app_role in app_roles:
+                    # First ensure the role exists in role_metadata
+                    role = db_service.execute_query("""
+                        SELECT role_id FROM cids.role_metadata 
+                        WHERE client_id = %s AND role_name = %s
+                    """, (client_id, app_role))
+                    
+                    if not role:
+                        # Role doesn't exist - skip this mapping
+                        # The role should be created first through createRolePermissions
+                        logger.warning(f"Role {app_role} does not exist for client {client_id}. Skipping mapping.")
+                        continue
+                    else:
+                        role_id = role[0]['role_id']
+                    
+                    # Now insert the mapping with rol_id
+                    mapping_uuid = f"map_{uuid.uuid4().hex[:12]}"
+                    db_service.execute_update("""
+                        INSERT INTO cids.app_role_mappings 
+                        (mapping_uuid, client_id, ad_group_name, role_name, rol_id, created_at, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
+                    """, (mapping_uuid, client_id, ad_group, app_role, role_id))
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error saving role mappings to database: {e}")
+            # Fallback to JSON for now
+            app_role_mappings[client_id] = []
+            for ad_group, app_roles in mappings.items():
+                if isinstance(app_roles, str):
+                    app_roles = [app_roles]
+                for app_role in app_roles:
+                    mapping = {
+                        "ad_group": ad_group,
+                        "app_role": app_role,
+                        "created_by": created_by,
+                        "created_at": datetime.utcnow().isoformat(),
+                    }
+                    app_role_mappings[client_id].append(mapping)
+            save_data()
+            return True
 
     def get_role_mappings(self, client_id: str) -> List[dict]:
-        return app_role_mappings.get(client_id, [])
+        """Get role mappings from app_role_mappings table"""
+        try:
+            from services.database import db_service
+            
+            # Get all mappings for this client from app_role_mappings table
+            mappings_data = db_service.execute_query("""
+                SELECT ad_group_name, role_name, created_at 
+                FROM cids.app_role_mappings 
+                WHERE client_id = %s
+                ORDER BY role_name, ad_group_name
+            """, (client_id,))
+            
+            mappings = []
+            if mappings_data:
+                for mapping in mappings_data:
+                    mappings.append({
+                        'ad_group': mapping['ad_group_name'],
+                        'app_role': mapping['role_name']
+                    })
+            
+            return mappings
+        except Exception as e:
+            logger.error(f"Error getting role mappings from database: {e}")
+            # Fallback to JSON for now
+            return app_role_mappings.get(client_id, [])
 
     def get_user_roles_for_app(self, client_id: str, user_groups: List[str]) -> List[str]:
-        mappings = app_role_mappings.get(client_id, [])
-        user_roles = []
-        for mapping in mappings:
-            if mapping["ad_group"] in user_groups:
-                role = mapping["app_role"]
-                if role not in user_roles:
-                    user_roles.append(role)
-        return user_roles
+        """Get user roles based on their AD groups from database"""
+        try:
+            from services.database import db_service
+            
+            if not user_groups:
+                return []
+            
+            # Query the database for matching mappings
+            placeholders = ','.join(['%s'] * len(user_groups))
+            query = f"""
+                SELECT DISTINCT role_name 
+                FROM cids.app_role_mappings 
+                WHERE client_id = %s 
+                AND ad_group_name IN ({placeholders})
+            """
+            params = [client_id] + user_groups
+            
+            roles_data = db_service.execute_query(query, params)
+            
+            if roles_data:
+                return [role['role_name'] for role in roles_data]
+            return []
+        except Exception as e:
+            logger.error(f"Error getting user roles from database: {e}")
+            # Fallback to JSON
+            mappings = app_role_mappings.get(client_id, [])
+            user_roles = []
+            for mapping in mappings:
+                if mapping["ad_group"] in user_groups:
+                    role = mapping["app_role"]
+                    if role not in user_roles:
+                        user_roles.append(role)
+            return user_roles
 
     # A2A (App-to-App) Role Mappings Methods
     def get_a2a_mappings(self) -> Dict[str, Dict[str, List[str]]]:

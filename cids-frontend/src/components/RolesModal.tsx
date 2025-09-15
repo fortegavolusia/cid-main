@@ -1,16 +1,380 @@
 import React, { useState, useEffect } from 'react';
+import styled from 'styled-components';
 import Modal from './Modal';
 import PermissionSelector from './PermissionSelector';
 import adminService from '../services/adminService';
+import apiService from '../services/api';
 import './RolesModal.css';
+
+// Styled Components for Role Cards (similar to App Administration)
+const RolesGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+`;
+
+const RoleCard = styled.div<{ $isActive?: boolean }>`
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  position: relative;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+  
+  &:hover {
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+  }
+`;
+
+const ActiveRibbon = styled.div`
+  position: absolute;
+  top: 10px;
+  right: -25px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  padding: 4px 28px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transform: rotate(45deg);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+  z-index: 10;
+`;
+
+const InactiveRibbon = styled.div`
+  position: absolute;
+  top: 10px;
+  right: -25px;
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: #7c2d12;
+  padding: 4px 28px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transform: rotate(45deg);
+  box-shadow: 0 2px 8px rgba(251, 191, 36, 0.3);
+  z-index: 10;
+`;
+
+const RoleCardHeader = styled.div<{ $isActive?: boolean }>`
+  position: relative;
+  padding: 12px 16px;
+  background: #0b3b63;
+  border-bottom: 1px solid #0a2d4d;
+`;
+
+const RoleName = styled.h3`
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const ToggleButton = styled.button<{ $isActive: boolean }>`
+  position: absolute;
+  bottom: 12px;
+  right: 50px;
+  width: 48px;
+  height: 24px;
+  border-radius: 12px;
+  background: ${props => props.$isActive ? '#10b981' : '#6b7280'};
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px;
+  font-size: 9px;
+  font-weight: 700;
+  color: white;
+  z-index: 2;
+  
+  &:hover {
+    opacity: 0.9;
+    transform: scale(1.05);
+  }
+  
+  &::before {
+    content: ${props => props.$isActive ? "'ON'" : "''"};
+    margin-left: 2px;
+    opacity: ${props => props.$isActive ? '1' : '0'};
+    transition: opacity 0.3s ease;
+  }
+  
+  &::after {
+    content: ${props => props.$isActive ? "''" : "'OFF'"};
+    position: static;
+    margin-right: 2px;
+    opacity: ${props => props.$isActive ? '0' : '1'};
+    transition: opacity 0.3s ease;
+  }
+`;
+
+const ToggleSlider = styled.span<{ $isActive: boolean }>`
+  position: absolute;
+  top: 2px;
+  left: ${props => props.$isActive ? '26px' : '2px'};
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+  z-index: 1;
+`;
+
+const RoleCardBody = styled.div`
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #fafbfc;
+`;
+
+const RoleInfo = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const InfoRow = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: #4b5563;
+  
+  i {
+    width: 16px;
+    color: #9ca3af;
+    margin-top: 2px;
+    font-size: 12px;
+  }
+  
+  strong {
+    font-weight: 600;
+    color: #1f2937;
+  }
+`;
+
+const CardActions = styled.div`
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+`;
+
+const ActionButton = styled.button`
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #0b3b63;
+  background: white;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #0b3b63;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  
+  &:hover {
+    background: #f0f7ff;
+    border-color: #0a3357;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(11, 59, 99, 0.15);
+  }
+  
+  &.primary {
+    background: white;
+    color: #0b3b63;
+    border-color: #0b3b63;
+    
+    &:hover {
+      background: #f0f7ff;
+      border-color: #0a3357;
+    }
+  }
+  
+  &.danger {
+    background: white;
+    color: #ef4444;
+    border-color: #ef4444;
+    
+    &:hover {
+      background: #fef2f2;
+      border-color: #dc2626;
+      color: #dc2626;
+    }
+  }
+  
+  i {
+    font-size: 10px;
+  }
+`;
+
+const PermissionBadge = styled.span`
+  background: #dbeafe;
+  color: #1e40af;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: auto;
+`;
+
+const CreateRoleButton = styled.button`
+  padding: 10px 20px;
+  background: #0b3b63;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  
+  &:hover {
+    background: #0a3357;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(11, 59, 99, 0.2);
+  }
+`;
+
+// Styled components for Create Role Modal
+const ModalContent = styled.div`
+  padding: 0;
+`;
+
+const ModalTitle = styled.div`
+  background: #0b3b63;
+  color: white;
+  padding: 16px 24px;
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: -20px -20px 24px -20px;
+  border-radius: 8px 8px 0 0;
+`;
+
+const FormGroup = styled.div`
+  margin-bottom: 20px;
+`;
+
+const Label = styled.label`
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #374151;
+  font-size: 0.9rem;
+  
+  span {
+    color: #ef4444;
+    margin-left: 2px;
+  }
+`;
+
+const Input = styled.input`
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  transition: all 0.2s;
+  
+  &:focus {
+    outline: none;
+    border-color: #0b3b63;
+    box-shadow: 0 0 0 3px rgba(11, 59, 99, 0.1);
+  }
+`;
+
+const Textarea = styled.textarea`
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  resize: vertical;
+  min-height: 80px;
+  transition: all 0.2s;
+  
+  &:focus {
+    outline: none;
+    border-color: #0b3b63;
+    box-shadow: 0 0 0 3px rgba(11, 59, 99, 0.1);
+  }
+`;
+
+const ModalActions = styled.div`
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 32px;
+  padding: 24px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  margin-left: -20px;
+  margin-right: -20px;
+  margin-bottom: -20px;
+`;
+
+const ModalButton = styled.button`
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 100px;
+  
+  &.primary {
+    background: #0b3b63;
+    color: white !important;
+    border: none;
+    
+    &:hover {
+      background: #0a3357;
+      color: white !important;
+    }
+  }
+  
+  &.secondary {
+    background: white;
+    color: #4a5568;
+    border: 1px solid #e2e8f0;
+    
+    &:hover {
+      background: #f7fafc;
+      color: #4a5568;
+    }
+  }
+`;
 
 interface Role {
   id?: string;
   name: string;
   description?: string;
-  ad_groups: string[];  // Changed to array for multiple groups
+  ad_groups: string[];
   permissions: string[];
   resource_scopes?: string[];
+  is_active?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -63,54 +427,6 @@ const RolesModal: React.FC<RolesModalProps> = ({
     }
   }, [isOpen, clientId]);
 
-  // Handle Azure AD group search with debounce
-  useEffect(() => {
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-
-    if (groupInput.trim().length > 0) {
-      setLoadingSuggestions(true);
-      searchTimeoutRef.current = setTimeout(async () => {
-        try {
-          const response = await adminService.searchAzureGroups(groupInput);
-          setGroupSuggestions(response.groups || []);
-          setShowSuggestions(true);
-          setSelectedSuggestionIndex(-1);
-        } catch (error) {
-          console.error('Error searching Azure groups:', error);
-          setGroupSuggestions([]);
-        } finally {
-          setLoadingSuggestions(false);
-        }
-      }, 300); // 300ms debounce
-    } else {
-      setGroupSuggestions([]);
-      setShowSuggestions(false);
-      setLoadingSuggestions(false);
-    }
-
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
-  }, [groupInput]);
-
-  // Handle clicks outside suggestions
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node)) {
-        setShowSuggestions(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
   const fetchRoles = async () => {
     setLoading(true);
     setError(null);
@@ -146,24 +462,52 @@ const RolesModal: React.FC<RolesModalProps> = ({
           ad_groups: adGroups,
           permissions,
           resource_scopes: resourceScopes,
-          metadata: {} as any
+          is_active: true, // Default to active, will be updated from metadata
+          metadata: {} as any,
+          description: '' // Initialize description
         } as any;
       });
 
       // Merge in roles from permission registry (to include A2A-only roles)
+      // ALWAYS force database read to get real-time data
       try {
-        const rolesMap = await adminService.getAppRolesWithMetadata(clientId);
+        // Force database read by calling the endpoint directly with use_cache=false
+        const response = await apiService.get(`/permissions/${clientId}/roles?use_cache=false`);
+        const rolesMap = response?.roles || {};
+        console.log('Roles metadata from DATABASE:', rolesMap);
         const hideA2A = localStorage.getItem(`hide_a2a_only_${clientId}`) === 'true';
         for (const [roleName, info] of Object.entries(rolesMap)) {
           if (hideA2A && info.metadata?.a2a_only) continue;
-          if (!rolesData.find(r => r.name === roleName)) {
-            rolesData.push({ id: `meta_${roleName}`, name: roleName, ad_groups: [], permissions: info.permissions || [], resource_scopes: [], metadata: info.metadata as any } as any);
+          const existingRole = rolesData.find(r => r.name === roleName);
+          if (!existingRole) {
+            console.log(`Role ${roleName} metadata:`, info.metadata, 'is_active:', info.metadata?.is_active);
+            rolesData.push({ 
+              id: `meta_${roleName}`, 
+              name: roleName, 
+              ad_groups: [], 
+              permissions: info.permissions || [], 
+              resource_scopes: [], 
+              is_active: info.metadata?.is_active === true || info.metadata?.is_active === 1,
+              metadata: info.metadata as any,
+              description: info.metadata?.description || '',
+              a2a_only: info.metadata?.a2a_only || false
+            } as any);
           } else {
-            const idx = rolesData.findIndex(r => r.name === roleName);
-            (rolesData[idx] as any).metadata = info.metadata;
+            console.log(`Updating existing role ${roleName} metadata:`, info.metadata, 'is_active:', info.metadata?.is_active, 'type:', typeof info.metadata?.is_active);
+            console.log(`Updating existing role ${roleName} permissions:`, info.permissions);
+            existingRole.metadata = info.metadata;
+            // Handle both boolean true and numeric 1
+            existingRole.is_active = info.metadata?.is_active === true || info.metadata?.is_active === 1;
+            // Set description from metadata
+            existingRole.description = info.metadata?.description || '';
+            existingRole.a2a_only = info.metadata?.a2a_only || false;
+            // IMPORTANT: Update permissions from database
+            existingRole.permissions = info.permissions || [];
           }
         }
-      } catch {}
+      } catch (err) {
+        console.error('Error loading roles metadata:', err);
+      }
 
       setRoles(rolesData);
     } catch (err) {
@@ -186,85 +530,29 @@ const RolesModal: React.FC<RolesModalProps> = ({
     setGroupInput('');
   };
 
-  const handleSaveNewRole = async () => {
-    if (!newRole.name) {
-      alert('Please provide a role name');
+  const handleToggleRoleStatus = async (role: Role) => {
+    const newStatus = !role.is_active;
+    const action = newStatus ? 'activate' : 'deactivate';
+    
+    if (!confirm(`Are you sure you want to ${action} "${role.name}"?`)) {
       return;
     }
-    if (!newRoleA2AOnly && newRole.ad_groups.length === 0) {
-      alert('Please add at least one AD group or mark the role as A2A only');
-      return;
-    }
-
+    
     try {
-      // Create mappings object - backend expects Dict[str, Union[str, List[str]]]
-      const mappingsDict: Record<string, string | string[]> = {};
-
-      // Add existing roles to mappings
-      roles.forEach(role => {
-        role.ad_groups.forEach(group => {
-          if (mappingsDict[group]) {
-            // If group already has a role, make it an array
-            if (typeof mappingsDict[group] === 'string') {
-              mappingsDict[group] = [mappingsDict[group] as string, role.name];
-            } else {
-              (mappingsDict[group] as string[]).push(role.name);
-            }
-          } else {
-            mappingsDict[group] = role.name;
-          }
-        });
+      // Update ONLY the status in backend - don't send permissions
+      await adminService.updateRolePermissions(clientId, role.name, {
+        is_active: newStatus
       });
-
-      // Add new role mappings
-      newRole.ad_groups.forEach(group => {
-        if (mappingsDict[group]) {
-          // If group already has a role, make it an array
-          if (typeof mappingsDict[group] === 'string') {
-            mappingsDict[group] = [mappingsDict[group] as string, newRole.name];
-          } else {
-            (mappingsDict[group] as string[]).push(newRole.name);
-          }
-        } else {
-          mappingsDict[group] = newRole.name;
-        }
-      });
-
-      await adminService.setRoleMappings(clientId, mappingsDict);
-
-      // Create the role in the backend permission registry with empty permissions
-      // This ensures the role exists in the backend for later permission updates
-      try {
-        const token = localStorage.getItem('access_token');
-        if (token) {
-          await adminService.createRolePermissions(clientId, {
-            role_name: newRole.name,
-            permissions: [],  // Start with empty permissions
-            denied_permissions: [],  // Start with empty denied permissions
-            description: newRole.description || `Role for ${newRole.ad_groups.join(', ')}`,
-            a2a_only: newRoleA2AOnly
-          });
-          console.log(`Role ${newRole.name} created in backend permission registry`);
-        }
-      } catch (error) {
-        console.error('Error creating role in permission registry:', error);
-        // Don't fail the whole operation if this fails
-      }
-
-      // Refresh roles
-      await fetchRoles();
-      setCreateMode(false);
-      setNewRole({
-        name: '',
-        description: '',
-        ad_groups: [],
-        permissions: [],
-        resource_scopes: []
-      });
-      setGroupInput('');
+      
+      // Update local state
+      setRoles(roles.map(r => 
+        r.id === role.id ? { ...r, is_active: newStatus } : r
+      ));
+      
+      alert(`Role "${role.name}" has been ${newStatus ? 'activated' : 'deactivated'} successfully!`);
     } catch (err) {
-      console.error('Error creating role:', err);
-      alert('Failed to create role');
+      console.error(`Failed to ${action} role:`, err);
+      alert(`Failed to ${action} role`);
     }
   };
 
@@ -273,128 +561,8 @@ const RolesModal: React.FC<RolesModalProps> = ({
     setPermissionSelectorOpen(true);
   };
 
-  const handleEditGroups = (roleId: string) => {
-    setEditingGroups(roleId);
-    setGroupInput('');
-  };
-
-  const handleSelectSuggestion = (groupName: string, role?: Role) => {
-    if (role) {
-      // Adding to existing role
-      handleAddGroup(role, groupName);
-    } else if (createMode) {
-      // Adding to new role
-      setNewRole({
-        ...newRole,
-        ad_groups: [...newRole.ad_groups, groupName]
-      });
-    }
-    setGroupInput('');
-    setShowSuggestions(false);
-    setGroupSuggestions([]);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent, role?: Role) => {
-    if (!showSuggestions || groupSuggestions.length === 0) return;
-
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault();
-        setSelectedSuggestionIndex(prev =>
-          prev < groupSuggestions.length - 1 ? prev + 1 : prev
-        );
-        break;
-      case 'ArrowUp':
-        e.preventDefault();
-        setSelectedSuggestionIndex(prev => prev > 0 ? prev - 1 : -1);
-        break;
-      case 'Enter':
-        e.preventDefault();
-        if (selectedSuggestionIndex >= 0 && selectedSuggestionIndex < groupSuggestions.length) {
-          handleSelectSuggestion(groupSuggestions[selectedSuggestionIndex].displayName, role);
-        }
-        break;
-      case 'Escape':
-        setShowSuggestions(false);
-        break;
-    }
-  };
-
-  const handleAddGroup = async (role: Role, groupName?: string) => {
-    const groupToAdd = groupName || groupInput.trim();
-    if (!groupToAdd) return;
-
-    try {
-      const updatedRole = {
-        ...role,
-        ad_groups: [...role.ad_groups, groupToAdd]
-      };
-
-      // Update all mappings - convert to dictionary format
-      const mappingsDict: Record<string, string | string[]> = {};
-      roles.forEach(r => {
-        const groupList = r.id === role.id ? updatedRole.ad_groups : r.ad_groups;
-        groupList.forEach(group => {
-          if (mappingsDict[group]) {
-            // If group already exists, make it an array
-            if (Array.isArray(mappingsDict[group])) {
-              (mappingsDict[group] as string[]).push(r.name);
-            } else {
-              mappingsDict[group] = [mappingsDict[group] as string, r.name];
-            }
-          } else {
-            mappingsDict[group] = r.name;
-          }
-        });
-      });
-
-      await adminService.setRoleMappings(clientId, mappingsDict);
-      await fetchRoles();
-      setGroupInput('');
-    } catch (err) {
-      console.error('Error adding AD group:', err);
-      alert('Failed to add AD group');
-    }
-  };
-
-  const handleRemoveGroup = async (role: Role, groupToRemove: string) => {
-    if (role.ad_groups.length === 1) {
-      alert('A role must have at least one AD group');
-      return;
-    }
-
-    try {
-      const updatedRole = {
-        ...role,
-        ad_groups: role.ad_groups.filter(g => g !== groupToRemove)
-      };
-
-      // Update all mappings - convert to dictionary format
-      const mappingsDict: Record<string, string | string[]> = {};
-      roles.forEach(r => {
-        const groupList = r.id === role.id ? updatedRole.ad_groups : r.ad_groups;
-        groupList.forEach(group => {
-          if (mappingsDict[group]) {
-            // If group already exists, make it an array
-            if (Array.isArray(mappingsDict[group])) {
-              (mappingsDict[group] as string[]).push(r.name);
-            } else {
-              mappingsDict[group] = [mappingsDict[group] as string, r.name];
-            }
-          } else {
-            mappingsDict[group] = r.name;
-          }
-        });
-      });
-
-      await adminService.setRoleMappings(clientId, mappingsDict);
-      await fetchRoles();
-    } catch (err) {
-      console.error('Error removing AD group:', err);
-      alert('Failed to remove AD group');
-    }
-  };
-
+  // Función de eliminación comentada - ahora usamos desactivación para mantener integridad referencial
+  /*
   const handleDeleteRole = async (role: Role) => {
     if (!confirm(`Are you sure you want to delete the role "${role.name}"?`)) {
       return;
@@ -407,17 +575,15 @@ const RolesModal: React.FC<RolesModalProps> = ({
         console.log(`Deleted permissions for role: ${role.name}`);
       } catch (err) {
         console.error('Error deleting role permissions:', err);
-        // Continue with role deletion even if permission deletion fails
       }
 
-      // Remove this role from mappings - convert to dictionary format
+      // Remove this role from mappings
       const mappingsDict: Record<string, string | string[]> = {};
       roles
         .filter(r => r.id !== role.id)
         .forEach(r => {
           r.ad_groups.forEach(group => {
             if (mappingsDict[group]) {
-              // If group already exists, make it an array
               if (Array.isArray(mappingsDict[group])) {
                 (mappingsDict[group] as string[]).push(r.name);
               } else {
@@ -442,194 +608,116 @@ const RolesModal: React.FC<RolesModalProps> = ({
       alert('Failed to delete role');
     }
   };
+  */
 
-  const handlePermissionsUpdate = async (permissions: string[], deniedPermissions: string[], resourceScopes: string[], savedFilters: Record<string, Array<{ id: string; expression: string; timestamp: string }>>) => {
-    console.log('handlePermissionsUpdate called with:', {
-      permissions,
-      deniedPermissions,
-      resourceScopes,
-      savedFilters
-    });
-
-    if (selectedRole) {
-      // Update the role's permissions
-      const updatedRole = {
-        ...selectedRole,
+  const handlePermissionsUpdate = async (permissions: string[], deniedPermissions: string[], resourceScopes: string[], savedFilters: any) => {
+    if (!selectedRole) return;
+    
+    try {
+      // Call backend to update permissions
+      await adminService.updateRolePermissions(clientId, selectedRole.name, {
         permissions,
-        resource_scopes: resourceScopes
-      };
-
-      try {
-        // Save permissions to backend
-        const token = localStorage.getItem('access_token');
-        if (!token) {
-          throw new Error('No access token found');
-        }
-
-        // Format permissions for backend API - add app prefix
-        const formattedPermissions = permissions.map(perm => {
-          // If permission doesn't already have the app prefix, add it
-          if (!perm.startsWith(clientId)) {
-            return `${clientId}.${perm}`;
-          }
-          return perm;
-        });
-
-        // Format denied permissions for backend API - add app prefix
-        const formattedDeniedPermissions = deniedPermissions.map(perm => {
-          // If permission doesn't already have the app prefix, add it
-          if (!perm.startsWith(clientId)) {
-            return `${clientId}.${perm}`;
-          }
-          return perm;
-        });
-
-        console.log('After formatting:', {
-          formattedPermissions,
-          formattedDeniedPermissions
-        });
-
-        // Also add field-level permissions for fields that have RLS filters
-        // Parse resource scopes to extract field permissions
-        const fieldPermissions = new Set(formattedPermissions);
-        resourceScopes.forEach(scope => {
-          // Format: "field:resource.action.field:expression" or "resource.action.field:expression"
-          // Find the last colon to get the expression separator
-          const lastColonIndex = scope.lastIndexOf(':');
-          if (lastColonIndex > -1) {
-            let fieldPath = scope.substring(0, lastColonIndex);
-            // Remove "field:" prefix if present
-            if (fieldPath.startsWith('field:')) {
-              fieldPath = fieldPath.substring(6);
-            }
-            // Add the field permission with app prefix
-            const fieldPerm = fieldPath.startsWith(clientId) ? fieldPath : `${clientId}.${fieldPath}`;
-            fieldPermissions.add(fieldPerm);
-          }
-        });
-
-        const allPermissions = Array.from(fieldPermissions);
-
-        // Use adminService to save permissions to backend with RLS filters
-        console.log('Sending to backend:', {
-          permissions: formattedPermissions,
-          denied_permissions: formattedDeniedPermissions,
-          description: selectedRole.description || `Role with ${permissions.length} allowed, ${deniedPermissions.length} denied permissions and ${resourceScopes.length} RLS filters`,
-          rls_filters: savedFilters
-        });
-
-        const result = await adminService.updateRolePermissions(clientId, selectedRole.name, {
-          permissions: formattedPermissions,
-          denied_permissions: formattedDeniedPermissions,
-          description: selectedRole.description || `Role with ${permissions.length} allowed, ${deniedPermissions.length} denied permissions and ${resourceScopes.length} RLS filters`,
-          rls_filters: savedFilters
-        });
-
-        console.log('Permissions saved to backend:', result);
-
-        // Update local state
-        setRoles(roles.map(r => r.id === selectedRole.id ? updatedRole : r));
-
-        alert(`Permissions saved successfully! ${result.valid_count || 0} allowed and ${result.denied_count || 0} denied permissions were saved to the backend.`);
-      } catch (error) {
-        console.error('Error saving permissions to backend:', error);
-        alert(`Failed to save permissions to backend: ${error.message}\n\nThe permissions have been saved locally but may not be reflected in your token until saved to the backend.`);
-
-        // Still update local state even if backend save fails
-        setRoles(roles.map(r => r.id === selectedRole.id ? updatedRole : r));
-      }
+        denied_permissions: deniedPermissions,
+        description: selectedRole.description,
+        rls_filters: savedFilters,
+        a2a_only: selectedRole.a2a_only
+      });
+      
+      console.log('Permissions updated successfully in backend');
+      
+      // Refresh roles to get updated data
+      await fetchRoles();
+      setPermissionSelectorOpen(false);
+      setSelectedRole(null);
+    } catch (err) {
+      console.error('Failed to update permissions:', err);
+      alert('Failed to update permissions. Please try again.');
     }
   };
 
-  const handleExportRole = (role: any) => {
-    // Load the full configuration from localStorage
-    const unifiedKey = `cids_unified_role_${clientId}_${role.name}`;
-    const saved = localStorage.getItem(unifiedKey);
-
-    let exportData: any = {
-      app_id: clientId,
-      app_name: appName,
-      role_name: role.name,
-      ad_groups: role.ad_groups,
-      permissions: [],
-      rls_filters: [],
-      exported_at: new Date().toISOString()
-    };
-
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-
-        // Format permissions for database
-        exportData.permissions = parsed.permissions?.map((perm: string) => {
-          const [resource, action] = perm.split('.');
-          return {
-            endpoint: perm,
-            resource: resource,
-            action: action,
-            allowed: true
-          };
-        }) || [];
-
-        // Format RLS filters for database
-        if (parsed.savedFilters) {
-          exportData.rls_filters = Object.entries(parsed.savedFilters).flatMap(([key, filters]: [string, any]) => {
-            if (Array.isArray(filters)) {
-              return filters.map((filter: any) => {
-                const [type, path] = key.split(':');
-                return {
-                  filter_type: type,
-                  filter_path: path,
-                  expression: filter.expression,
-                  created_at: filter.timestamp
-                };
-              });
-            }
-            return [];
-          });
-        }
-
-        // Add summary statistics
-        exportData.summary = {
-          total_permissions: exportData.permissions.length,
-          total_rls_filters: exportData.rls_filters.length,
-          resources: [...new Set(exportData.permissions.map((p: any) => p.resource))],
-          actions: [...new Set(exportData.permissions.map((p: any) => p.action))]
-        };
-      } catch (e) {
-        console.error('Error parsing saved role data:', e);
-      }
-    } else {
-      // Use basic data if no saved config exists
-      exportData.permissions = role.permissions?.map((perm: string) => {
-        const [resource, action] = perm.split('.');
-        return {
-          endpoint: perm,
-          resource: resource || perm,
-          action: action || '',
-          allowed: true
-        };
-      }) || [];
-
-      exportData.summary = {
-        total_permissions: role.permissions?.length || 0,
-        total_rls_filters: role.resource_scopes?.length || 0
-      };
+  const handleSaveNewRole = async () => {
+    if (!newRole.name) {
+      alert('Please provide a role name');
+      return;
+    }
+    if (!newRoleA2AOnly && newRole.ad_groups.length === 0) {
+      alert('Please add at least one AD group or mark the role as A2A only');
+      return;
     }
 
-    // Create and download the JSON file
-    const jsonStr = JSON.stringify(exportData, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${clientId}_${role.name}_permissions_${Date.now()}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    try {
+      // Create mappings object
+      const mappingsDict: Record<string, string | string[]> = {};
 
-    console.log('Exported role configuration:', exportData);
+      // Add existing roles to mappings
+      roles.forEach(role => {
+        role.ad_groups.forEach(group => {
+          if (mappingsDict[group]) {
+            if (typeof mappingsDict[group] === 'string') {
+              mappingsDict[group] = [mappingsDict[group] as string, role.name];
+            } else {
+              (mappingsDict[group] as string[]).push(role.name);
+            }
+          } else {
+            mappingsDict[group] = role.name;
+          }
+        });
+      });
+
+      // Add new role mappings
+      newRole.ad_groups.forEach(group => {
+        if (mappingsDict[group]) {
+          if (typeof mappingsDict[group] === 'string') {
+            mappingsDict[group] = [mappingsDict[group] as string, newRole.name];
+          } else {
+            (mappingsDict[group] as string[]).push(newRole.name);
+          }
+        } else {
+          mappingsDict[group] = newRole.name;
+        }
+      });
+
+      // First create the role in the backend permission registry with description
+      try {
+        console.log('=== SENDING CREATE ROLE REQUEST ===');
+        console.log('  role_name:', newRole.name);
+        console.log('  description:', newRole.description);
+        console.log('  description type:', typeof newRole.description);
+        console.log('  a2a_only:', newRoleA2AOnly);
+        
+        await adminService.createRolePermissions(clientId, {
+          role_name: newRole.name,
+          permissions: [],
+          denied_permissions: [],
+          description: newRole.description,
+          a2a_only: newRoleA2AOnly
+        });
+      } catch (error) {
+        console.error('Error creating role in permission registry:', error);
+        alert('Failed to create role. Please try again.');
+        return;
+      }
+
+      // Then set the role mappings (if AD groups were assigned)
+      if (newRole.ad_groups && newRole.ad_groups.length > 0) {
+        await adminService.setRoleMappings(clientId, mappingsDict);
+      }
+
+      // Refresh roles
+      await fetchRoles();
+      setCreateMode(false);
+      setNewRole({
+        name: '',
+        description: '',
+        ad_groups: [],
+        permissions: [],
+        resource_scopes: []
+      });
+      setGroupInput('');
+    } catch (err) {
+      console.error('Error creating role:', err);
+      alert('Failed to create role');
+    }
   };
 
   return (
@@ -638,8 +726,8 @@ const RolesModal: React.FC<RolesModalProps> = ({
         isOpen={isOpen}
         onClose={onClose}
         title={`Roles - ${appName}`}
-        width="80%"
-        maxHeight="80vh"
+        width="90%"
+        maxHeight="90vh"
       >
         <div className="roles-modal-content">
           {loading && (
@@ -654,207 +742,12 @@ const RolesModal: React.FC<RolesModalProps> = ({
             <>
               <div className="roles-header">
                 <h3>Application Roles</h3>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button
-                    className="button secondary"
-                    onClick={() => {
-                      // Export all roles
-                      const allRolesExport = {
-                        app_id: clientId,
-                        app_name: appName,
-                        roles: roles.map(role => {
-                          const unifiedKey = `cids_unified_role_${clientId}_${role.name}`;
-                          const saved = localStorage.getItem(unifiedKey);
-                          let roleData: any = {
-                            role_name: role.name,
-                            ad_groups: role.ad_groups,
-                            permissions: role.permissions,
-                            resource_scopes: role.resource_scopes
-                          };
-
-                          if (saved) {
-                            try {
-                              const parsed = JSON.parse(saved);
-                              roleData.rls_filters = parsed.savedFilters || {};
-                              roleData.action_permissions = parsed.actionPermissions || {};
-                            } catch (e) {
-                              console.error('Error parsing role data:', e);
-                            }
-                          }
-
-                          return roleData;
-                        }),
-                        exported_at: new Date().toISOString()
-                      };
-
-                      const jsonStr = JSON.stringify(allRolesExport, null, 2);
-                      const blob = new Blob([jsonStr], { type: 'application/json' });
-                      const url = URL.createObjectURL(blob);
-                      const link = document.createElement('a');
-                      link.href = url;
-                      link.download = `${clientId}_all_roles_${Date.now()}.json`;
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                      URL.revokeObjectURL(url);
-                    }}
-                    title="Export all roles configuration"
-                  >
-                    Export All Roles
-                  </button>
-                  <button
-                    className="button primary"
-                    onClick={handleCreateRole}
-                  >
-                    Create New Role
-                  </button>
-                </div>
+                <CreateRoleButton onClick={handleCreateRole}>
+                  Create New Role
+                </CreateRoleButton>
               </div>
 
-              {createMode && (
-                <div className="create-role-form">
-                  <h4>New Role</h4>
-                  <div className="form-group">
-                    <label>Role Name</label>
-                    <input
-                      type="text"
-                      value={newRole.name}
-                      onChange={(e) => setNewRole({ ...newRole, name: e.target.value })}
-                      placeholder="e.g., admin, viewer, editor"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Description</label>
-                    <textarea
-                      value={newRole.description}
-                      onChange={(e) => setNewRole({ ...newRole, description: e.target.value })}
-                      placeholder="Describe this role's purpose..."
-                      rows={2}
-                    />
-                  </div>
-                  <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={newRoleA2AOnly}
-                      onChange={(e)=> setNewRoleA2AOnly(e.target.checked)}
-                    />
-                    <label>Use this role for A2A only (no AD group mapping required)</label>
-                  </div>
-
-                  <div className="form-group">
-                    <label>Azure AD Groups</label>
-                    <div className="ad-groups-input-wrapper">
-                      <div className="ad-groups-input">
-                        <input
-                          type="text"
-                          value={groupInput}
-                          onChange={(e) => setGroupInput(e.target.value)}
-                          onKeyDown={(e) => handleKeyDown(e)}
-
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter' && !showSuggestions) {
-                              e.preventDefault();
-                              if (groupInput.trim()) {
-                                setNewRole({
-                                  ...newRole,
-                                  ad_groups: [...newRole.ad_groups, groupInput.trim()]
-                                });
-                                setGroupInput('');
-                              }
-                            }
-                          }}
-                          placeholder="Start typing to search Azure AD groups..."
-                          autoComplete="off"
-                        />
-                        <button
-                          type="button"
-                          className="button secondary small"
-                          onClick={() => {
-                            if (groupInput.trim()) {
-                              setNewRole({
-                                ...newRole,
-                                ad_groups: [...newRole.ad_groups, groupInput.trim()]
-                              });
-                              setGroupInput('');
-                            }
-                          }}
-                        >
-                          Add
-                        </button>
-                      </div>
-                      {showSuggestions && (
-                        <div className="ad-groups-suggestions" ref={suggestionsRef}>
-                          {loadingSuggestions ? (
-                            <div className="suggestion-loading">Searching...</div>
-                          ) : groupSuggestions.length > 0 ? (
-                            groupSuggestions.map((group, index) => (
-                              <div
-                                key={group.id}
-                                className={`suggestion-item ${index === selectedSuggestionIndex ? 'selected' : ''}`}
-                                onClick={() => handleSelectSuggestion(group.displayName)}
-                                onMouseEnter={() => setSelectedSuggestionIndex(index)}
-                              >
-                                <div className="suggestion-name">{group.displayName}</div>
-                                {group.description && (
-                                  <div className="suggestion-description">{group.description}</div>
-                                )}
-                              </div>
-                            ))
-                          ) : (
-                            <div className="suggestion-no-results">No groups found</div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <div className="ad-groups-list">
-                      {newRole.ad_groups.map((group, idx) => (
-                        <div key={idx} className="ad-group-tag">
-                          <span>{group}</span>
-                          <button
-                            type="button"
-                            onClick={() => setNewRole({
-                              ...newRole,
-                              ad_groups: newRole.ad_groups.filter((_, i) => i !== idx)
-                            })}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="form-actions">
-                    <button
-                      className="button primary"
-                      onClick={handleSaveNewRole}
-                    >
-                      Save Role
-                    </button>
-                    <button
-                      className="button secondary"
-                      onClick={() => setCreateMode(false)}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <input
-                  type="checkbox"
-                  id="hideA2AOnly"
-                  checked={localStorage.getItem(`hide_a2a_only_${clientId}`) === 'true'}
-                  onChange={(e)=>{
-                    if (e.target.checked) localStorage.setItem(`hide_a2a_only_${clientId}`, 'true');
-                    else localStorage.removeItem(`hide_a2a_only_${clientId}`);
-                    fetchRoles();
-                  }}
-                />
-                <label htmlFor="hideA2AOnly">Hide A2A-only roles</label>
-              </div>
-
-
-              <div className="roles-list">
+              <RolesGrid>
                 {roles.length === 0 ? (
                   <div className="no-roles">
                     No roles defined for this application.
@@ -862,149 +755,92 @@ const RolesModal: React.FC<RolesModalProps> = ({
                   </div>
                 ) : (
                   roles.map(role => (
-                    <div key={role.id} className="role-card">
-                      <div className="role-header">
-                        <div className="role-info">
-                          <h4>{role.name}</h4>
+                    <RoleCard key={role.id} $isActive={role.is_active}>
+                      {role.is_active ? (
+                        <ActiveRibbon>ACTIVE</ActiveRibbon>
+                      ) : (
+                        <InactiveRibbon>INACTIVE</InactiveRibbon>
+                      )}
+                      
+                      <RoleCardHeader $isActive={role.is_active}>
+                        <ToggleButton 
+                          $isActive={role.is_active || false}
+                          onClick={() => handleToggleRoleStatus(role)}
+                          title={role.is_active ? "Click to deactivate" : "Click to activate"}
+                        >
+                          <ToggleSlider $isActive={role.is_active || false} />
+                        </ToggleButton>
+                        <RoleName>
+                          <i className="fas fa-user-shield"></i>
+                          Role Name: {role.name}
+                        </RoleName>
+                      </RoleCardHeader>
+                      
+                      <RoleCardBody>
+                        <RoleInfo>
                           {role.description && (
-                            <p className="role-description">{role.description}</p>
+                            <InfoRow>
+                              <i className="fas fa-info-circle"></i>
+                              <span>
+                                <strong>Description:</strong> {role.description}
+                              </span>
+                            </InfoRow>
                           )}
-                        </div>
-                        <div className="role-actions-mini">
-                          <button
-                            className="button secondary small"
-                            onClick={() => handleEditGroups(role.id!)}
-                          >
-                            Edit AD Groups
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="ad-groups-section">
-                        <div className="ad-groups-header">
-                          <span className="ad-label">Azure AD Groups:</span>
-                        </div>
-                        {editingGroups === role.id ? (
-                          <div className="ad-groups-edit">
-                            <div className="ad-groups-input-wrapper">
-                              <div className="ad-groups-input">
-                                <input
-                                  type="text"
-                                  value={groupInput}
-                                  onChange={(e) => setGroupInput(e.target.value)}
-                                  onKeyDown={(e) => handleKeyDown(e, role)}
-                                  onKeyPress={(e) => {
-                                    if (e.key === 'Enter' && !showSuggestions) {
-                                      e.preventDefault();
-                                      handleAddGroup(role);
-                                    }
-                                  }}
-                                  placeholder="Start typing to search Azure AD groups..."
-                                  autoComplete="off"
-                                />
-                                <button
-                                  className="button primary small"
-                                  onClick={() => handleAddGroup(role)}
-                                >
-                                  Add
-                                </button>
-                                <button
-                                  className="button secondary small"
-                                  onClick={() => {
-                                    setEditingGroups(null);
-                                    setGroupInput('');
-                                    setShowSuggestions(false);
-                                  }}
-                                >
-                                  Done
-                                </button>
-                              </div>
-                              {showSuggestions && editingGroups === role.id && (
-                                <div className="ad-groups-suggestions" ref={suggestionsRef}>
-                                  {loadingSuggestions ? (
-                                    <div className="suggestion-loading">Searching...</div>
-                                  ) : groupSuggestions.length > 0 ? (
-                                    groupSuggestions.map((group, index) => (
-                                      <div
-                                        key={group.id}
-                                        className={`suggestion-item ${index === selectedSuggestionIndex ? 'selected' : ''}`}
-                                        onClick={() => handleSelectSuggestion(group.displayName, role)}
-                                        onMouseEnter={() => setSelectedSuggestionIndex(index)}
-                                      >
-                                        <div className="suggestion-name">{group.displayName}</div>
-                                        {group.description && (
-                                          <div className="suggestion-description">{group.description}</div>
-                                        )}
-                                      </div>
-                                    ))
-                                  ) : (
-                                    <div className="suggestion-no-results">No groups found</div>
-                                  )}
+                          
+                          <InfoRow>
+                            <i className="fas fa-users"></i>
+                            <span>
+                              <strong>AD Groups:</strong> {role.ad_groups.length > 0 ? role.ad_groups.join(', ') : 'No groups assigned'}
+                            </span>
+                          </InfoRow>
+                          
+                          <InfoRow>
+                            <i className="fas fa-key"></i>
+                            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%' }}>
+                              <strong style={{ marginBottom: '4px' }}>Permissions:</strong>
+                              {role.permissions.length > 0 ? (
+                                <div style={{ 
+                                  marginLeft: '8px', 
+                                  fontSize: '11px', 
+                                  color: '#6b7280',
+                                  lineHeight: '1.4'
+                                }}>
+                                  {role.permissions.map((perm, idx) => (
+                                    <div key={idx} style={{ marginBottom: '2px' }}>
+                                      - {perm}
+                                    </div>
+                                  ))}
                                 </div>
+                              ) : (
+                                <span style={{ fontSize: '11px', color: '#9ca3af', fontStyle: 'italic', marginLeft: '8px' }}>
+                                  No permissions assigned
+                                </span>
                               )}
-                            </div>
-                            <div className="ad-groups-list">
-                              {role.ad_groups.map((group, idx) => (
-                                <div key={idx} className="ad-group-tag editable">
-                                  <span>{group}</span>
-                                  <button
-                                    onClick={() => handleRemoveGroup(role, group)}
-                                    disabled={role.ad_groups.length === 1}
-                                    title={role.ad_groups.length === 1 ? "Cannot remove last group" : "Remove group"}
-                                  >
-                                    ×
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="ad-groups-list">
-                            {role.ad_groups.map((group, idx) => (
-                              <div key={idx} className="ad-group-tag">
-                                <span>{group}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="role-stats">
-                        <div className="stat">
-                          <span className="stat-label">Permissions:</span>
-                          <span className="stat-value">{role.permissions.length}</span>
-                        </div>
-                        <div className="stat">
-                          <span className="stat-label">Resource Scopes:</span>
-                          <span className="stat-value">{role.resource_scopes?.length || 0}</span>
-                        </div>
-                      </div>
-
-                      <div className="role-actions">
-                        <button
-                          className="button primary"
-                          onClick={() => handleEditPermissions(role)}
-                        >
-                          Edit Permissions
-                        </button>
-                        <button
-                          className="button secondary"
-                          onClick={() => handleExportRole(role)}
-                          title="Export role configuration as JSON"
-                        >
-                          Export
-                        </button>
-                        <button
-                          className="button danger"
-                          onClick={() => handleDeleteRole(role)}
-                        >
-                          Delete Role
-                        </button>
-                      </div>
-                    </div>
+                            </span>
+                          </InfoRow>
+                        </RoleInfo>
+                        
+                        <CardActions>
+                          <ActionButton 
+                            className="primary"
+                            onClick={() => handleEditPermissions(role)}
+                          >
+                            <i className="fas fa-edit"></i>
+                            <span>Edit Permissions</span>
+                          </ActionButton>
+                          <ActionButton 
+                            className={role.is_active ? "danger" : "primary"}
+                            onClick={() => handleToggleRoleStatus(role)}
+                          >
+                            <i className={role.is_active ? "fas fa-ban" : "fas fa-check-circle"}></i>
+                            <span>{role.is_active ? "Deactivate" : "Activate"}</span>
+                          </ActionButton>
+                        </CardActions>
+                      </RoleCardBody>
+                    </RoleCard>
                   ))
                 )}
-              </div>
+              </RolesGrid>
             </>
           )}
         </div>
@@ -1025,6 +861,227 @@ const RolesModal: React.FC<RolesModalProps> = ({
           onSave={handlePermissionsUpdate}
         />
       )}
+
+      {/* Create Role Modal */}
+      <Modal
+        isOpen={createMode}
+        onClose={() => {
+          setCreateMode(false);
+          setGroupInput('');
+          setShowSuggestions(false);
+          setGroupSuggestions([]);
+          setNewRoleA2AOnly(false);
+        }}
+        title="Create New Role"
+        width="600px"
+      >
+        <ModalContent>
+          <form onSubmit={(e) => { e.preventDefault(); handleSaveNewRole(); }} style={{ padding: '0 20px' }}>
+            <FormGroup>
+              <Label>Role Name <span>*</span></Label>
+              <Input
+                type="text"
+                value={newRole.name}
+                onChange={(e) => setNewRole({ ...newRole, name: e.target.value })}
+                placeholder="Enter role name"
+                required
+              />
+            </FormGroup>
+            
+            <FormGroup>
+              <Label>Description</Label>
+              <Textarea
+                value={newRole.description}
+                onChange={(e) => setNewRole({ ...newRole, description: e.target.value })}
+                placeholder="Brief description of the role's purpose (optional)"
+              />
+            </FormGroup>
+            
+            <FormGroup>
+              <Label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
+                <input
+                  type="checkbox"
+                  checked={newRoleA2AOnly}
+                  onChange={(e) => setNewRoleA2AOnly(e.target.checked)}
+                  style={{ 
+                    marginRight: '8px',
+                    width: '18px',
+                    height: '18px',
+                    cursor: 'pointer'
+                  }}
+                />
+                <span style={{ fontSize: '14px', color: '#4b5563' }}>
+                  A2A Only (Application-to-Application role, no user groups required)
+                </span>
+              </Label>
+            </FormGroup>
+            
+            {!newRoleA2AOnly && (
+              <FormGroup>
+                <Label>Azure AD Groups</Label>
+                <div className="ad-groups-input-wrapper" style={{ position: 'relative' }}>
+                  <div className="ad-groups-input">
+                    <Input
+                      type="text"
+                      value={groupInput}
+                      onChange={(e) => {
+                        setGroupInput(e.target.value);
+                        setShowSuggestions(true);
+                        
+                        // Clear previous timeout
+                        if (searchTimeoutRef.current) {
+                          clearTimeout(searchTimeoutRef.current);
+                        }
+                        
+                        // Set new timeout for search
+                        if (e.target.value.length >= 2) {
+                          setLoadingSuggestions(true);
+                          searchTimeoutRef.current = setTimeout(async () => {
+                            try {
+                              const response = await adminService.searchAzureGroups(e.target.value);
+                              setGroupSuggestions(response.groups || []);
+                            } catch (err) {
+                              console.error('Error searching groups:', err);
+                              setGroupSuggestions([]);
+                            } finally {
+                              setLoadingSuggestions(false);
+                            }
+                          }, 300);
+                        } else {
+                          setGroupSuggestions([]);
+                          setLoadingSuggestions(false);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          if (selectedSuggestionIndex >= 0 && selectedSuggestionIndex < groupSuggestions.length) {
+                            const selected = groupSuggestions[selectedSuggestionIndex];
+                            if (!newRole.ad_groups.includes(selected.displayName)) {
+                              setNewRole({ ...newRole, ad_groups: [...newRole.ad_groups, selected.displayName] });
+                            }
+                            setGroupInput('');
+                            setShowSuggestions(false);
+                            setSelectedSuggestionIndex(-1);
+                          } else if (groupInput.trim()) {
+                            if (!newRole.ad_groups.includes(groupInput.trim())) {
+                              setNewRole({ ...newRole, ad_groups: [...newRole.ad_groups, groupInput.trim()] });
+                            }
+                            setGroupInput('');
+                          }
+                        } else if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setSelectedSuggestionIndex(prev => 
+                            prev < groupSuggestions.length - 1 ? prev + 1 : prev
+                          );
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setSelectedSuggestionIndex(prev => prev > 0 ? prev - 1 : -1);
+                        } else if (e.key === 'Escape') {
+                          setShowSuggestions(false);
+                          setSelectedSuggestionIndex(-1);
+                        }
+                      }}
+                      placeholder="Type to search AD groups..."
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (groupInput.trim() && !newRole.ad_groups.includes(groupInput.trim())) {
+                          setNewRole({ ...newRole, ad_groups: [...newRole.ad_groups, groupInput.trim()] });
+                          setGroupInput('');
+                        }
+                      }}
+                      style={{
+                        padding: '8px 16px',
+                        background: '#0b3b63',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '14px'
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                  
+                  {showSuggestions && groupInput.length >= 2 && (
+                    <div className="ad-groups-suggestions" ref={suggestionsRef}>
+                      {loadingSuggestions ? (
+                        <div className="suggestion-loading">Searching AD groups...</div>
+                      ) : groupSuggestions.length > 0 ? (
+                        groupSuggestions.map((group, index) => (
+                          <div
+                            key={group.id}
+                            className={`suggestion-item ${index === selectedSuggestionIndex ? 'selected' : ''}`}
+                            onClick={() => {
+                              if (!newRole.ad_groups.includes(group.displayName)) {
+                                setNewRole({ ...newRole, ad_groups: [...newRole.ad_groups, group.displayName] });
+                              }
+                              setGroupInput('');
+                              setShowSuggestions(false);
+                              setSelectedSuggestionIndex(-1);
+                            }}
+                          >
+                            <div className="suggestion-name">{group.displayName}</div>
+                            {group.description && (
+                              <div className="suggestion-description">{group.description}</div>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="suggestion-no-results">No groups found</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                
+                {newRole.ad_groups.length > 0 && (
+                  <div className="ad-groups-list" style={{ marginTop: '12px' }}>
+                    {newRole.ad_groups.map((group, index) => (
+                      <span key={index} className="ad-group-tag editable">
+                        <span>{group}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewRole({
+                              ...newRole,
+                              ad_groups: newRole.ad_groups.filter((_, i) => i !== index)
+                            });
+                          }}
+                          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </FormGroup>
+            )}
+            
+            <ModalActions>
+              <ModalButton
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setCreateMode(false);
+                  setGroupInput('');
+                  setShowSuggestions(false);
+                  setGroupSuggestions([]);
+                  setNewRoleA2AOnly(false);
+                }}
+              >
+                Cancel
+              </ModalButton>
+              <ModalButton type="submit" className="primary">
+                Save
+              </ModalButton>
+            </ModalActions>
+          </form>
+        </ModalContent>
+      </Modal>
     </>
   );
 };

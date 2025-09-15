@@ -4,13 +4,18 @@ from datetime import datetime, timedelta
 import json
 import logging
 from enum import Enum
+import httpx
 
 from utils.paths import logs_path
+from services.database import db_service
 
 logger = logging.getLogger(__name__)
 
 
 class AuditAction(Enum):
+    USER_LOGIN = "user.login"
+    USER_LOGOUT = "user.logout"
+    APP_CREATED = "app.created"
     APP_REGISTERED = "app.registered"
     APP_UPDATED = "app.updated"
     APP_DELETED = "app.deleted"
@@ -21,6 +26,8 @@ class AuditAction(Enum):
     ROLE_CREATED = "role.created"
     ROLE_UPDATED = "role.updated"
     ROLE_DELETED = "role.deleted"
+    ROLE_ACTIVATED = "role.activated"
+    ROLE_DEACTIVATED = "role.deactivated"
     POLICY_CREATED = "policy.created"
     POLICY_UPDATED = "policy.updated"
     POLICY_ACTIVATED = "policy.activated"
@@ -40,6 +47,9 @@ class AuditAction(Enum):
     API_KEY_ROTATED = "api_key.rotated"
     API_KEY_USED = "api_key.used"
     API_KEY_EXPIRED = "api_key.expired"
+    A2A_PERMISSION_CREATED = "a2a_permission.created"
+    A2A_PERMISSION_UPDATED = "a2a_permission.updated"
+    A2A_PERMISSION_DELETED = "a2a_permission.deleted"
 
 
 class AuditLogger:
@@ -58,18 +68,73 @@ class AuditLogger:
 
     def log_action(self, action: AuditAction, user_email: Optional[str] = None, user_id: Optional[str] = None, resource_type: Optional[str] = None, resource_id: Optional[str] = None, details: Optional[Dict[str, Any]] = None, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> None:
         try:
-            audit_entry = {
-                "timestamp": datetime.utcnow().isoformat(),
-                "action": action.value,
-                "user": {"email": user_email, "id": user_id},
-                "resource": {"type": resource_type, "id": resource_id},
-                "details": details or {},
-                "context": {"ip_address": ip_address, "user_agent": user_agent},
-            }
-            audit_entry = self._remove_none_values(audit_entry)
-            audit_file = self._get_audit_file()
-            with open(audit_file, 'a') as f:
-                f.write(json.dumps(audit_entry) + '\n')
+            # Generate UUID with 'log' prefix from UUID service
+            activity_id = None
+            try:
+                with httpx.Client() as client:
+                    response = client.post(
+                        "http://uuid-service-dev:8002/generate",
+                        json={
+                            "type": "custom",
+                            "prefix": "log",
+                            "format": "uuid_v4",
+                            "requestor": "cids_audit",
+                            "description": f"Activity log for {action.value}"
+                        }
+                    )
+                    if response.status_code == 200:
+                        activity_id = response.json().get("id")
+            except Exception as e:
+                logger.warning(f"Could not get UUID from service: {e}, using fallback")
+                import uuid
+                activity_id = f"log_{uuid.uuid4().hex[:16]}"
+            
+            # Log to database - ensure connection is established
+            if not db_service.conn or db_service.conn.closed:
+                # Force reconnection with correct parameters
+                db_service.connection_params = {
+                    'host': 'localhost',
+                    'port': 54322,
+                    'database': 'postgres',
+                    'user': 'postgres',
+                    'password': 'postgres'
+                }
+                if not db_service.connect():
+                    logger.error(f"Failed to connect to database for audit logging")
+                    return
+            
+            # Extract entity_name from details if available
+            entity_name = None
+            if details:
+                entity_name = details.get('key_name') or details.get('name') or details.get('entity_name')
+
+            result = db_service.log_activity(
+                activity_id=activity_id,
+                activity_type=action.value,
+                entity_type=resource_type,
+                entity_id=resource_id,
+                entity_name=entity_name,
+                user_email=user_email,
+                user_id=user_id,
+                details=details,
+                status="success",
+                error_message=None,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                session_id=None,
+                api_endpoint=None,
+                http_method=None,
+                response_time_ms=None,
+                request_id=None
+            )
+            
+            if result:
+                logger.info(f"Activity logged to database: {action.value} with ID {activity_id}")
+            else:
+                logger.error(f"Failed to log activity to database: {action.value}")
+            
+            # REMOVED: No longer writing to JSONL files - only database
+            # All logs must go to database per requirements
         except Exception as e:
             logger.error(f"Failed to write audit log: {e}")
 

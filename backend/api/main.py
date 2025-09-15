@@ -1,8 +1,8 @@
 # FastAPI entrypoint (migrated from azure-auth-app/main.py)
 # NOTE: This is a full move; all imports reference backend.* modules.
 
-from fastapi import FastAPI, Request, HTTPException, Response, Header, Body
-from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse, StreamingResponse
+from fastapi import FastAPI, Request, HTTPException, Response, Header, Body, Query
+from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse, StreamingResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -13,10 +13,12 @@ import secrets
 import logging
 from typing import Dict, Optional, List
 import uuid
+import hashlib
 import json
 import urllib.parse
 from dotenv import load_dotenv, dotenv_values
 from pathlib import Path
+from psycopg2.extras import Json
 
 from services.jwt import JWTManager
 from services.refresh_tokens import refresh_token_store
@@ -41,6 +43,8 @@ from utils.paths import api_templates_path
 from libs.logging_config import setup_logging, get_logging_config, update_logging_config as apply_logging_update
 from services.log_reader import read_app_logs
 from services.database import db_service
+from services.discovery_db import DiscoveryDatabase
+from api.a2a_endpoints import setup_a2a_endpoints
 
 # Request models
 class TokenRequest(BaseModel):
@@ -206,22 +210,101 @@ def set_session(session_id: str, data: dict):
 
 
 def validate_api_key_auth(authorization: str) -> tuple[bool, Optional[str], Optional[dict]]:
+    logger.debug(f"validate_api_key_auth called with: {authorization[:30]}...")
     if not authorization.startswith('Bearer cids_ak_'):
+        logger.debug(f"API key validation failed: doesn't start with 'Bearer cids_ak_'")
         return False, None, None
     api_key = authorization.replace('Bearer ', '')
+    logger.debug(f"Validating API key: {api_key[:20]}...")
     result = api_key_manager.validate_api_key(api_key)
+    logger.debug(f"API key manager validation result: {result}")
     if not result:
+        logger.debug(f"API key validation failed: api_key_manager returned None")
         return False, None, None
     app_client_id, metadata = result
-    audit_logger.log_action(action=AuditAction.API_KEY_USED, resource_type="api_key", resource_id=metadata.key_id, details={"app_client_id": app_client_id, "key_name": metadata.name})
+    audit_logger.log_action(
+        action=AuditAction.API_KEY_USED,
+        resource_type="api_key",
+        resource_id=metadata.key_id,
+        user_email=f"{app_client_id}@api-key",  # Add service email
+        details={"app_client_id": app_client_id, "key_name": metadata.name}
+    )
     metadata_dict = {'sub': f"app:{app_client_id}", 'email': f"{app_client_id}@api-key", 'name': f"API Key: {metadata.name}", 'permissions': metadata.permissions, 'api_key_id': metadata.key_id, 'app_client_id': app_client_id, 'auth_type': 'api_key'}
     return True, app_client_id, metadata_dict
 
 
 
-def generate_token_with_iam_claims(user_info: dict, client_id: Optional[str] = None) -> str:
+def get_role_permissions_from_db(client_id: str, role_name: str) -> List[str]:
+    """Get role permissions directly from database"""
+    try:
+        import psycopg2
+        import json
+        conn = psycopg2.connect(
+            host=os.getenv('DB_HOST', 'localhost'),
+            port=os.getenv('DB_PORT', '54322'),
+            database=os.getenv('DB_NAME', 'postgres'),
+            user=os.getenv('DB_USER', 'postgres'),
+            password=os.getenv('DB_PASSWORD', 'postgres')
+        )
+        cur = conn.cursor()
+
+        # Get permissions from role_permissions table
+        cur.execute("""
+            SELECT permissions
+            FROM cids.role_permissions
+            WHERE client_id = %s AND role_name = %s
+        """, (client_id, role_name))
+
+        result = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if result and result[0]:
+            # result[0] is already a list from JSONB
+            return result[0] if isinstance(result[0], list) else []
+        return []
+    except Exception as e:
+        logger.error(f"Error getting permissions from DB for {client_id}/{role_name}: {e}")
+        return []
+
+def get_role_rls_filters_from_db(client_id: str, role_name: str) -> Dict:
+    """Get role RLS filters directly from database"""
+    try:
+        import psycopg2
+        import json
+        conn = psycopg2.connect(
+            host=os.getenv('DB_HOST', 'localhost'),
+            port=os.getenv('DB_PORT', '54322'),
+            database=os.getenv('DB_NAME', 'postgres'),
+            user=os.getenv('DB_USER', 'postgres'),
+            password=os.getenv('DB_PASSWORD', 'postgres')
+        )
+        cur = conn.cursor()
+
+        # Get RLS filters from role_permissions table
+        cur.execute("""
+            SELECT rls_filters
+            FROM cids.role_permissions
+            WHERE client_id = %s AND role_name = %s
+        """, (client_id, role_name))
+
+        result = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if result and result[0]:
+            # result[0] is already a dict from JSONB
+            return result[0] if isinstance(result[0], dict) else {}
+        return {}
+    except Exception as e:
+        logger.error(f"Error getting RLS filters from DB for {client_id}/{role_name}: {e}")
+        return {}
+
+def generate_token_with_iam_claims(user_info: dict, client_id: Optional[str] = None,
+                                  client_ip: Optional[str] = None, user_agent: Optional[str] = None) -> str:
     """Generate token with IAM claims (legacy-equivalent).
     Populates roles, permissions, and rls_filters exactly like the legacy app.
+    Now includes IP and device binding for enhanced security.
     """
     # Normalize groups to list[str] of display names
     user_groups: list[str] = []
@@ -252,7 +335,10 @@ def generate_token_with_iam_claims(user_info: dict, client_id: Optional[str] = N
         except Exception as e:
             logger.warning(f"Error getting app-specific roles for {client_id}: {e}")
     else:
-        for app_id in registered_apps.keys():
+        # Get apps from database instead of memory
+        db_apps = db_service.get_all_registered_apps()
+        for app in db_apps:
+            app_id = app['client_id']
             try:
                 app_roles = app_store.get_user_roles_for_app(app_id, user_groups)
                 if app_roles:
@@ -268,9 +354,12 @@ def generate_token_with_iam_claims(user_info: dict, client_id: Optional[str] = N
         all_perms = set()
         all_rls: dict[str, list[dict]] = {}
         for role_name in roles_for_app:
-            for p in permission_registry.get_role_permissions(client_id, role_name):
+            # Get permissions directly from database
+            perms_from_db = get_role_permissions_from_db(client_id, role_name)
+            for p in perms_from_db:
                 all_perms.add(p)
-            role_rls = permission_registry.get_role_rls_filters(client_id, role_name)
+            # Get RLS filters directly from database
+            role_rls = get_role_rls_filters_from_db(client_id, role_name)
             for field, flist in role_rls.items():
                 all_rls.setdefault(field, []).extend(flist)
         if all_perms:
@@ -282,9 +371,12 @@ def generate_token_with_iam_claims(user_info: dict, client_id: Optional[str] = N
             all_perms = set()
             all_rls: dict[str, list[dict]] = {}
             for role_name in roles_list:
-                for p in permission_registry.get_role_permissions(app_id, role_name):
+                # Get permissions directly from database
+                perms_from_db = get_role_permissions_from_db(app_id, role_name)
+                for p in perms_from_db:
                     all_perms.add(p)
-                role_rls = permission_registry.get_role_rls_filters(app_id, role_name)
+                # Get RLS filters directly from database
+                role_rls = get_role_rls_filters_from_db(app_id, role_name)
                 for field, flist in role_rls.items():
                     all_rls.setdefault(field, []).extend(flist)
             if all_perms:
@@ -317,6 +409,19 @@ def generate_token_with_iam_claims(user_info: dict, client_id: Optional[str] = N
     if 'app_roles' in (user_info or {}):
         claims['app_roles'] = user_info['app_roles']
 
+    # SECURITY: Add IP and device binding for government security
+    if client_ip:
+        claims['bound_ip'] = client_ip
+        logger.info(f"Token bound to IP: {client_ip}")
+
+    if user_agent:
+        # Create a simple device fingerprint from user agent
+        import hashlib
+        device_fingerprint = hashlib.sha256(user_agent.encode()).hexdigest()[:16]
+        claims['bound_device'] = device_fingerprint
+        claims['device_ua'] = user_agent[:100]  # Store first 100 chars for debugging
+        logger.info(f"Token bound to device: {device_fingerprint}")
+
     # Generate token (10 minutes TTL to match legacy)
     return jwt_manager.create_token(claims, token_lifetime_minutes=10, token_type='access')
 
@@ -339,7 +444,7 @@ def check_admin_access(authorization: Optional[str] = None) -> tuple[bool, Optio
             return False, None
     admin_emails = [e.strip().lower() for e in os.getenv('ADMIN_EMAILS', 'admin@example.com').split(',') if e.strip()]
     admin_group_ids = [g.strip() for g in os.getenv('ADMIN_GROUP_IDS', '').split(',') if g.strip()]
-    user_email = claims.get('email', '').strip().lower()
+    user_email = claims.get('email', '').strip().lower()  # Convert to lowercase for comparison
     user_groups = claims.get('groups', [])
     if user_email in admin_emails:
         return True, claims
@@ -430,12 +535,29 @@ async def cids_callback(request: Request, code: Optional[str] = None, state: Opt
 # ROUTES
 
 @app.post("/auth/token")
-async def token_endpoint(token_request: TokenRequest):
+async def token_endpoint(token_request: TokenRequest, request: Request):
     if token_request.grant_type == "refresh_token":
         if not token_request.refresh_token:
             raise HTTPException(status_code=400, detail="refresh_token required")
+
+        # SECURITY: Hash the refresh token for database lookup
+        old_refresh_token_hash = hashlib.sha256(token_request.refresh_token.encode()).hexdigest()
+
+        # Check if refresh token has been revoked in database
+        if db_service.is_token_revoked(token_hash=old_refresh_token_hash):
+            logger.warning(f"Attempt to use revoked refresh token")
+            raise HTTPException(status_code=401, detail="Refresh token has been revoked")
+
+        # Validate and rotate the refresh token
         user_info, new_refresh_token = refresh_token_store.validate_and_rotate(token_request.refresh_token)
         if not user_info:
+            # If invalid, revoke it in database for security
+            db_service.revoke_token(
+                token_id=old_refresh_token_hash,  # Using hash as ID for refresh tokens
+                token_hash=old_refresh_token_hash,
+                token_type='refresh',
+                reason='invalid_token_attempt'
+            )
             raise HTTPException(status_code=401, detail="Invalid refresh token")
         # Fetch fresh groups if we still have Azure access token stored
         if 'azure_access_token' in user_info:
@@ -455,10 +577,38 @@ async def token_endpoint(token_request: TokenRequest):
                         user_info['groups'] = user_groups
                 except Exception:
                     logger.exception("Refresh: Failed to fetch groups from Graph API")
-        access_token = generate_token_with_iam_claims(user_info)
+
+        # SECURITY: Capture client IP and User-Agent for token binding on refresh
+        client_ip = request.client.host if request.client else None
+        forwarded_ip = request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
+        if forwarded_ip:
+            client_ip = forwarded_ip
+        user_agent = request.headers.get('User-Agent', 'Unknown')
+
+        access_token = generate_token_with_iam_claims(user_info, client_ip=client_ip, user_agent=user_agent)
         token_id = str(uuid.uuid4())
         now_utc = datetime.utcnow()
         expires_utc = now_utc + timedelta(minutes=10)
+
+        # SECURITY: Implement refresh token rotation in database
+        # 1. Deactivate the old refresh token
+        db_service.deactivate_refresh_token(old_refresh_token_hash)
+        logger.info(f"Old refresh token deactivated for rotation")
+
+        # 2. Save the new refresh token
+        new_refresh_token_hash = hashlib.sha256(new_refresh_token.encode()).hexdigest()
+        db_service.save_refresh_token(
+            token_hash=new_refresh_token_hash,
+            user_email=user_info.get('email'),
+            user_id=user_info.get('sub'),
+            expires_at=datetime.utcnow() + timedelta(days=30),
+            parent_token_hash=old_refresh_token_hash  # Link to previous token for audit trail
+        )
+        logger.info(f"New refresh token saved for user {user_info.get('email')} (rotation)")
+
+        # 3. Update refresh token usage count
+        db_service.update_refresh_token_usage(old_refresh_token_hash)
+
         issued_tokens[token_id] = {
             'id': token_id,
             'access_token': access_token,
@@ -469,13 +619,15 @@ async def token_endpoint(token_request: TokenRequest):
             'source': 'refresh_token',
             'parent_refresh_token': token_request.refresh_token
         }
-        token_activity_logger.log_activity(token_id=token_id, action=TokenAction.REFRESHED, performed_by=user_info, details={'source': 'refresh_token'})
+        token_activity_logger.log_activity(token_id=token_id, action=TokenAction.REFRESHED, performed_by=user_info, details={'source': 'refresh_token', 'rotation': True})
+
+        logger.info(f"Token refresh with rotation completed for {user_info.get('email')}")
         return JSONResponse({'access_token': access_token, 'token_type': 'Bearer', 'expires_in': 600, 'refresh_token': new_refresh_token})
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported grant_type: {token_request.grant_type}")
 
 @app.post("/auth/token/exchange")
-async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
+async def exchange_code_for_token(exchange_request: TokenExchangeRequest, request: Request):
     try:
         tenant_id, client_id, client_secret = ensure_azure_env()
         
@@ -552,8 +704,12 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
         app_roles = []
         app_permissions = {}
         app_rls_filters = {}
-        for client_id in registered_apps.keys():
+        # Get apps from database instead of memory
+        db_apps = db_service.get_all_registered_apps()
+        for app in db_apps:
+            client_id = app['client_id']
             user_app_roles = app_store.get_user_roles_for_app(client_id, group_names)
+            logger.info(f"Roles for {client_id} with groups {group_names[:3]}: {user_app_roles}")
             for role in user_app_roles:
                 if role not in app_roles:
                     app_roles.append(role)
@@ -561,9 +717,11 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
                 all_perms = set()
                 all_rls = {}
                 for role_name in user_app_roles:
-                    role_perms = permission_registry.get_role_permissions(client_id, role_name)
+                    # Get permissions directly from database
+                    role_perms = get_role_permissions_from_db(client_id, role_name)
                     all_perms.update(role_perms)
-                    role_rls = permission_registry.get_role_rls_filters(client_id, role_name)
+                    # Get RLS filters directly from database
+                    role_rls = get_role_rls_filters_from_db(client_id, role_name)
                     for filter_key, filter_list in role_rls.items():
                         if filter_key not in all_rls:
                             all_rls[filter_key] = []
@@ -589,8 +747,32 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
             'token_type': 'internal',
             'token_version': '2.0'
         }
-        filtered_payload = token_template_manager.apply_template(internal_token_payload, group_names)
-        internal_token = jwt_manager.create_token(filtered_payload)
+        # SECURITY: Capture client IP and User-Agent for token binding
+        client_ip = request.client.host if request.client else None
+        # Also check for forwarded IP (if behind proxy)
+        forwarded_ip = request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
+        if forwarded_ip:
+            client_ip = forwarded_ip
+
+        user_agent = request.headers.get('User-Agent', 'Unknown')
+
+        # Add IP and device binding to token
+        if client_ip:
+            internal_token_payload['bound_ip'] = client_ip
+            logger.info(f"Token bound to IP: {client_ip} for user {user_email}")
+
+        if user_agent:
+            device_fingerprint = hashlib.sha256(user_agent.encode()).hexdigest()[:16]
+            internal_token_payload['bound_device'] = device_fingerprint
+            internal_token_payload['device_ua'] = user_agent[:100]
+            logger.info(f"Token bound to device: {device_fingerprint} for user {user_email}")
+
+        logger.info(f"Token payload before template - roles: {app_roles}")
+        # Template will be applied inside jwt_manager.create_token, so don't apply here
+        # This avoids double filtering and preserves security claims
+        # filtered_payload = token_template_manager.apply_template(internal_token_payload, group_names)
+        # logger.info(f"Token payload after template - roles: {filtered_payload.get('roles')}")
+        internal_token = jwt_manager.create_token(internal_token_payload)
         internal_token_id = str(uuid.uuid4())
         issued_tokens[internal_token_id] = {
             'id': internal_token_id,
@@ -614,6 +796,21 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
             'issuer': claims.get('iss', 'https://login.microsoftonline.com'),
             'audience': claims.get('aud', '')
         }
+        # Log the login event
+        audit_logger.log_action(
+            action=AuditAction.USER_LOGIN,
+            user_email=user_email,
+            user_id=claims.get('sub'),
+            resource_type='token',
+            resource_id=internal_token_id,
+            details={
+                'login_method': 'azure_ad',
+                'groups': group_names[:5] if group_names else [],  # Log first 5 groups only
+                'is_admin': is_admin,
+                'token_id': internal_token_id
+            }
+        )
+        
         refresh_token = refresh_token_store.create_refresh_token({
             'user_id': claims.get('sub'),
             'email': user_email,
@@ -623,6 +820,20 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
             'groups': user_groups,
             'sub': claims.get('sub')
         })
+
+        # SECURITY: Save initial refresh token to database for tracking
+        refresh_token_hash = hashlib.sha256(refresh_token.encode()).hexdigest()
+        db_service.save_refresh_token(
+            token_hash=refresh_token_hash,
+            user_email=user_email,
+            user_id=claims.get('sub'),
+            expires_at=datetime.utcnow() + timedelta(days=30),
+            client_ip=None,  # TODO: Get from request
+            user_agent=None,  # TODO: Get from request headers
+            parent_token_hash=None  # This is the initial token, no parent
+        )
+        logger.info(f"Initial refresh token saved to database for user {user_email}")
+
         token_activity_logger.log_activity(internal_token_id, TokenAction.CREATED, performed_by={'email': user_email, 'sub': claims.get('sub')}, details={'auth_method': 'oauth_code_exchange'})
         
         # Log successful login to activity_log
@@ -653,7 +864,7 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest):
         raise HTTPException(status_code=500, detail="Internal server error during token exchange")
 
 @app.get("/auth/validate")
-async def validate_token(authorization: Optional[str] = Header(None)):
+async def validate_token(authorization: Optional[str] = Header(None), x_api_key: Optional[str] = Header(None), request: Request = None):
     if not authorization or not authorization.startswith('Bearer '):
         raise HTTPException(status_code=401, detail="Invalid authorization header")
     if authorization.startswith('Bearer cids_ak_'):
@@ -666,8 +877,116 @@ async def validate_token(authorization: Optional[str] = Header(None)):
     is_valid, claims, error = jwt_manager.validate_token(token)
     if not is_valid:
         return JSONResponse({'valid': False, 'error': error or 'Invalid token'})
-    client_id = None
-    return JSONResponse({'valid': True, 'claims': claims})
+
+    # SECURITY: Check if token has been revoked (check BOTH database and memory)
+    token_id = claims.get('jti') or claims.get('token_id')
+
+    # First check database (authoritative source)
+    if token_id and db_service.is_token_revoked(token_id=token_id):
+        logger.warning(f"Attempt to use revoked token {token_id} (blocked by database)")
+        return JSONResponse({'valid': False, 'error': 'Token has been revoked'})
+
+    # Also check memory cache for recent revocations
+    if token_id and token_id in issued_tokens:
+        token_data = issued_tokens[token_id]
+        if token_data.get('revoked', False):
+            logger.warning(f"Attempt to use revoked token {token_id} (blocked by memory cache)")
+            return JSONResponse({'valid': False, 'error': 'Token has been revoked'})
+
+    # SECURITY: Check if this is a service-to-service call with valid API key
+    skip_ip_validation = False
+    service_client_id = None
+
+    if x_api_key:
+        logger.info(f"X-API-Key header received: {x_api_key[:20]}...")
+        # Validate the service API key
+        api_key_valid, service_client_id, service_metadata = validate_api_key_auth(f"Bearer {x_api_key}")
+        logger.info(f"API key validation result: valid={api_key_valid}, client_id={service_client_id}")
+        if api_key_valid:
+            # Service authenticated - this is a legitimate proxy request
+            skip_ip_validation = True
+            logger.info(f"Service {service_client_id} validating token for user {claims.get('email')} - IP validation bypassed")
+
+            # Log this service proxy action for audit
+            db_service.log_activity(
+                activity_type='service_proxy_validation',
+                entity_type='token',
+                entity_id=token_id,
+                entity_name=f"Token for {claims.get('email', 'unknown')}",
+                user_email=claims.get('email'),
+                user_id=claims.get('sub'),
+                details={
+                    'service_id': service_client_id,
+                    'service_name': service_metadata.get('name', 'Unknown Service'),
+                    'user_email': claims.get('email'),
+                    'action': 'allowed'
+                }
+            )
+        else:
+            logger.warning(f"Invalid API key provided with token validation request")
+
+    # SECURITY: Verify IP and device binding if present (skip if service authenticated)
+    if request and not skip_ip_validation:
+        # Get current request IP
+        current_ip = request.client.host if request.client else None
+        forwarded_ip = request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
+        if forwarded_ip:
+            current_ip = forwarded_ip
+
+        # Check IP binding
+        bound_ip = claims.get('bound_ip')
+        if bound_ip and current_ip and bound_ip != current_ip:
+            logger.warning(f"Token bound to IP {bound_ip} but used from {current_ip} - User: {claims.get('email')}")
+            db_service.log_activity(
+                activity_type='security.ip_mismatch',
+                entity_type='token',
+                entity_id=token_id,
+                user_email=claims.get('email'),
+                details={
+                    'bound_ip': bound_ip,
+                    'current_ip': current_ip,
+                    'action': 'blocked'
+                }
+            )
+            return JSONResponse({'valid': False, 'error': 'Token bound to different IP address'})
+
+        # Check device binding
+        current_ua = request.headers.get('User-Agent', '')
+        if current_ua:
+            current_device = hashlib.sha256(current_ua.encode()).hexdigest()[:16]
+            bound_device = claims.get('bound_device')
+            if bound_device and bound_device != current_device:
+                logger.warning(f"Token bound to device {bound_device} but used from {current_device} - User: {claims.get('email')}")
+                db_service.log_activity(
+                    activity_type='security.device_mismatch',
+                    entity_type='token',
+                    entity_id=token_id,
+                    user_email=claims.get('email'),
+                    details={
+                        'bound_device': bound_device,
+                        'current_device': current_device,
+                        'action': 'blocked'
+                    }
+                )
+                return JSONResponse({'valid': False, 'error': 'Token bound to different device'})
+
+    # Include service proxy information if applicable
+    response = {
+        'valid': True,
+        'claims': claims,  # Keep for backward compatibility
+        # Also include fields directly for consistency
+        'sub': claims.get('sub'),
+        'email': claims.get('email'),
+        'name': claims.get('name'),
+        'groups': claims.get('groups', []),
+        'permissions': claims.get('permissions', {}),
+        'auth_type': 'jwt'
+    }
+    if service_client_id:
+        response['proxy_service'] = service_client_id
+        response['proxy_validation'] = True
+
+    return JSONResponse(response)
 
 @app.get("/auth/my-token")
 async def get_my_token(authorization: Optional[str] = Header(None)):
@@ -701,7 +1020,15 @@ async def get_my_token(authorization: Optional[str] = Header(None)):
             break
     if token_id_found:
         token_activity_logger.log_activity(token_id=token_id_found, action=TokenAction.VALIDATED, details={'endpoint': '/auth/validate'})
-    return JSONResponse({'valid': True, 'sub': claims.get('sub'), 'email': claims.get('email'), 'name': claims.get('name'), 'groups': claims.get('groups', []), 'auth_type': 'jwt'})
+    return JSONResponse({
+        'valid': True,
+        'sub': claims.get('sub'),
+        'email': claims.get('email'),
+        'name': claims.get('name'),
+        'groups': claims.get('groups', []),
+        'permissions': claims.get('permissions', {}),  # Include permissions from token
+        'auth_type': 'jwt'
+    })
 
 @app.post("/auth/validate")
 async def validate_token_endpoint(request: Request):
@@ -741,6 +1068,81 @@ async def whoami(authorization: Optional[str] = Header(None)):
             is_admin = True
             break
     return JSONResponse({'email': claims.get('email'), 'name': claims.get('name'), 'sub': claims.get('sub'), 'groups': claims.get('groups', []), 'is_admin': is_admin, 'admin_config': {'admin_emails': admin_emails, 'admin_emails_raw': admin_emails_raw, 'admin_group_ids': admin_group_ids} if is_admin else None})
+
+@app.post("/auth/logout")
+async def logout(authorization: Optional[str] = Header(None), refresh_token: Optional[str] = None):
+    """Enhanced logout with token revocation for government security standards"""
+    logger.info(f"Logout endpoint called with auth header: {bool(authorization)}")
+
+    if not authorization or not authorization.startswith('Bearer '):
+        # Even if no valid token, acknowledge logout
+        logger.info("No valid auth header for logout")
+        return JSONResponse({"status": "success", "message": "Logged out"})
+
+    token = authorization.replace('Bearer ', '')
+    is_valid, claims, error = jwt_manager.validate_token(token)
+
+    logger.info(f"Token validation for logout: valid={is_valid}, error={error}")
+
+    if is_valid:
+        # Log the logout action
+        user_email = claims.get('email')
+        user_id = claims.get('sub')
+        token_id = claims.get('jti') or claims.get('token_id')
+
+        # SECURITY: Revoke the access token in BOTH memory and database
+        if token_id:
+            # Memory revocation (for backward compatibility)
+            if token_id in issued_tokens:
+                issued_tokens[token_id]['revoked'] = True
+                issued_tokens[token_id]['revoked_at'] = datetime.utcnow().isoformat() + 'Z'
+                issued_tokens[token_id]['revoked_reason'] = 'user_logout'
+
+            # DATABASE revocation (permanent, survives restarts)
+            expires_at = datetime.fromtimestamp(claims.get('exp')) if claims.get('exp') else None
+            db_service.revoke_token(
+                token_id=token_id,
+                token_type='access',
+                revoked_by=user_email,
+                reason='logout',
+                user_email=user_email,
+                user_id=user_id,
+                ip_address=None,  # TODO: Get from request
+                expires_at=expires_at
+            )
+
+            # Log token revocation
+            token_activity_logger.log_activity(
+                token_id=token_id,
+                action=TokenAction.REVOKED,
+                performed_by={'email': user_email},
+                details={'reason': 'logout', 'ip_address': None}
+            )
+            logger.info(f"Access token {token_id} revoked in database and memory for user {user_email}")
+
+        # SECURITY: Also revoke the refresh token if provided
+        if refresh_token:
+            # Store revoked refresh tokens (you'll need to implement refresh token tracking)
+            logger.info(f"Refresh token revoked on logout for user {user_email}")
+
+        # Log logout activity
+        db_service.log_activity(
+            activity_type='logout',
+            entity_type='user',
+            entity_id=user_id,
+            entity_name=claims.get('name'),
+            user_email=user_email,
+            user_id=user_id,
+            details={
+                'session_end': datetime.utcnow().isoformat(),
+                'token_revoked': bool(token_id),
+                'refresh_token_revoked': bool(refresh_token)
+            }
+        )
+
+        logger.info(f"User {user_email} logged out with token revocation")
+
+    return JSONResponse({"status": "success", "message": "Logged out and tokens revoked"})
 
 # ==============================
 # Admin: App Registration routes
@@ -800,16 +1202,27 @@ async def get_dashboard_stats(authorization: Optional[str] = Header(None)):
             "active": stats.get('apps_active', 0),
             "discovered": stats.get('apps_discovered', 0)
         },
+        "endpoints_total": stats.get('endpoints_total', 0),
+        "discovery_endpoints_total": stats.get('discovery_endpoints_total', 0),
         "roles": {
-            "total": stats.get('roles_total', 0)
+            "total": stats.get('roles_total', 0),
+            "active": stats.get('roles_active', 0),
+            "inactive": stats.get('roles_inactive', 0)
         },
         "permissions": {
-            "total": stats.get('permissions_total', 0)
+            "total": stats.get('permissions_total', 0),
+            "by_role": stats.get('permissions_by_role', [])
         },
         "api_keys": {
             "total": stats.get('api_keys_total', 0),
             "active": stats.get('api_keys_active', 0)
         },
+        "a2a_permissions": {
+            "total": stats.get('a2a_permissions_total', 0),
+            "active": stats.get('a2a_permissions_active', 0),
+            "inactive": stats.get('a2a_permissions_inactive', 0)
+        },
+        "rotation_policies_total": stats.get('rotation_policies_total', 0),
         "tokens": {
             "templates": stats.get('token_templates_total', 0)
         },
@@ -875,6 +1288,22 @@ async def register_app_admin(request: RegisterAppRequest, authorization: Optiona
     
     if not db_service.create_app(app_data):
         raise HTTPException(status_code=500, detail="Failed to create app")
+    
+    # Log app creation
+    audit_logger.log_action(
+        action=AuditAction.APP_CREATED,
+        user_email=claims.get('email') if claims else request.owner_email,
+        user_id=claims.get('sub') if claims else None,
+        resource_type='app',
+        resource_id=client_id,
+        details={
+            'app_name': request.name,
+            'description': request.description,
+            'owner_email': request.owner_email,
+            'allow_discovery': request.allow_discovery
+        }
+    )
+    
     api_key = None
     api_key_metadata = None
     if request.create_api_key:
@@ -994,9 +1423,12 @@ async def a2a_token_exchange(request: A2ATokenRequest = Body(None), authorizatio
         all_perms = set()
         all_rls: dict[str, list[dict]] = {}
         for role_name in roles_list:
-            for p in permission_registry.get_role_permissions(app_id, role_name):
+            # Get permissions directly from database
+            perms_from_db = get_role_permissions_from_db(app_id, role_name)
+            for p in perms_from_db:
                 all_perms.add(p)
-            role_rls = permission_registry.get_role_rls_filters(app_id, role_name)
+            # Get RLS filters directly from database
+            role_rls = get_role_rls_filters_from_db(app_id, role_name)
             for field, flist in role_rls.items():
                 all_rls.setdefault(field, []).extend(flist)
         if all_perms:
@@ -1088,6 +1520,22 @@ async def update_app_admin(client_id: str, request: UpdateAppRequest, authorizat
     if not db_service.update_app(client_id, updates):
         raise HTTPException(status_code=500, detail="Failed to update app")
     
+    # Log activity for is_active changes
+    if 'is_active' in updates:
+        action_desc = 'activated' if updates['is_active'] else 'deactivated'
+        audit_logger.log_action(
+            action=AuditAction.APP_UPDATED, 
+            user_email=claims.get('email'),
+            resource_type="app",
+            resource_id=client_id,
+            details={
+                'app_name': existing_app.get('name', 'Unknown'),
+                'action': f'app_{action_desc}',
+                'new_status': 'active' if updates['is_active'] else 'inactive',
+                'previous_status': 'active' if existing_app.get('is_active') else 'inactive'
+            }
+        )
+    
     # Return updated app
     app_data = db_service.get_app_by_id(client_id)
     return JSONResponse(app_data)
@@ -1101,12 +1549,26 @@ async def delete_app_admin(client_id: str, authorization: Optional[str] = Header
         raise HTTPException(status_code=403, detail="Admin access required")
 
     # Check if app exists in Supabase
-    if not db_service.get_app_by_id(client_id):
+    app_info = db_service.get_app_by_id(client_id)
+    if not app_info:
         raise HTTPException(status_code=404, detail="App not found")
     
     # Delete from Supabase
     if not db_service.delete_app(client_id):
         raise HTTPException(status_code=500, detail="Failed to delete app")
+
+    # Log app deletion
+    audit_logger.log_action(
+        action=AuditAction.APP_DELETED,
+        user_email=claims.get('email') if claims else None,
+        user_id=claims.get('sub') if claims else None,
+        resource_type='app',
+        resource_id=client_id,
+        details={
+            'app_name': app_info.get('name'),
+            'owner_email': app_info.get('owner_email')
+        }
+    )
 
     # Clean up related data
     # 1. Revoke all API keys for this app
@@ -1130,36 +1592,38 @@ async def get_all_a2a_role_mappings_admin(authorization: Optional[str] = Header(
         raise HTTPException(status_code=403, detail="Admin access required")
     return JSONResponse(app_store.get_a2a_mappings())
 
-@app.get("/auth/admin/apps/{caller_id}/a2a-role-mappings")
-async def get_a2a_role_mappings_admin(caller_id: str, authorization: Optional[str] = Header(None)):
-    is_admin, _ = check_admin_access(authorization)
-    if not is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
-    if not app_store.get_app(caller_id):
-        raise HTTPException(status_code=404, detail="Caller app not found")
-    return JSONResponse({caller_id: app_store.get_a2a_mappings_for_caller(caller_id)})
+# COMMENTED OUT: Old endpoint using JSON files, replaced by database version below
+# @app.get("/auth/admin/apps/{caller_id}/a2a-role-mappings")
+# async def get_a2a_role_mappings_admin(caller_id: str, authorization: Optional[str] = Header(None)):
+#     is_admin, _ = check_admin_access(authorization)
+#     if not is_admin:
+#         raise HTTPException(status_code=403, detail="Admin access required")
+#     if not app_store.get_app(caller_id):
+#         raise HTTPException(status_code=404, detail="Caller app not found")
+#     return JSONResponse({caller_id: app_store.get_a2a_mappings_for_caller(caller_id)})
 
 class A2ARoleMappingsRequest(BaseModel):
     mappings: Dict[str, List[str]]
 
-@app.put("/auth/admin/apps/{caller_id}/a2a-role-mappings")
-async def put_a2a_role_mappings_admin(caller_id: str, request: A2ARoleMappingsRequest, authorization: Optional[str] = Header(None)):
-    is_admin, claims = check_admin_access(authorization)
-    if not is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
-    if not app_store.get_app(caller_id):
-        raise HTTPException(status_code=404, detail="Caller app not found")
-    # Validate target apps and roles
-    for target_app_id, roles in (request.mappings or {}).items():
-        if not app_store.get_app(target_app_id):
-            raise HTTPException(status_code=400, detail=f"Unknown target app: {target_app_id}")
-        for role_name in roles or []:
-            role_config = permission_registry.get_role_full_config(target_app_id, role_name)
-            if not role_config['permissions'] and not role_config['rls_filters']:
-                raise HTTPException(status_code=400, detail=f"Unknown role '{role_name}' for app '{target_app_id}'")
-    result = app_store.upsert_a2a_mappings(caller_id, request.mappings or {})
-    audit_logger.log_action(action=AuditAction.ROLE_MAPPINGS_UPDATED, details={'type': 'a2a', 'caller': caller_id, 'updated_by': claims.get('email')})
-    return JSONResponse({"caller": caller_id, "mappings": result[caller_id]})
+# COMMENTED OUT: Old endpoint using JSON files, replaced by database version below
+# @app.put("/auth/admin/apps/{caller_id}/a2a-role-mappings")
+# async def put_a2a_role_mappings_admin(caller_id: str, request: A2ARoleMappingsRequest, authorization: Optional[str] = Header(None)):
+#     is_admin, claims = check_admin_access(authorization)
+#     if not is_admin:
+#         raise HTTPException(status_code=403, detail="Admin access required")
+#     if not app_store.get_app(caller_id):
+#         raise HTTPException(status_code=404, detail="Caller app not found")
+#     # Validate target apps and roles
+#     for target_app_id, roles in (request.mappings or {}).items():
+#         if not app_store.get_app(target_app_id):
+#             raise HTTPException(status_code=400, detail=f"Unknown target app: {target_app_id}")
+#         for role_name in roles or []:
+#             role_config = permission_registry.get_role_full_config(target_app_id, role_name)
+#             if not role_config['permissions'] and not role_config['rls_filters']:
+#                 raise HTTPException(status_code=400, detail=f"Unknown role '{role_name}' for app '{target_app_id}'")
+#     result = app_store.upsert_a2a_mappings(caller_id, request.mappings or {})
+#     audit_logger.log_action(action=AuditAction.ROLE_MAPPINGS_UPDATED, details={'type': 'a2a', 'caller': caller_id, 'updated_by': claims.get('email')})
+#     return JSONResponse({"caller": caller_id, "mappings": result[caller_id]})
 
 @app.post("/auth/admin/apps/{client_id}/role-mappings")
 async def set_role_mappings_admin(client_id: str, request: SetRoleMappingRequest, authorization: Optional[str] = Header(None)):
@@ -1209,6 +1673,125 @@ async def get_role_mappings_admin(client_id: str, authorization: Optional[str] =
     
     mappings = app_store.get_role_mappings(client_id)
     return JSONResponse({"app_name": app_data.get('name'), "client_id": client_id, "mappings": mappings})
+
+# A2A Permissions Management Endpoints
+@app.get("/auth/admin/a2a-permissions")
+async def get_a2a_permissions_admin(authorization: Optional[str] = Header(None)):
+    """Get all A2A permissions from database"""
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    permissions = db_service.get_all_a2a_permissions()
+    return JSONResponse(permissions)
+
+class A2APermissionRequest(BaseModel):
+    source_client_id: str
+    target_client_id: str
+    allowed_scopes: List[str]
+    max_token_duration: int = 300
+    is_active: bool = True
+
+@app.post("/auth/admin/a2a-permissions")
+async def create_a2a_permission_admin(request: A2APermissionRequest, authorization: Optional[str] = Header(None)):
+    """Create a new A2A permission"""
+    is_admin, claims = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    # Validate source and target apps exist
+    source_app = db_service.get_app_by_id(request.source_client_id) or app_store.get_app(request.source_client_id)
+    if not source_app:
+        raise HTTPException(status_code=400, detail=f"Source app {request.source_client_id} not found")
+
+    target_app = db_service.get_app_by_id(request.target_client_id) or app_store.get_app(request.target_client_id)
+    if not target_app:
+        raise HTTPException(status_code=400, detail=f"Target app {request.target_client_id} not found")
+
+    # Create permission
+    permission_id = db_service.create_a2a_permission(
+        source_client_id=request.source_client_id,
+        target_client_id=request.target_client_id,
+        allowed_scopes=request.allowed_scopes,
+        max_token_duration=request.max_token_duration,
+        is_active=request.is_active,
+        created_by=claims.get('email', 'admin')
+    )
+
+    audit_logger.log_action(
+        action=AuditAction.A2A_PERMISSION_CREATED,
+        details={
+            'permission_id': permission_id,
+            'source': request.source_client_id,
+            'target': request.target_client_id,
+            'scopes': request.allowed_scopes,
+            'created_by': claims.get('email')
+        }
+    )
+
+    return JSONResponse({"id": permission_id, "message": "A2A permission created successfully"})
+
+@app.put("/auth/admin/a2a-permissions/{permission_id}")
+async def update_a2a_permission_admin(permission_id: str, request: A2APermissionRequest, authorization: Optional[str] = Header(None)):
+    """Update an existing A2A permission"""
+    is_admin, claims = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    # Check permission exists
+    existing = db_service.get_a2a_permission_by_id(permission_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="A2A permission not found")
+
+    # Update permission
+    success = db_service.update_a2a_permission(
+        permission_id=permission_id,
+        allowed_scopes=request.allowed_scopes,
+        max_token_duration=request.max_token_duration,
+        is_active=request.is_active,
+        updated_by=claims.get('email', 'admin')
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update A2A permission")
+
+    audit_logger.log_action(
+        action=AuditAction.A2A_PERMISSION_UPDATED,
+        details={
+            'permission_id': permission_id,
+            'updated_by': claims.get('email')
+        }
+    )
+
+    return JSONResponse({"message": "A2A permission updated successfully"})
+
+@app.delete("/auth/admin/a2a-permissions/{permission_id}")
+async def delete_a2a_permission_admin(permission_id: str, authorization: Optional[str] = Header(None)):
+    """Delete an A2A permission"""
+    is_admin, claims = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    # Check permission exists
+    existing = db_service.get_a2a_permission_by_id(permission_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="A2A permission not found")
+
+    # Delete permission
+    success = db_service.delete_a2a_permission(permission_id)
+
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete A2A permission")
+
+    audit_logger.log_action(
+        action=AuditAction.A2A_PERMISSION_DELETED,
+        details={
+            'permission_id': permission_id,
+            'deleted_by': claims.get('email')
+        }
+    )
+
+    return JSONResponse({"message": "A2A permission deleted successfully"})
 
 @app.get("/auth/admin/azure-groups")
 async def get_azure_groups_admin(authorization: Optional[str] = Header(None), search: Optional[str] = None, top: int = 100):
@@ -1286,7 +1869,9 @@ async def create_api_key_admin(client_id: str, request: CreateAPIKeyRequest, aut
     is_admin, claims = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    if not app_store.get_app(client_id):
+    # Check if app exists in database
+    db_app = db_service.get_registered_app(client_id)
+    if not db_app:
         raise HTTPException(status_code=404, detail="App not found")
     api_key, metadata = api_key_manager.create_api_key(
         app_client_id=client_id,
@@ -1327,27 +1912,23 @@ async def list_api_keys_admin(client_id: str, authorization: Optional[str] = Hea
     is_admin, _ = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    if not app_store.get_app(client_id):
+    # Check if app exists in database
+    db_app = db_service.get_registered_app(client_id)
+    if not db_app:
         raise HTTPException(status_code=404, detail="App not found")
-    keys = api_key_manager.list_api_keys(client_id)
-    return JSONResponse([{
-        "key_id": k.key_id,
-        "key_prefix": k.key_prefix,
-        "name": k.name,
-        "permissions": k.permissions,
-        "expires_at": k.expires_at,
-        "created_at": k.created_at,
-        "created_by": k.created_by,
-        "is_active": k.is_active,
-        "last_used_at": k.last_used_at,
-        "usage_count": k.usage_count,
-        # A2A fields
-        "token_template_name": k.token_template_name,
-        "app_roles_overrides": k.app_roles_overrides,
-        "token_ttl_minutes": k.token_ttl_minutes,
-        "default_audience": k.default_audience,
-        "allowed_audiences": k.allowed_audiences,
-    } for k in keys])
+    # Get API keys from database
+    keys = db_service.get_api_keys_for_app(client_id)
+    return JSONResponse(keys if keys else [])
+
+@app.get("/auth/admin/apps/{client_id}/has-active-api-key")
+async def check_active_api_key(client_id: str, authorization: Optional[str] = Header(None)):
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    # Check if app has any active API keys
+    has_active = db_service.has_active_api_key(client_id)
+    return JSONResponse({"has_active_key": has_active})
 
 @app.delete("/auth/admin/apps/{client_id}/api-keys/{key_id}")
 async def revoke_api_key_admin(client_id: str, key_id: str, authorization: Optional[str] = Header(None)):
@@ -1384,6 +1965,48 @@ async def rotate_api_key_admin(client_id: str, key_id: str, authorization: Optio
     })
 
 
+@app.get("/auth/admin/apps/{client_id}/a2a-role-mappings")
+async def get_a2a_role_mappings(client_id: str, authorization: Optional[str] = Header(None)):
+    logger.info(f"A2A role mappings endpoint called for client_id: {client_id}")
+
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        logger.warning(f"Non-admin access attempt for a2a-role-mappings: {client_id}")
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    # Check if app exists in database
+    try:
+        db_app = db_service.get_registered_app(client_id)
+        logger.info(f"get_registered_app result for {client_id}: {db_app is not None}")
+
+        if not db_app:
+            logger.error(f"App not found in database for client_id: {client_id}")
+            raise HTTPException(status_code=404, detail="Caller app not found")
+    except Exception as e:
+        logger.error(f"Error getting app from database: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+    # For now return empty mappings - can be implemented later
+    logger.info(f"Returning empty mappings for client_id: {client_id}")
+    return JSONResponse({
+        "client_id": client_id,
+        "mappings": []
+    })
+
+@app.put("/auth/admin/apps/{client_id}/a2a-role-mappings")
+async def update_a2a_role_mappings(client_id: str, mappings: Dict = Body(...), authorization: Optional[str] = Header(None)):
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    # Check if app exists in database
+    db_app = db_service.get_registered_app(client_id)
+    if not db_app:
+        raise HTTPException(status_code=404, detail="Caller app not found")
+
+    # For now just return success - can be implemented later
+    return JSONResponse({"message": "A2A role mappings updated successfully"})
+
 @app.post("/discovery/endpoints/{client_id}")
 async def trigger_discovery(client_id: str, authorization: Optional[str] = Header(None), force: bool = True):
     is_admin, claims = check_admin_access(authorization)
@@ -1394,56 +2017,558 @@ async def trigger_discovery(client_id: str, authorization: Optional[str] = Heade
     app_data = db_service.get_app_by_id(client_id)
     app_name = app_data.get('name') if app_data else client_id
     
-    # Log activity to database
-    db_service.log_activity(
-        activity_type='discovery_run',
-        entity_type='app',
-        entity_id=client_id,
-        entity_name=app_name,
-        user_email=user_email,
-        user_id=claims.get('oid') if claims else None,
-        details={'force': force},
-        status='pending'
-    )
-    
-    audit_logger.log_action(action=AuditAction.DISCOVERY_TRIGGERED, details={'app_client_id': client_id, 'triggered_by': user_email, 'force': force})
-    
+    # Insert activity_log entry with dis_ prefixed ID from UUID service
     try:
-        result = await enhanced_discovery.discover_with_fields(client_id, force)
-        
-        # Update discovery timestamp
-        db_service.update_discovery_timestamp(client_id, user_email)
-        
-        # Log success
-        db_service.log_activity(
-            activity_type='discovery_run',
-            entity_type='app',
-            entity_id=client_id,
-            entity_name=app_name,
-            user_email=user_email,
-            user_id=claims.get('oid') if claims else None,
-            details={'force': force, 'endpoints_discovered': result.get('endpoints_discovered', 0)},
-            status='success'
-        )
-        
-        return JSONResponse(result)
+        import httpx
+        with httpx.Client() as http_client:
+            response = http_client.post(
+                "http://uuid-service-dev:8002/generate",
+                json={
+                    "type": "custom",
+                    "prefix": "dis",
+                    "format": "uuid_v4",
+                    "requestor": "discovery_button",
+                    "description": f"Discovery button pressed for {app_name}"
+                },
+                timeout=5.0
+            )
+            if response.status_code == 200:
+                activity_id = response.json().get("id")
+                logger.info(f"Generated discovery activity ID: {activity_id}")
+                
+                # Insert into activity_log table using db_service
+                result = db_service.log_activity(
+                    activity_id=activity_id,
+                    activity_type="discovery_app_process",
+                    entity_type="app",
+                    entity_id=client_id,
+                    entity_name=app_name,
+                    user_email=user_email,
+                    status="started"
+                )
+                if result:
+                    logger.info(f"Inserted activity_log entry with ID: {activity_id}")
+                else:
+                    logger.error(f"Failed to insert activity_log entry with ID: {activity_id}")
+                    
+            else:
+                logger.warning(f"Failed to get UUID from service: {response.status_code}")
+                
     except Exception as e:
-        logger.error(f"Discovery execution error for {client_id}: {str(e)}")
+        logger.error(f"Failed to log discovery activity: {e}")
+    
+    # STEP 2: Execute discovery and save discovery_history
+    try:
+        # Get discovery endpoint from app data
+        discovery_endpoint = app_data.get('discovery_endpoint')
+        if not discovery_endpoint:
+            raise Exception("No discovery endpoint configured for this app")
         
-        # Log failure
-        db_service.log_activity(
-            activity_type='discovery_run',
-            entity_type='app',
-            entity_id=client_id,
-            entity_name=app_name,
-            user_email=user_email,
-            user_id=claims.get('oid') if claims else None,
-            details={'force': force},
-            status='failure',
-            error_message=str(e)
-        )
+        logger.info(f"[STEP 2] Starting discovery for {client_id} at {discovery_endpoint}")
         
-        raise HTTPException(status_code=500, detail=f"Discovery failed: {str(e)}")
+        # Connect to hr-system and get endpoints
+        import httpx
+        with httpx.Client() as http_client:
+            discovery_response = http_client.get(f"{discovery_endpoint}?version=2.0", timeout=10.0)
+            discovery_response.raise_for_status()
+            discovery_data = discovery_response.json()
+            
+        logger.info(f"[STEP 2] Discovery response received: {len(discovery_data.get('endpoints', []))} endpoints")
+        
+        # Use the SAME dis_ ID from step 1 - NO new ID generation
+        logger.info(f"[STEP 2] Using same discovery ID: {activity_id}")
+        
+        # Insert discovery_history with SAME dis_ ID and auto-increment discovery_version
+        if activity_id:
+            import json
+            
+            # Check if there are existing discovery records for this client_id
+            existing_versions = db_service.execute_query(
+                "SELECT MAX(discovery_version) as max_version FROM cids.discovery_history WHERE client_id = %s",
+                (client_id,)
+            )
+            
+            # Determine next version number
+            if existing_versions and existing_versions[0]['max_version'] is not None:
+                # Convert to int and add 1
+                max_version = int(existing_versions[0]['max_version'])
+                next_version = max_version + 1
+                logger.info(f"[STEP 2] Found existing versions for {client_id}, max: {max_version}, next: {next_version}")
+            else:
+                next_version = 1
+                logger.info(f"[STEP 2] First discovery for {client_id}, version: {next_version}")
+            
+            history_result = db_service.execute_update("""
+                INSERT INTO cids.discovery_history 
+                (discovery_id, client_id, discovery_timestamp, discovered_by, endpoints_count, discovery_data, status, discovery_version)
+                VALUES (%s, %s, NOW(), %s, %s, %s, %s, %s)
+            """, (
+                activity_id,  # Use SAME dis_ ID from step 1
+                client_id,
+                user_email,
+                len(discovery_data.get('endpoints', [])),
+                json.dumps(discovery_data),  # Convert dict to JSON string
+                "completed",  # Set status as completed for this step
+                str(next_version)  # Auto-incremented version as string
+            ))
+            
+            logger.info(f"[STEP 2] Saved discovery_history with ID: {activity_id}, version: {next_version}, result: {history_result}")
+
+            # Update registered_apps with discovery information (field_count will be updated at the end)
+            update_app_result = db_service.execute_update("""
+                UPDATE cids.registered_apps
+                SET last_discovery_at = NOW(),
+                    discovery_status = 'completed',
+                    discovery_version = %s,
+                    last_discovery_run_at = NOW(),
+                    last_discovery_run_by = %s,
+                    discovery_run_count = COALESCE(discovery_run_count, 0) + 1
+                WHERE client_id = %s
+            """, (
+                str(next_version),
+                user_email,
+                client_id
+            ))
+            logger.info(f"[STEP 2] Updated registered_apps discovery fields for {client_id}, result: {update_app_result}")
+
+        # STEP 3: Save individual endpoints to discovery_endpoints
+        
+        # Use the SAME dis_ ID from step 1 - NO new ID generation
+        logger.info(f"[STEP 3] Using same discovery ID: {activity_id} for endpoints")
+        
+        # Process and save each endpoint
+        endpoints_saved = 0
+        endpoints = discovery_data.get('endpoints', [])
+        
+        for endpoint in endpoints:
+            try:
+                # Generate endpoint_id from UUID service with end_ prefix
+                try:
+                    async with httpx.AsyncClient() as client:
+                        uuid_response = await client.post(
+                            "http://uuid-service-dev:8002/generate",
+                            json={"prefix": "end"}
+                        )
+                        uuid_response.raise_for_status()
+                        endpoint_id = uuid_response.json().get("id")
+                        logger.info(f"[STEP 3] Generated endpoint_id: {endpoint_id}")
+                except Exception as e:
+                    logger.error(f"[STEP 3] Failed to generate endpoint_id: {e}")
+                    endpoint_id = None  # Fallback to NULL if UUID service fails
+                
+                # Extract endpoint data
+                method = endpoint.get('method', 'GET')
+                path = endpoint.get('path', '')
+                operation_id = endpoint.get('operation_id', '')
+                description = endpoint.get('description', '')
+                resource = endpoint.get('resource', '')
+                action = endpoint.get('action', '')
+                parameters = endpoint.get('parameters', {})
+                response_fields = endpoint.get('response_fields', {})
+                
+                # Insert endpoint into discovery_endpoints
+                endpoint_result = db_service.execute_update("""
+                    INSERT INTO cids.discovery_endpoints 
+                    (discovery_id, method, path, operation_id, description, resource, action, parameters, response_fields, endpoint_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    activity_id,  # Use SAME dis_ ID from step 1
+                    method,
+                    path,
+                    operation_id,
+                    description,
+                    resource,
+                    action,
+                    json.dumps(parameters) if parameters else '{}',
+                    json.dumps(response_fields) if response_fields else '{}',
+                    endpoint_id
+                ))
+                
+                if endpoint_result:
+                    endpoints_saved += 1
+                    
+            except Exception as e:
+                logger.error(f"[STEP 3] Failed to save endpoint {path}: {e}")
+        
+        logger.info(f"[STEP 3] Saved {endpoints_saved}/{len(endpoints)} endpoints")
+        
+        # STEP 4: Generate and save permissions to discovered_permissions
+        logger.info(f"[STEP 4] Starting permission generation for {len(endpoints)} endpoints")
+        
+        permissions_saved = 0
+        permissions_by_resource = {}  # Group permissions by resource+action
+        
+        for endpoint in endpoints:
+            try:
+                resource = endpoint.get('resource', '')
+                action = endpoint.get('action', '')
+                response_fields = endpoint.get('response_fields', {})
+                
+                if not resource or not action:
+                    continue
+                
+                # Get fields list from response_fields
+                fields = []
+                if isinstance(response_fields, dict):
+                    # Extract field names from response_fields structure
+                    if 'fields' in response_fields:
+                        fields = response_fields['fields']
+                    elif 'properties' in response_fields:
+                        fields = list(response_fields['properties'].keys())
+                    else:
+                        # If response_fields is a direct field list
+                        fields = list(response_fields.keys()) if response_fields else []
+                
+                # Create key for this resource+action combination
+                perm_key = f"{resource}.{action}"
+                
+                # Aggregate fields for this resource+action
+                if perm_key not in permissions_by_resource:
+                    permissions_by_resource[perm_key] = {
+                        'resource': resource,
+                        'action': action,
+                        'fields': set()
+                    }
+                
+                # Add fields to the set (avoids duplicates)
+                if isinstance(fields, list):
+                    permissions_by_resource[perm_key]['fields'].update(fields)
+                    
+            except Exception as e:
+                logger.error(f"[STEP 4] Failed to process permission for {resource}.{action}: {e}")
+        
+        # Now save aggregated permissions to discovered_permissions
+        for perm_key, perm_data in permissions_by_resource.items():
+            try:
+                # Convert set to list for JSON
+                available_fields = list(perm_data['fields'])
+                
+                # Generate permission_id from UUID service with per_ prefix
+                try:
+                    async with httpx.AsyncClient() as client:
+                        uuid_response = await client.post(
+                            "http://uuid-service-dev:8002/generate",
+                            json={"prefix": "per"}
+                        )
+                        uuid_response.raise_for_status()
+                        permission_id = uuid_response.json().get("id")
+                        logger.info(f"[STEP 4] Generated permission_id: {permission_id}")
+                except Exception as e:
+                    logger.error(f"[STEP 4] Failed to generate permission_id: {e}")
+                    permission_id = None  # Fallback to NULL if UUID service fails
+                
+                # Insert permission into discovered_permissions
+                # Always insert new record for audit trail - each discovery creates new records
+                perm_result = db_service.execute_update("""
+                    INSERT INTO cids.discovered_permissions 
+                    (discovery_id, client_id, resource, action, available_fields, discovered_at, is_active, permission_id)
+                    VALUES (%s, %s, %s, %s, %s, NOW(), %s, %s)
+                """, (
+                    activity_id,  # Use same dis_ ID
+                    client_id,
+                    perm_data['resource'],
+                    perm_data['action'],
+                    json.dumps(available_fields) if available_fields else '[]',
+                    True,  # Set as active by default
+                    permission_id
+                ))
+                
+                if perm_result:
+                    permissions_saved += 1
+                    logger.info(f"[STEP 4] Saved permission: {perm_key} with {len(available_fields)} fields")
+                    
+            except Exception as e:
+                logger.error(f"[STEP 4] Failed to save permission {perm_key}: {e}")
+        
+        logger.info(f"[STEP 4] Saved {permissions_saved} permissions from {len(endpoints)} endpoints")
+        
+        # STEP 5: Process and save field metadata
+        logger.info(f"[STEP 5] Starting field metadata extraction for {len(endpoints)} endpoints")
+        fields_saved = 0
+        
+        # Get saved endpoints with their IDs for linking
+        endpoint_ids = {}
+        try:
+            endpoint_result = db_service.execute_query("""
+                SELECT endpoint_id, method, path 
+                FROM cids.discovery_endpoints 
+                WHERE discovery_id = %s
+            """, (activity_id,))
+            
+            for row in endpoint_result:
+                key = f"{row['method']}:{row['path']}"
+                endpoint_ids[key] = row['endpoint_id']
+        except Exception as e:
+            logger.error(f"[STEP 5] Failed to retrieve endpoint IDs: {e}")
+        
+        # Process each endpoint's fields
+        for endpoint in endpoints:
+            method = endpoint.get('method', 'GET')
+            path = endpoint.get('path', '')
+            endpoint_key = f"{method}:{path}"
+            endpoint_id = endpoint_ids.get(endpoint_key)
+            
+            if not endpoint_id:
+                logger.warning(f"[STEP 5] No endpoint_id found for {endpoint_key}")
+                continue
+            
+            # Process response fields
+            response_fields = endpoint.get('response_fields', {})
+            if isinstance(response_fields, dict):
+                for field_name, field_meta in response_fields.items():
+                    if isinstance(field_meta, dict):
+                        try:
+                            # Generate field_meta_id from UUID service
+                            try:
+                                async with httpx.AsyncClient() as client:
+                                    uuid_response = await client.post(
+                                        "http://uuid-service-dev:8002/generate",
+                                        json={"prefix": "fld"}
+                                    )
+                                    uuid_response.raise_for_status()
+                                    field_meta_id = uuid_response.json().get("id")
+                            except Exception as e:
+                                logger.error(f"[STEP 5] Failed to generate field_meta_id: {e}")
+                                field_meta_id = None
+                            
+                            if field_meta_id:
+                                # Insert field metadata
+                                field_result = db_service.execute_update("""
+                                    INSERT INTO cids.field_metadata 
+                                    (field_meta_id, endpoint_id, discovery_id, field_name, field_path, 
+                                     field_type, field_location, description, is_required, is_sensitive, 
+                                     is_pii, is_phi, is_financial, is_read_only, is_write_only,
+                                     format, pattern, enum_values, min_length, max_length, 
+                                     minimum, maximum)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+                                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                """, (
+                                    field_meta_id,
+                                    endpoint_id,
+                                    activity_id,
+                                    field_name,
+                                    field_name,  # field_path - could be nested like "address.street"
+                                    field_meta.get('type'),
+                                    'response',  # field_location
+                                    field_meta.get('description'),
+                                    field_meta.get('required', False),
+                                    field_meta.get('sensitive', False),
+                                    field_meta.get('pii', False),
+                                    field_meta.get('phi', False),
+                                    field_meta.get('financial', False),
+                                    field_meta.get('read_only', False),
+                                    field_meta.get('write_only', False),
+                                    field_meta.get('format'),
+                                    field_meta.get('pattern'),
+                                    json.dumps(field_meta.get('enum')) if field_meta.get('enum') else None,
+                                    field_meta.get('min_length'),
+                                    field_meta.get('max_length'),
+                                    field_meta.get('minimum'),
+                                    field_meta.get('maximum')
+                                ))
+                                
+                                if field_result:
+                                    fields_saved += 1
+                        except Exception as e:
+                            logger.error(f"[STEP 5] Failed to save field {field_name}: {e}")
+            
+            # Process request fields
+            request_fields = endpoint.get('request_fields', {})
+            if isinstance(request_fields, dict):
+                for field_name, field_meta in request_fields.items():
+                    if isinstance(field_meta, dict):
+                        try:
+                            # Generate field_meta_id
+                            try:
+                                async with httpx.AsyncClient() as client:
+                                    uuid_response = await client.post(
+                                        "http://uuid-service-dev:8002/generate",
+                                        json={"prefix": "fld"}
+                                    )
+                                    uuid_response.raise_for_status()
+                                    field_meta_id = uuid_response.json().get("id")
+                            except Exception as e:
+                                logger.error(f"[STEP 5] Failed to generate field_meta_id: {e}")
+                                field_meta_id = None
+                            
+                            if field_meta_id:
+                                # Insert field metadata for request field
+                                field_result = db_service.execute_update("""
+                                    INSERT INTO cids.field_metadata 
+                                    (field_meta_id, endpoint_id, discovery_id, field_name, field_path, 
+                                     field_type, field_location, description, is_required, is_sensitive, 
+                                     is_pii, is_phi, is_financial, is_read_only, is_write_only,
+                                     format, pattern, enum_values, min_length, max_length, 
+                                     minimum, maximum)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+                                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                """, (
+                                    field_meta_id,
+                                    endpoint_id,
+                                    activity_id,
+                                    field_name,
+                                    field_name,
+                                    field_meta.get('type'),
+                                    'request',  # field_location
+                                    field_meta.get('description'),
+                                    field_meta.get('required', False),
+                                    field_meta.get('sensitive', False),
+                                    field_meta.get('pii', False),
+                                    field_meta.get('phi', False),
+                                    field_meta.get('financial', False),
+                                    field_meta.get('read_only', False),
+                                    field_meta.get('write_only', False),
+                                    field_meta.get('format'),
+                                    field_meta.get('pattern'),
+                                    json.dumps(field_meta.get('enum')) if field_meta.get('enum') else None,
+                                    field_meta.get('min_length'),
+                                    field_meta.get('max_length'),
+                                    field_meta.get('minimum'),
+                                    field_meta.get('maximum')
+                                ))
+                                
+                                if field_result:
+                                    fields_saved += 1
+                        except Exception as e:
+                            logger.error(f"[STEP 5] Failed to save request field {field_name}: {e}")
+            
+            # Process parameters
+            parameters = endpoint.get('parameters', [])
+            if isinstance(parameters, list):
+                for param in parameters:
+                    if isinstance(param, dict):
+                        field_name = param.get('name')
+                        if field_name:
+                            try:
+                                # Generate field_meta_id
+                                try:
+                                    async with httpx.AsyncClient() as client:
+                                        uuid_response = await client.post(
+                                            "http://uuid-service-dev:8002/generate",
+                                            json={"prefix": "fld"}
+                                        )
+                                        uuid_response.raise_for_status()
+                                        field_meta_id = uuid_response.json().get("id")
+                                except Exception as e:
+                                    logger.error(f"[STEP 5] Failed to generate field_meta_id: {e}")
+                                    field_meta_id = None
+                                
+                                if field_meta_id:
+                                    # Insert parameter metadata
+                                    field_result = db_service.execute_update("""
+                                        INSERT INTO cids.field_metadata 
+                                        (field_meta_id, endpoint_id, discovery_id, field_name, field_path, 
+                                         field_type, field_location, description, is_required, is_sensitive, 
+                                         pattern, enum_values)
+                                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    """, (
+                                        field_meta_id,
+                                        endpoint_id,
+                                        activity_id,
+                                        field_name,
+                                        field_name,
+                                        param.get('type'),
+                                        'parameter',  # field_location
+                                        param.get('description'),
+                                        param.get('required', False),
+                                        param.get('sensitive', False),
+                                        param.get('pattern'),
+                                        json.dumps(param.get('enum')) if param.get('enum') else None
+                                    ))
+                                    
+                                    if field_result:
+                                        fields_saved += 1
+                            except Exception as e:
+                                logger.error(f"[STEP 5] Failed to save parameter {field_name}: {e}")
+        
+        logger.info(f"[STEP 5] Saved {fields_saved} field metadata records")
+        
+        # Update activity_log to completed status
+        if activity_id:
+            update_result = db_service.execute_update(
+                "UPDATE cids.activity_log SET status = %s, timestamp = NOW() WHERE activity_id = %s",
+                ("completed", activity_id)
+            )
+            logger.info(f"[STEP 5] Updated activity_log status to completed")
+        
+        # STEP 6: Generate category-based permissions after field_metadata is saved
+        logger.info(f"[STEP 6] Starting category permission generation for {client_id}")
+        categories_created = 0
+        try:
+            discovery_db_instance = DiscoveryDatabase()
+            categories_created = discovery_db_instance.generate_category_permissions(client_id, activity_id)
+            logger.info(f"[STEP 6] Category permissions created: {categories_created}")
+        except Exception as e:
+            logger.error(f"[STEP 6] Failed to generate category permissions: {e}")
+        
+        # FINAL STEP: Update field_count in both discovery_history and registered_apps
+        logger.info(f"[FINAL] Updating field_count in discovery_history and registered_apps for discovery_id: {activity_id}")
+        try:
+            # Update field_count in discovery_history
+            field_count_result = db_service.execute_update("""
+                UPDATE cids.discovery_history
+                SET field_count = %s
+                WHERE discovery_id = %s
+            """, (fields_saved, activity_id))
+            logger.info(f"[FINAL] Updated discovery_history field_count to {fields_saved} for discovery_id: {activity_id}")
+
+            # Update field_count in registered_apps
+            app_field_count_result = db_service.execute_update("""
+                UPDATE cids.registered_apps
+                SET field_count = %s
+                WHERE client_id = %s
+            """, (fields_saved, client_id))
+            logger.info(f"[FINAL] Updated registered_apps field_count to {fields_saved} for client_id: {client_id}")
+
+            # Insert completion record in activity_log with the same discovery_id
+            activity_log_result = db_service.execute_update("""
+                INSERT INTO cids.activity_log
+                (activity_id, timestamp, activity_type, entity_type, entity_id, entity_name, user_email, details, status)
+                VALUES (%s, NOW(), %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                activity_id,  # Use the same dis_ ID
+                'discovery.completed',
+                'discovery',
+                client_id,  # entity_id should be the client_id
+                f"Discovery for {client_id}",  # entity_name
+                user_email,
+                json.dumps({
+                    'discovery_id': activity_id,
+                    'client_id': client_id,
+                    'endpoints_saved': endpoints_saved,
+                    'permissions_saved': permissions_saved,
+                    'fields_saved': fields_saved,
+                    'categories_created': categories_created,
+                    'version': next_version
+                }),
+                'completed'
+            ))
+            logger.info(f"[FINAL] Logged discovery completion to activity_log with ID: {activity_id}")
+        except Exception as e:
+            logger.error(f"[FINAL] Failed to update field_count or activity_log: {e}")
+
+        # Exit here after all steps
+        return JSONResponse({
+            "status": "discovery_completed",
+            "message": f"Discovery completed - saved {endpoints_saved} endpoints, {permissions_saved} permissions, {fields_saved} field metadata, and {categories_created} category permissions (version {next_version})",
+            "discovery_id": activity_id,  # Single ID for entire process
+            "discovery_version": next_version,
+            "endpoints_found": len(endpoints),
+            "endpoints_saved": endpoints_saved,
+            "permissions_generated": permissions_saved,
+            "fields_metadata_saved": fields_saved,
+            "field_count": fields_saved,  # Add field_count to response
+            "category_permissions_created": categories_created
+        })
+        
+    except Exception as e:
+        logger.error(f"[STEP 2] Discovery failed: {e}")
+        
+        return JSONResponse({
+            "status": "step_2_failed", 
+            "message": f"Discovery step 2 failed: {str(e)}",
+            "step1_discovery_id": activity_id
+        })
 
 @app.get("/discovery/v2/permissions/{client_id}/tree")
 async def get_permission_tree(client_id: str, authorization: Optional[str] = Header(None)):
@@ -1452,6 +2577,72 @@ async def get_permission_tree(client_id: str, authorization: Optional[str] = Hea
         raise HTTPException(status_code=403, detail="Admin access required")
     tree = enhanced_discovery.get_permission_tree(client_id)
     return JSONResponse({"app_id": client_id, "permission_tree": tree})
+
+@app.get("/discovery/permissions/{client_id}/categories")
+async def get_permissions_by_category(client_id: str, authorization: Optional[str] = Header(None)):
+    """Get all discovered permissions grouped by categories (base, pii, phi, financial, sensitive, wildcard)"""
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    conn = None
+    try:
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+        conn = psycopg2.connect(
+            host=os.getenv('DB_HOST', 'localhost'),
+            port=int(os.getenv('DB_PORT', 54322)),
+            database=os.getenv('DB_NAME', 'postgres'),
+            user=os.getenv('DB_USER', 'postgres'),
+            password=os.getenv('DB_PASSWORD', 'postgres')
+        )
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Fetch all permissions with their categories and available fields
+        cursor.execute("""
+            SELECT 
+                resource,
+                action,
+                category,
+                permission_id,
+                available_fields
+            FROM cids.discovered_permissions
+            WHERE client_id = %s AND is_active = true
+            ORDER BY resource, action, 
+                CASE category 
+                    WHEN 'base' THEN 1
+                    WHEN 'pii' THEN 2
+                    WHEN 'phi' THEN 3
+                    WHEN 'financial' THEN 4
+                    WHEN 'sensitive' THEN 5
+                    WHEN 'wildcard' THEN 6
+                    ELSE 7
+                END
+        """, (client_id,))
+        
+        permissions = cursor.fetchall()
+        
+        # Convert to list of dicts with proper format
+        result = []
+        for perm in permissions:
+            result.append({
+                "resource": perm["resource"],
+                "action": perm["action"],
+                "category": perm["category"],
+                "permission_id": perm["permission_id"],
+                "available_fields": perm["available_fields"] or []
+            })
+        
+        cursor.close()
+        conn.close()
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch category permissions: {e}")
+        if conn:
+            conn.close()
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Enhanced Discovery Endpoints
 
@@ -1494,17 +2685,34 @@ async def create_permission_role(client_id: str, authorization: Optional[str] = 
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
 
+    logger.info(f"=== RECEIVED CREATE ROLE REQUEST ===")
+    logger.info(f"  client_id: {client_id}")
+    logger.info(f"  role_name: {role_name}")
+    logger.info(f"  description: {description}")
+    logger.info(f"  description type: {type(description)}")
+    logger.info(f"  a2a_only: {a2a_only}")
+    logger.info(f"  permissions count: {len(permissions)}")
+    
     denied_perms_set = set(denied_permissions) if denied_permissions else set()
     logger.info(f"Creating role {role_name} for {client_id} with {len(permissions)} allowed and {len(denied_perms_set)} denied permissions")
+    logger.info(f"Description received: {description}")
+    logger.info(f"a2a_only received: {a2a_only}")
     logger.info(f"Denied permissions received: {denied_permissions}")
-    valid_perms, valid_denied_perms = permission_registry.create_role_with_rls(client_id, role_name, set(permissions), description, rls_filters, denied_perms_set)
+    # Pasar user_email y user_id desde claims
+    user_email = claims.get('email')
+    user_id = claims.get('sub')
+    valid_perms, valid_denied_perms = permission_registry.create_role_with_rls(
+        client_id, role_name, set(permissions), description, rls_filters, denied_perms_set,
+        user_email=user_email, user_id=user_id, a2a_only=bool(a2a_only)
+    )
     # Persist a2a_only flag in metadata
     try:
         permission_registry.role_metadata.setdefault(client_id, {}).setdefault(role_name, {})['a2a_only'] = bool(a2a_only)
-        permission_registry._save_registry()
+        # NO GUARDAR EN JSON
+        # permission_registry._save_registry()
     except Exception:
         logger.exception("Failed to persist a2a_only metadata")
-    audit_logger.log_action(action=AuditAction.ROLE_CREATED, details={'app_client_id': client_id, 'role_name': role_name, 'permissions_count': len(valid_perms), 'denied_permissions_count': len(valid_denied_perms), 'rls_filters_count': len(rls_filters) if rls_filters else 0, 'created_by': claims.get('email'), 'a2a_only': bool(a2a_only)})
+    # No need to log here - permission_registry already logs the activity
     return JSONResponse({"app_id": client_id, "role_name": role_name, "allowed_permissions": list(valid_perms), "denied_permissions": list(valid_denied_perms), "valid_count": len(valid_perms), "denied_count": len(valid_denied_perms), "invalid_count": len(permissions) - len(valid_perms), "rls_filters_saved": len(rls_filters) if rls_filters else 0, "metadata": permission_registry.get_role_metadata(client_id, role_name)})
 
 @app.get("/permissions/{client_id}/roles/{role_name}")
@@ -1517,56 +2725,350 @@ async def get_role_permissions(client_id: str, role_name: str, authorization: Op
         raise HTTPException(status_code=404, detail="Role not found")
     return JSONResponse({"app_id": client_id, "role_name": role_name, "allowed_permissions": role_config['allowed_permissions'], "denied_permissions": role_config['denied_permissions'], "rls_filters": role_config['rls_filters'], "metadata": role_config['metadata'], "count": len(role_config['allowed_permissions']), "denied_count": len(role_config['denied_permissions'])})
 
-@app.get("/permissions/{client_id}/roles")
-async def list_roles(client_id: str, authorization: Optional[str] = Header(None)):
+@app.post("/auth/admin/refresh-cache")
+async def refresh_cache(authorization: Optional[str] = Header(None)):
+    """Refresh the permission registry cache from database"""
     is_admin, _ = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        # Reload permission registry from database
+        permission_registry._load_registry()
+        logger.info("Cache refreshed successfully")
+        return JSONResponse({"status": "success", "message": "Cache refreshed from database"})
+    except Exception as e:
+        logger.error(f"Failed to refresh cache: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to refresh cache: {str(e)}")
+
+@app.post("/auth/admin/log-app-usage")
+async def log_app_usage(
+    request: Request,
+    body: dict = Body(...),
+    authorization: Optional[str] = Header(None)
+):
+    """Log application usage activity for tracking"""
+    is_admin, user_info = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        app_name = body.get('app_name', '')
+        client_id = body.get('client_id', '')
+        action = body.get('action', f'flw.{app_name.lower()}')
+        
+        # Get user info from token
+        user_email = user_info.get('email', 'unknown') if user_info else 'unknown'
+        user_id = user_info.get('sub', 'unknown') if user_info else 'unknown'
+        user_name = user_info.get('name', user_email) if user_info else user_email
+        
+        # Generate activity_id with 'flw' prefix from UUID service
+        activity_id = None
+        try:
+            import httpx
+            async with httpx.AsyncClient() as http_client:
+                response = await http_client.post(
+                    "http://uuid-service-dev:8002/generate",
+                    json={"prefix": "flw"}
+                )
+                if response.status_code == 200:
+                    activity_id = response.json()["id"]
+                    logger.info(f"Generated activity ID from UUID service: {activity_id}")
+                else:
+                    logger.warning(f"Failed to get UUID from service: {response.status_code}")
+        except Exception as e:
+            logger.warning(f"Could not get UUID from service: {e}, using fallback")
+        
+        # Fallback if UUID service fails
+        if not activity_id:
+            activity_id = f"flw_{uuid.uuid4().hex[:16]}"
+            logger.warning(f"UUID service unavailable, using fallback activity_id: {activity_id}")
+        
+        # Log app usage activity
+        success = db_service.log_activity(
+            activity_id=activity_id,
+            activity_type=action,
+            entity_type='application',
+            entity_id=client_id,
+            entity_name=app_name,
+            user_email=user_email,
+            user_id=user_id,
+            details={
+                'application': app_name,
+                'client_id': client_id,
+                'action': action,
+                'source': 'dashboard_access'
+            },
+            api_endpoint=request.url.path,
+            http_method=request.method
+        )
+        
+        if success:
+            return JSONResponse({"status": "success", "message": "App usage logged"})
+        else:
+            raise HTTPException(status_code=500, detail="Failed to log app usage")
+            
+    except Exception as e:
+        logger.error(f"Failed to log app usage: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to log app usage: {str(e)}")
+
+@app.get("/permissions/{client_id}/roles")
+async def list_roles(client_id: str, authorization: Optional[str] = Header(None), use_cache: bool = True):
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Option to force database read instead of cache
+    if not use_cache:
+        try:
+            # Query database directly
+            roles_data = db_service.execute_query("""
+                SELECT role_name, description, a2a_only, is_active, created_at
+                FROM cids.role_metadata
+                WHERE client_id = %s
+                ORDER BY role_name
+            """, (client_id,))
+            
+            roles_with_metadata = {}
+            if roles_data:
+                for role in roles_data:
+                    # Get permissions for this role (stored as JSONB)
+                    perms_data = db_service.execute_query("""
+                        SELECT permissions
+                        FROM cids.role_permissions
+                        WHERE client_id = %s AND role_name = %s
+                    """, (client_id, role['role_name']))
+                    
+                    permissions = []
+                    if perms_data and perms_data[0].get('permissions'):
+                        # Los permisos ya vienen como lista en JSONB
+                        permissions = perms_data[0]['permissions'] if isinstance(perms_data[0]['permissions'], list) else []
+                    
+                    roles_with_metadata[role['role_name']] = {
+                        "permissions": permissions,
+                        "metadata": {
+                            "description": role['description'],
+                            "a2a_only": role['a2a_only'],
+                            "is_active": role['is_active'],
+                            "created_at": role['created_at'].isoformat() if role['created_at'] else None
+                        }
+                    }
+            
+            logger.info(f"Returning roles for {client_id} from DATABASE")
+            return JSONResponse({"app_id": client_id, "roles": roles_with_metadata, "count": len(roles_with_metadata)})
+            
+        except Exception as e:
+            logger.error(f"Failed to query database directly: {e}")
+            # Fall back to cache
+    
+    # Use cache (default behavior)
     app_roles = permission_registry.role_permissions.get(client_id, {})
     app_metadata = permission_registry.role_metadata.get(client_id, {})
-    roles_with_metadata = {role_name: {"permissions": list(perms), "metadata": app_metadata.get(role_name, {})} for role_name, perms in app_roles.items()}
+    roles_with_metadata = {}
+    
+    # Include ALL roles regardless of is_active status
+    for role_name, perms in app_roles.items():
+        meta = app_metadata.get(role_name, {})
+        roles_with_metadata[role_name] = {"permissions": list(perms), "metadata": meta}
+    
     # Include roles that exist only in metadata (e.g., A2A-only roles with no permissions yet)
     for role_name, meta in app_metadata.items():
         if role_name not in roles_with_metadata:
             roles_with_metadata[role_name] = {"permissions": [], "metadata": meta}
+    
+    # Log for debugging
+    logger.info(f"Returning roles for {client_id} from CACHE: {json.dumps({k: {'metadata': v.get('metadata')} for k, v in roles_with_metadata.items()})}")
+    
     return JSONResponse({"app_id": client_id, "roles": roles_with_metadata, "count": len(roles_with_metadata)})
 
 @app.put("/permissions/{client_id}/roles/{role_name}")
-async def update_permission_role(client_id: str, role_name: str, authorization: Optional[str] = Header(None), permissions: List[str] = Body(...), description: Optional[str] = Body(None), rls_filters: Optional[Dict[str, List[Dict[str, str]]]] = Body(None), a2a_only: Optional[bool] = Body(None), denied_permissions: Optional[List[str]] = Body(None)):
+async def update_permission_role(client_id: str, role_name: str, authorization: Optional[str] = Header(None), permissions: Optional[List[str]] = Body(None), description: Optional[str] = Body(None), rls_filters: Optional[Dict[str, List[Dict[str, str]]]] = Body(None), a2a_only: Optional[bool] = Body(None), denied_permissions: Optional[List[str]] = Body(None), is_active: Optional[bool] = Body(None)):
     is_admin, claims = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    if client_id not in permission_registry.role_permissions or role_name not in permission_registry.role_permissions[client_id]:
-        raise HTTPException(status_code=404, detail="Role not found")
+    
+    logger.info(f"=== UPDATE ROLE PERMISSIONS REQUEST ===")
+    logger.info(f"Update role request for {role_name} in {client_id}, is_active={is_active}")
+    logger.info(f"Received permissions: {permissions}")
+    logger.info(f"Permissions type: {type(permissions)}")
+    logger.info(f"Permissions count: {len(permissions) if permissions else 0}")
+    logger.info(f"Received denied_permissions: {denied_permissions}")
+    logger.info(f"Received description: {description}")
+    logger.info(f"Received rls_filters: {rls_filters}")
+    
+    # For now, assume role exists if we're just updating is_active
+    # This matches the behavior when delete was working
+    role_exists = True
 
     denied_perms_set = set(denied_permissions) if denied_permissions else set()
-    logger.info(f"Updating role {role_name} for {client_id} with {len(permissions)} allowed and {len(denied_perms_set)} denied permissions")
-    logger.info(f"Denied permissions received: {denied_permissions}")
-    valid_perms, valid_denied_perms = permission_registry.update_role_with_rls(client_id, role_name, set(permissions), description, rls_filters, denied_perms_set)
+    logger.info(f"Updating role {role_name} for {client_id}")
+    
+    # Update permissions if provided
+    valid_perms = set()
+    valid_denied_perms = set()
+    
+    if permissions is not None:
+        user_email = claims.get('email')
+        user_id = claims.get('sub')
+        valid_perms, valid_denied_perms = permission_registry.update_role_with_rls(
+            client_id, role_name, set(permissions), description, rls_filters, denied_perms_set,
+            user_email=user_email, user_id=user_id
+        )
     # Optionally update a2a_only flag
     if a2a_only is not None:
         try:
             permission_registry.role_metadata.setdefault(client_id, {}).setdefault(role_name, {})['a2a_only'] = bool(a2a_only)
-            permission_registry._save_registry()
+            # NO GUARDAR EN JSON
+            # permission_registry._save_registry()
         except Exception:
             logger.exception("Failed to update a2a_only metadata")
-    audit_logger.log_action(action=AuditAction.ROLE_UPDATED, details={'app_client_id': client_id, 'role_name': role_name, 'permissions_count': len(valid_perms), 'denied_permissions_count': len(valid_denied_perms), 'rls_filters_count': len(rls_filters) if rls_filters else 0, 'updated_by': claims.get('email'), 'a2a_only': a2a_only})
-    return JSONResponse({"app_id": client_id, "role_name": role_name, "allowed_permissions": list(valid_perms), "denied_permissions": list(valid_denied_perms), "valid_count": len(valid_perms), "denied_count": len(valid_denied_perms), "invalid_count": len(permissions) - len(valid_perms), "rls_filters_saved": len(rls_filters) if rls_filters else 0, "metadata": permission_registry.get_role_metadata(client_id, role_name)})
+    
+    # Handle is_active status change
+    if is_active is not None:
+        try:
+            logger.info(f"Updating is_active status for role {role_name} to {is_active}")
+            
+            # Use global database connection
+            db = db_service
+            
+            # Get current status
+            current_status = True
+            if db.cursor:
+                db.cursor.execute("""
+                    SELECT is_active FROM cids.role_metadata 
+                    WHERE client_id = %s AND role_name = %s
+                """, (client_id, role_name))
+                result = db.cursor.fetchone()
+                if result:
+                    current_status = result['is_active']
+            
+            # Update status in database
+            if db.cursor:
+                # First check if role exists
+                db.cursor.execute("""
+                    SELECT 1 FROM cids.role_metadata 
+                    WHERE client_id = %s AND role_name = %s
+                """, (client_id, role_name))
+                
+                if db.cursor.fetchone():
+                    # Role exists, update it
+                    logger.info(f"Role exists in DB, executing UPDATE for {role_name}")
+                    db.cursor.execute("""
+                        UPDATE cids.role_metadata 
+                        SET is_active = %s, updated_at = NOW()
+                        WHERE client_id = %s AND role_name = %s
+                    """, (is_active, client_id, role_name))
+                    logger.info(f"UPDATE executed, rows affected: {db.cursor.rowcount}")
+                else:
+                    # Role doesn't exist in DB - this shouldn't happen for deactivate
+                    # Just log a warning and skip
+                    logger.warning(f"Attempted to update is_active for non-existent role {role_name} in {client_id}")
+                    return JSONResponse({"error": f"Role {role_name} not found"}, status_code=404)
+                
+                # Log the status change in activity log
+                action_type = 'role.activate' if is_active else 'role.deactivate'
+                db.cursor.execute("""
+                    INSERT INTO cids.activity_log (activity_type, entity_type, entity_id, entity_name, user_email, user_id, details, status, timestamp)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                """, (
+                    action_type,
+                    'role',
+                    client_id,
+                    role_name,
+                    claims.get('email', 'unknown'),
+                    claims.get('sub', claims.get('oid', 'unknown')),
+                    Json({
+                        'client_id': client_id,
+                        'role_name': role_name,
+                        'previous_status': 'active' if current_status else 'inactive',
+                        'new_status': 'active' if is_active else 'inactive',
+                        'changed_by': claims.get('email', 'unknown')
+                    }),
+                    'success'
+                ))
+                
+                db.conn.commit()
+                logger.info(f"Successfully updated role {role_name} is_active to {is_active}")
+                
+            # Reload role metadata from database to ensure consistency
+            db.cursor.execute("""
+                SELECT description, a2a_only, is_active, created_at 
+                FROM cids.role_metadata 
+                WHERE client_id = %s AND role_name = %s
+            """, (client_id, role_name))
+            
+            updated_role = db.cursor.fetchone()
+            if updated_role:
+                if client_id not in permission_registry.role_metadata:
+                    permission_registry.role_metadata[client_id] = {}
+                permission_registry.role_metadata[client_id][role_name] = {
+                    'description': updated_role['description'],
+                    'a2a_only': updated_role['a2a_only'],
+                    'is_active': updated_role['is_active'],
+                    'created_at': updated_role['created_at'].isoformat() if updated_role['created_at'] else None
+                }
+                logger.info(f"Reloaded role metadata from DB: is_active={updated_role['is_active']}")
+                
+            # Log separate audit for status change
+            # Note: We're already logging this in the database directly above, 
+            # so we don't need to use audit_logger here to avoid duplicates
+        except Exception as e:
+            logger.exception(f"Failed to update is_active status: {e}")
+    
+    # Log general update only if permissions were updated
+    if permissions is not None:
+        audit_logger.log_action(
+            action=AuditAction.ROLE_UPDATED, 
+            user_email=claims.get('email'),
+            user_id=claims.get('sub', claims.get('oid')),
+            resource_type='role',
+            resource_id=f"{client_id}:{role_name}",
+            details={
+                'app_client_id': client_id, 
+                'role_name': role_name, 
+                'permissions_count': len(valid_perms), 
+                'denied_permissions_count': len(valid_denied_perms), 
+                'rls_filters_count': len(rls_filters) if rls_filters else 0, 
+                'updated_by': claims.get('email'), 
+                'a2a_only': a2a_only, 
+                'is_active': is_active
+            }
+        )
+    return JSONResponse({"app_id": client_id, "role_name": role_name, "allowed_permissions": list(valid_perms), "denied_permissions": list(valid_denied_perms), "valid_count": len(valid_perms), "denied_count": len(valid_denied_perms), "invalid_count": (len(permissions) - len(valid_perms)) if permissions else 0, "rls_filters_saved": len(rls_filters) if rls_filters else 0, "metadata": permission_registry.get_role_metadata(client_id, role_name)})
 
 @app.delete("/permissions/{client_id}/roles/{role_name}")
 async def delete_role(client_id: str, role_name: str, authorization: Optional[str] = Header(None)):
     is_admin, claims = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    if client_id not in permission_registry.role_permissions or role_name not in permission_registry.role_permissions[client_id]:
-        raise HTTPException(status_code=404, detail="Role not found")
-    del permission_registry.role_permissions[client_id][role_name]
+    
+    # Check if role exists in metadata (which includes all roles from DB)
+    role_exists = False
     if client_id in permission_registry.role_metadata and role_name in permission_registry.role_metadata[client_id]:
-        del permission_registry.role_metadata[client_id][role_name]
-    if client_id in permission_registry.role_rls_filters and role_name in permission_registry.role_rls_filters[client_id]:
-        del permission_registry.role_rls_filters[client_id][role_name]
-    permission_registry._save_registry()
-    audit_logger.log_action(action=AuditAction.ROLE_DELETED, details={'app_client_id': client_id, 'role_name': role_name, 'deleted_by': claims.get('email')})
+        role_exists = True
+    elif client_id in permission_registry.role_permissions and role_name in permission_registry.role_permissions[client_id]:
+        role_exists = True
+    
+    if not role_exists:
+        # Try to check directly in database
+        from services.database import DatabaseService
+        db = DatabaseService()
+        if db.cursor:
+            db.cursor.execute("""
+                SELECT 1 FROM cids.role_metadata 
+                WHERE client_id = %s AND role_name = %s
+            """, (client_id, role_name))
+            if db.cursor.fetchone():
+                role_exists = True
+    
+    if not role_exists:
+        raise HTTPException(status_code=404, detail="Role not found")
+    
+    # Use the new delete_role method that handles database deletion
+    user_email = claims.get('email', 'unknown')
+    user_id = claims.get('sub', claims.get('oid', 'unknown'))
+    permission_registry.delete_role(client_id, role_name, user_email, user_id)
+    audit_logger.log_action(action=AuditAction.ROLE_DELETED, details={'app_client_id': client_id, 'role_name': role_name, 'deleted_by': user_email, 'user_id': user_id})
     return JSONResponse({"status": "success", "message": f"Role '{role_name}' deleted successfully"})
 
 # ==============================
@@ -1750,6 +3252,100 @@ async def get_audit_logs(authorization: Optional[str] = Header(None), start: Opt
     items = audit_logger.query_audit_logs(start_date=start_dt, end_date=end_dt, action=action_enum, user_email=user_email, resource_id=resource_id, limit=limit)
     return JSONResponse({"items": items, "count": len(items)})
 
+
+@app.get("/auth/admin/logs/activity-count")
+async def get_activity_log_count(
+    user_email: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None)
+):
+    """Get total count of activity logs, optionally filtered by user email"""
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    try:
+        # Connect directly to database
+        import psycopg2
+        conn = psycopg2.connect(
+            host=os.getenv('DB_HOST', 'localhost'),
+            port=os.getenv('DB_PORT', '54322'),
+            database=os.getenv('DB_NAME', 'postgres'),
+            user=os.getenv('DB_USER', 'postgres'),
+            password=os.getenv('DB_PASSWORD', 'postgres')
+        )
+        cur = conn.cursor()
+
+        # Count records in activity_log table where entity_name is not null
+        if user_email:
+            cur.execute(
+                "SELECT COUNT(*) FROM cids.activity_log WHERE user_email = %s AND entity_name IS NOT NULL",
+                (user_email,)
+            )
+        else:
+            cur.execute("SELECT COUNT(*) FROM cids.activity_log WHERE entity_name IS NOT NULL")
+
+        count = cur.fetchone()[0]
+
+        cur.close()
+        conn.close()
+
+        return {"count": count}
+
+    except Exception as e:
+        logger.error(f"Failed to get activity log count: {e}")
+        return {"count": 0}
+
+
+@app.get("/auth/admin/logs/activity-stats")
+async def get_activity_stats(authorization: Optional[str] = Header(None)):
+    """Get activity statistics from activity_log table for the last 6 months"""
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        # Connect directly to database
+        import psycopg2
+        conn = psycopg2.connect(
+            host=os.getenv('DB_HOST', 'localhost'),
+            port=os.getenv('DB_PORT', '5432'),
+            database=os.getenv('DB_NAME', 'postgres'),
+            user=os.getenv('DB_USER', 'postgres'),
+            password=os.getenv('DB_PASSWORD', 'postgres')
+        )
+        cursor = conn.cursor()
+        
+        # Query activity_log table for stats from last 6 months
+        query = """
+            SELECT activity_type, COUNT(*) as count 
+            FROM cids.activity_log 
+            WHERE entity_name IS NOT NULL 
+              AND timestamp >= NOW() - INTERVAL '6 months'
+            GROUP BY activity_type 
+            ORDER BY count DESC
+        """
+        
+        cursor.execute(query)
+        results = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        # Format results for frontend
+        stats = []
+        if results:
+            for row in results:
+                stats.append({
+                    "type": row[0],
+                    "count": int(row[1])
+                })
+        
+        logger.info(f"Activity stats retrieved: {len(stats)} types found")
+        return JSONResponse({"items": stats, "count": len(stats)})
+    except Exception as e:
+        logger.error(f"Failed to get activity stats: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return JSONResponse({"items": [], "count": 0})
 
 @app.get("/auth/admin/logs/token-activity")
 async def get_token_activity_logs(authorization: Optional[str] = Header(None), start: Optional[str] = None, end: Optional[str] = None, action: Optional[str] = None, user_email: Optional[str] = None, token_id: Optional[str] = None, limit: int = 100):
@@ -2038,7 +3634,9 @@ async def set_app_rotation_policy_endpoint(client_id: str, days_before_expiry: i
     is_admin, claims = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    if not app_store.get_app(client_id):
+    # Check if app exists in database
+    db_app = db_service.get_registered_app(client_id)
+    if not db_app:
         raise HTTPException(status_code=404, detail="App not found")
     rotation_scheduler.set_app_rotation_policy(app_client_id=client_id, days_before_expiry=days_before_expiry, grace_period_hours=grace_period_hours, auto_rotate=auto_rotate, notify_webhook=notify_webhook)
     return JSONResponse({"message": "Rotation policy updated", "app_client_id": client_id, "policy": {"days_before_expiry": days_before_expiry, "grace_period_hours": grace_period_hours, "auto_rotate": auto_rotate, "notify_webhook": notify_webhook}})
@@ -2073,7 +3671,7 @@ async def create_token_template(template: Dict = Body(...), authorization: Optio
         raise HTTPException(status_code=403, detail="Admin access required")
     if 'name' not in template:
         raise HTTPException(status_code=400, detail="Template must include 'name'")
-    jwt_manager.template_manager.save_template(template)
+    jwt_manager.template_manager.save_template(template, claims.get('email'))
     audit_logger.log_action(action=AuditAction.TOKEN_TEMPLATE_UPDATED, user_email=claims.get('email'), resource_type="token_template", details={"template_name": template['name'], "action": "save"})
     return JSONResponse({"message": "Template saved successfully", "template_name": template['name']})
 
@@ -2117,18 +3715,228 @@ async def get_app_endpoints_admin(client_id: str, authorization: Optional[str] =
     is_admin, _ = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    endpoints = endpoints_registry.get_app_endpoints(client_id)
-    if not endpoints:
-        raise HTTPException(status_code=404, detail="No endpoints found for app")
-    return JSONResponse({"source": "registry", "endpoints": endpoints})
+
+    # Get discovery_id from activity_log
+    import psycopg2
+    import psycopg2.extras
+
+    try:
+        conn = psycopg2.connect(
+            host=os.getenv('DB_HOST', 'localhost'),
+            port=int(os.getenv('DB_PORT', 54322)),
+            database=os.getenv('DB_NAME', 'postgres'),
+            user=os.getenv('DB_USER', 'postgres'),
+            password=os.getenv('DB_PASSWORD', 'postgres')
+        )
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Get the latest discovery_id for this app
+        cur.execute("""
+            SELECT details->>'discovery_id' as discovery_id,
+                   details->>'endpoints_saved' as endpoints_count,
+                   timestamp as last_discovery_at
+            FROM cids.activity_log
+            WHERE activity_type = 'discovery.completed'
+            AND entity_id = %s
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """, (client_id,))
+
+        discovery_info = cur.fetchone()
+
+        if not discovery_info or not discovery_info.get('discovery_id'):
+            conn.close()
+            return JSONResponse({
+                "endpoints": [],
+                "total": 0,
+                "last_discovery_at": None,
+                "message": "No discovery data found for this app"
+            })
+
+        discovery_id = discovery_info['discovery_id']
+
+        # Get endpoints from discovery_endpoints table
+        cur.execute("""
+            SELECT method, path, resource, action, description,
+                   operation_id, parameters, response_fields
+            FROM cids.discovery_endpoints
+            WHERE discovery_id = %s
+            ORDER BY path, method
+        """, (discovery_id,))
+
+        endpoints = cur.fetchall()
+
+        # Get generated permissions
+        cur.execute("""
+            SELECT DISTINCT resource || '.' || action ||
+                   CASE
+                       WHEN field_name IS NOT NULL AND field_name != ''
+                       THEN '.' || field_name
+                       ELSE ''
+                   END as permission
+            FROM cids.discovered_permissions
+            WHERE client_id = %s
+            ORDER BY permission
+        """, (client_id,))
+
+        permissions = [row['permission'] for row in cur.fetchall()]
+
+        conn.close()
+
+        return JSONResponse({
+            "endpoints": endpoints,
+            "total": len(endpoints),
+            "last_discovery_at": discovery_info['last_discovery_at'].isoformat() if discovery_info['last_discovery_at'] else None,
+            "permissions_generated": permissions
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting app endpoints: {str(e)}")
+        if 'conn' in locals():
+            conn.close()
+        raise HTTPException(status_code=500, detail=f"Error retrieving endpoints: {str(e)}")
 
 @app.put("/auth/admin/apps/{client_id}/endpoints")
 async def update_app_endpoints_admin(client_id: str, update: EndpointsUpdate, authorization: Optional[str] = Header(None)):
     is_admin, claims = check_admin_access(authorization)
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    if not app_store.get_app(client_id):
+    # Check if app exists in database
+    db_app = db_service.get_registered_app(client_id)
+    if not db_app:
         raise HTTPException(status_code=404, detail="App not found")
     result = endpoints_registry.upsert_endpoints(app_client_id=client_id, endpoints=[e.dict() for e in update.endpoints], updated_by=claims.get('email', 'admin'))
     return JSONResponse({"message": "Endpoints updated", **result})
+
+
+# ===========================
+# Employee Photo Endpoints
+# ===========================
+
+@app.get("/api/user/photo/{email}")
+async def get_user_photo(email: str, authorization: Optional[str] = Header(None)):
+    """Get user photo path from database"""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            host=os.getenv('DB_HOST', 'localhost'),
+            port=int(os.getenv('DB_PORT', 54322)),
+            database=os.getenv('DB_NAME', 'postgres'),
+            user=os.getenv('DB_USER', 'postgres'),
+            password=os.getenv('DB_PASSWORD', 'postgres')
+        )
+        cur = conn.cursor()
+        
+        # Check if photo exists for email
+        cur.execute("""
+            SELECT photo_path FROM cids.photo_emp 
+            WHERE email = %s
+        """, (email,))
+        
+        result = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if result:
+            return JSONResponse({"photo_path": result[0], "has_photo": True})
+        else:
+            return JSONResponse({"photo_path": None, "has_photo": False})
+            
+    except Exception as e:
+        logger.error(f"Error fetching user photo: {e}")
+        return JSONResponse({"photo_path": None, "has_photo": False})
+
+
+@app.get("/photos/{filename}")
+async def serve_photo(filename: str):
+    """Serve photo files from the photos directory"""
+    import os
+    from fastapi.responses import FileResponse
+    
+    # Sanitize filename to prevent directory traversal
+    safe_filename = os.path.basename(filename)
+    # Use path relative to backend directory (works in container and local)
+    photo_path = os.path.join(os.path.dirname(__file__), "..", "static", "photos", safe_filename)
+    photo_path = os.path.abspath(photo_path)
+    
+    if os.path.exists(photo_path):
+        return FileResponse(photo_path, media_type="image/jpeg")
+    else:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+# ===========================
+# Documentation Endpoints
+# ===========================
+
+@app.get("/docs/{doc_name}")
+async def get_documentation(doc_name: str):
+    """Serve documentation markdown files"""
+    # Security: Only allow specific markdown files
+    allowed_docs = [
+        "CIDS_MANDATORY_SPECIFICATION.md",
+        "CIDS_INTEGRATION_GUIDE.md",
+        "CID_MIGRATION_REPORT_ES.md",
+        "CID_MIGRATION_REPORT_EN.md",
+        "PRESENTACION_CAMBIOS.md",
+        "CIDS_SECURITY_INTEGRATION_GUIDELINES_v4.md",
+        "CIDS_SECURITY_INTEGRATION_GUIDELINES_v3.md",
+        "CIDS_SECURITY_INTEGRATION_GUIDELINES.md",
+        "SECURITY_COMPLIANCE.md",
+        "HYBRID_PERMISSIONS_SYSTEM.md",
+        "CLAUDE.md",
+        "CHANGES_20250911.md",
+        "CAMBIOS_IMPLEMENTADOS_20250910.md",
+        "DISCOVERY_FLOW_DOCUMENTATION_ES.md",
+        "CID_Visual_Standards_Document.md",
+        "MIGRATION_REPORT.md",
+        "MIGRATION_NOTES.md",
+        "MIGRATION_ISSUES.md",
+        "FIX_NOTES_2025-09-08.md",
+        "BACKUP_STATUS_20250908.md",
+        "BACKUP_SUMMARY_2025-09-09.md",
+        "BACKUP_20250910_1533.md",
+        "BACKUP_20250911_0800.md",
+        "STATUS_20250909_4PM.MD",
+        "DISCOVERY_RESUMEN.MD",
+        "ARCHITECTURE.md",
+        "README.md",
+        "TEST-INSTRUCTIONS.md",
+        "RESUMEN-USO-LLM.md",
+        "README-LLM-APP-CREATION.md",
+        "design-proposals.md",
+        "arquitectura-comparacion.md"
+    ]
+
+    if doc_name not in allowed_docs:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Try different paths (updated for Docker container)
+    paths_to_try = [
+        f"/app/documentation/{doc_name}",  # Main documentation path in Docker
+        f"/app/{doc_name}",  # Fallback to app root
+        f"/home/dpi/projects/CID/{doc_name}",  # For local development
+        f"./{doc_name}"  # Current directory
+    ]
+
+    for path in paths_to_try:
+        if os.path.exists(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                return PlainTextResponse(content, media_type="text/markdown")
+            except Exception as e:
+                logger.error(f"Error reading documentation file {doc_name}: {str(e)}")
+                raise HTTPException(status_code=500, detail="Error reading documentation")
+
+    raise HTTPException(status_code=404, detail="Document file not found")
+
+# Initialize A2A endpoints on startup
+@app.on_event("startup")
+async def startup_event():
+    """Initialize A2A endpoints and other startup tasks"""
+    await setup_a2a_endpoints(app, db_service, jwt_manager, check_admin_access)
+    logger.info("A2A endpoints initialized")
 

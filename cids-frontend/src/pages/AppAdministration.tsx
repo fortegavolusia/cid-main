@@ -1,10 +1,63 @@
 import React, { useState, useEffect } from 'react';
-import styled from 'styled-components';
+import styled, { keyframes } from 'styled-components';
 import { useAuth } from '../contexts/AuthContext';
 import adminService from '../services/adminService';
 import type { AppInfo } from '../types/admin';
 import RolesModal from '../components/RolesModal';
 import APIKeyModal from '../components/APIKeyModal';
+import EndpointsModal from '../components/EndpointsModal';
+
+// Loading Overlay
+const LoadingOverlay = styled.div<{ $visible: boolean }>`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: ${props => props.$visible ? 'flex' : 'none'};
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+`;
+
+const LoadingContent = styled.div`
+  background: white;
+  border-radius: 16px;
+  padding: 40px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  text-align: center;
+  min-width: 300px;
+`;
+
+const spin = keyframes`
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+`;
+
+const LoadingSpinner = styled.div`
+  width: 60px;
+  height: 60px;
+  border: 4px solid #f3f4f6;
+  border-top: 4px solid #0b3b63;
+  border-radius: 50%;
+  margin: 0 auto 20px;
+  animation: ${spin} 1s linear infinite;
+`;
+
+const LoadingTitle = styled.h3`
+  color: #0b3b63;
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+`;
+
+const LoadingMessage = styled.p`
+  color: #64748b;
+  font-size: 14px;
+  margin: 0;
+`;
 
 // Main Container
 const PageContainer = styled.div`
@@ -169,9 +222,17 @@ const CreateButton = styled.button`
 // Apps Grid
 const AppsGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
   margin-bottom: 32px;
+  
+  @media (min-width: 1400px) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  
+  @media (min-width: 1024px) and (max-width: 1399px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
 `;
 
 const AppCard = styled.div`
@@ -192,20 +253,66 @@ const AppCard = styled.div`
   }
 `;
 
+const ActiveRibbon = styled.div`
+  position: absolute;
+  top: 12px;
+  right: -30px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  padding: 5px 35px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transform: rotate(45deg);
+  box-shadow: 0 3px 10px rgba(16, 185, 129, 0.4);
+  z-index: 10;
+  
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 100%;
+    width: 0;
+    height: 0;
+    border-left: 3px solid transparent;
+    border-right: 3px solid #047857;
+    border-bottom: 3px solid transparent;
+    border-top: 3px solid #047857;
+  }
+  
+  &::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 100%;
+    width: 0;
+    height: 0;
+    border-left: 3px solid #047857;
+    border-right: 3px solid transparent;
+    border-bottom: 3px solid transparent;
+    border-top: 3px solid #047857;
+  }
+`;
+
 const AppCardHeader = styled.div<{ $isActive?: boolean }>`
-  padding: 20px 24px;
-  background: ${props => props.$isActive === false ? '#e5e7eb' : '#f8fafc'};
-  border-bottom: 1px solid #e1e8ed;
+  position: relative;
+  padding: 12px 16px;
+  background: #0b3b63;
+  border-bottom: 1px solid #0a2d4d;
 `;
 
 const AppName = styled.h3`
   margin: 0;
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 600;
   display: flex;
   align-items: center;
-  gap: 12px;
-  color: #334155;
+  gap: 8px;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 `;
 
 const AppStatus = styled.div<{ $isActive: boolean }>`
@@ -230,47 +337,79 @@ const StatusBadge = styled.span<{ $isActive: boolean }>`
 `;
 
 const ToggleButton = styled.button<{ $isActive: boolean }>`
-  width: 44px;
+  position: absolute;
+  bottom: 12px;
+  right: 50px;
+  transform: none;
+  width: 48px;
   height: 24px;
   border-radius: 12px;
   background: ${props => props.$isActive ? '#10b981' : '#6b7280'};
   border: none;
-  position: relative;
   cursor: pointer;
   transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px;
+  font-size: 9px;
+  font-weight: 700;
+  color: white;
+  z-index: 2;
   
   &:hover {
-    opacity: 0.8;
+    opacity: 0.9;
+    transform: scale(1.05);
+  }
+  
+  &::before {
+    content: ${props => props.$isActive ? "'ON'" : "''"};
+    margin-left: 2px;
+    opacity: ${props => props.$isActive ? '1' : '0'};
+    transition: opacity 0.3s ease;
   }
   
   &::after {
-    content: '';
-    position: absolute;
-    top: 2px;
-    left: ${props => props.$isActive ? '22px' : '2px'};
-    width: 20px;
-    height: 20px;
-    background: white;
-    border-radius: 50%;
-    transition: all 0.3s ease;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    content: ${props => props.$isActive ? "''" : "'OFF'"};
+    position: static;
+    margin-right: 2px;
+    opacity: ${props => props.$isActive ? '0' : '1'};
+    transition: opacity 0.3s ease;
   }
 `;
 
+const ToggleSlider = styled.span<{ $isActive: boolean }>`
+  position: absolute;
+  top: 2px;
+  left: ${props => props.$isActive ? '26px' : '2px'};
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+  z-index: 1;
+`;
+
 const AppId = styled.div`
-  font-size: 12px;
-  color: #64748b;
-  margin-top: 8px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+  margin-top: 4px;
   font-family: 'Monaco', 'Courier New', monospace;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 `;
 
 const CopyButton = styled.button`
   background: none;
   border: none;
-  color: #64748b;
+  color: rgba(255, 255, 255, 0.6);
   cursor: pointer;
   padding: 2px 4px;
   display: inline-flex;
@@ -278,7 +417,7 @@ const CopyButton = styled.button`
   transition: color 0.2s;
   
   &:hover {
-    color: #0b3b63;
+    color: white;
   }
   
   &.copied {
@@ -287,7 +426,7 @@ const CopyButton = styled.button`
 `;
 
 const AppCardBody = styled.div`
-  padding: 20px 24px;
+  padding: 12px 16px;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -301,10 +440,10 @@ const AppInfo = styled.div`
 const InfoRow = styled.div`
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 8px;
   color: #64748b;
-  font-size: 14px;
+  font-size: 12px;
   
   i {
     width: 20px;
@@ -346,16 +485,40 @@ const CardActions = styled.div`
   margin-top: auto;
 `;
 
-const ActionButton = styled.button`
+const RoleCount = styled.span`
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #6b7280;
+  color: white;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+`;
+
+const DiscoveryButton = styled.button<{ $discoveryStatus: 'never' | 'old' | 'recent' }>`
   flex: 1;
-  min-width: 80px;
-  height: 70px;
-  padding: 12px 8px;
-  background: white;
-  border: 1px solid #e1e8ed;
+  min-width: 60px;
+  height: 50px;
+  padding: 8px 4px;
+  background: ${props => {
+    switch(props.$discoveryStatus) {
+      case 'never': return '#ef4444';
+      case 'old': return '#f59e0b';
+      case 'recent': return '#10b981';
+      default: return '#ef4444';
+    }
+  }};
+  color: white;
+  border: none;
   border-radius: 8px;
-  font-size: 12px;
-  color: #475569;
+  font-size: 10px;
   cursor: pointer;
   transition: all 0.3s ease;
   display: flex;
@@ -365,9 +528,54 @@ const ActionButton = styled.button`
   gap: 6px;
   
   i {
-    font-size: 18px;
-    width: 24px;
-    height: 24px;
+    font-size: 14px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  span {
+    font-weight: 500;
+    line-height: 1.2;
+  }
+  
+  &:hover:not(:disabled) {
+    opacity: 0.9;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  }
+  
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+`;
+
+const ActionButton = styled.button`
+  flex: 1;
+  min-width: 60px;
+  height: 50px;
+  padding: 8px 4px;
+  background: white;
+  border: 1px solid #e1e8ed;
+  border-radius: 8px;
+  font-size: 10px;
+  color: #0b3b63;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  
+  i {
+    font-size: 14px;
+    width: 20px;
+    height: 20px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -379,9 +587,11 @@ const ActionButton = styled.button`
   }
   
   &:hover {
-    background: #f8fafc;
-    border-color: #cbd5e1;
-    color: #334155;
+    background: #f0f9ff;
+    border-color: #0b3b63;
+    color: #0b3b63;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(11, 59, 99, 0.15);
   }
   
   &.primary {
@@ -443,7 +653,15 @@ const EmptyText = styled.p`
   margin-bottom: 24px;
 `;
 
-// Modal Styles
+// ==============================================
+// STANDARD MODAL DESIGN FOR CID
+// Use this design pattern for all Create/Edit/Delete modals
+// Features:
+// - Blue header bar (#0b3b63) with white title text
+// - Compact size (max-width: 500px)  
+// - Centered action buttons (Cancel/Save)
+// - Clean, minimal styling
+// ==============================================
 const Modal = styled.div<{ $isOpen: boolean }>`
   display: ${props => props.$isOpen ? 'flex' : 'none'};
   position: fixed;
@@ -460,37 +678,49 @@ const Modal = styled.div<{ $isOpen: boolean }>`
 const ModalContent = styled.div`
   background: white;
   border-radius: 12px;
-  padding: 32px;
-  max-width: 600px;
+  max-width: 500px;
   width: 90%;
   max-height: 80vh;
   overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
 `;
 
 const ModalTitle = styled.h2`
-  margin: 0 0 24px 0;
-  color: #1a202c;
-  font-size: 24px;
+  margin: 0;
+  padding: 20px 24px;
+  background: #0b3b63;
+  color: white;
+  font-size: 20px;
+  font-weight: 600;
+  border-radius: 12px 12px 0 0;
 `;
 
 const FormGroup = styled.div`
   margin-bottom: 20px;
+  padding: 0 24px;
 `;
 
 const Label = styled.label`
   display: block;
   margin-bottom: 8px;
-  color: #4a5568;
+  color: #334155;
   font-size: 14px;
   font-weight: 500;
+  
+  span {
+    color: #ef4444;
+  }
 `;
 
 const Input = styled.input`
   width: 100%;
-  padding: 10px 12px;
+  padding: 10px 14px;
   border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 14px;
+  background: white;
+  transition: all 0.2s ease;
   
   &:focus {
     outline: none;
@@ -501,47 +731,79 @@ const Input = styled.input`
 
 const Textarea = styled.textarea`
   width: 100%;
-  padding: 10px 12px;
+  padding: 10px 14px;
   border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 14px;
   min-height: 100px;
+  background: white;
+  transition: all 0.2s ease;
+  resize: vertical;
+  font-family: inherit;
   
   &:focus {
     outline: none;
     border-color: #0b3b63;
     box-shadow: 0 0 0 3px rgba(11, 59, 99, 0.1);
   }
+  
+  &::placeholder {
+    color: #94a3b8;
+  }
 `;
 
 const Checkbox = styled.input`
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #0b3b63;
   margin-right: 8px;
+  
+  &:checked {
+    background: #0b3b63;
+  }
+`;
+
+const CheckboxContainer = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 16px;
+`;
+
+const DiscoveryUrlField = styled.div`
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 `;
 
 const ModalActions = styled.div`
   display: flex;
   gap: 12px;
-  justify-content: flex-end;
+  justify-content: center;
   margin-top: 24px;
-  padding-top: 24px;
+  padding: 24px;
+  background: #f8fafc;
   border-top: 1px solid #e2e8f0;
 `;
 
 const ModalButton = styled.button`
-  padding: 10px 20px;
-  border-radius: 6px;
+  padding: 10px 24px;
+  border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
+  min-width: 100px;
   
   &.primary {
     background: #0b3b63;
-    color: white;
+    color: white !important;
     border: none;
     
     &:hover {
       background: #0a3357;
+      color: white !important;
     }
   }
   
@@ -552,6 +814,7 @@ const ModalButton = styled.button`
     
     &:hover {
       background: #f7fafc;
+      color: #4a5568;
     }
   }
 `;
@@ -569,6 +832,11 @@ const AppAdministration: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [appsWithActiveKeys, setAppsWithActiveKeys] = useState<Set<string>>(new Set());
+  const [discoveryLoading, setDiscoveryLoading] = useState<string | null>(null);
+  const [showEndpointsModal, setShowEndpointsModal] = useState(false);
+  const [selectedAppEndpoints, setSelectedAppEndpoints] = useState<any>(null);
+  const [loadingEndpoints, setLoadingEndpoints] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -587,13 +855,44 @@ const AppAdministration: React.FC = () => {
       setLoading(true);
       const appsData = await adminService.getApps();
       console.log('Apps loaded from API:', appsData); // Debug log
-      setApps(appsData);
+
+      // Use active_roles_count from backend (only active roles)
+      const appsWithRoleCount = appsData.map(app => ({
+        ...app,
+        role_count: app.active_roles_count || 0
+      }));
+
+      // Only show real apps from database
+      setApps(appsWithRoleCount);
+
+      // Load API key status for each app
+      await loadApiKeyStatus(appsWithRoleCount);
     } catch (err) {
       setError('Failed to load applications');
       console.error('Failed to load apps:', err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadApiKeyStatus = async (apps: AppInfo[]) => {
+    const activeKeys = new Set<string>();
+
+    // Check each app for active API keys
+    await Promise.all(
+      apps.map(async (app) => {
+        try {
+          const response = await adminService.checkActiveApiKey(app.client_id);
+          if (response.has_active_key) {
+            activeKeys.add(app.client_id);
+          }
+        } catch (err) {
+          console.error(`Failed to check API key status for ${app.client_id}:`, err);
+        }
+      })
+    );
+
+    setAppsWithActiveKeys(activeKeys);
   };
 
   const handleEditApp = (app: AppInfo) => {
@@ -629,6 +928,7 @@ const AppAdministration: React.FC = () => {
   };
   
   const handleToggleAppStatus = async (app: AppInfo) => {
+    console.log('Toggle clicked for app:', app.name, 'Current status:', app.is_active);
     const newStatus = !app.is_active;
     const action = newStatus ? 'activate' : 'deactivate';
     
@@ -748,6 +1048,45 @@ const AppAdministration: React.FC = () => {
     setShowApiKeyModal(true);
   };
 
+  const handleRunDiscovery = async (clientId: string) => {
+    const app = apps.find(a => a.client_id === clientId);
+    if (!app) return;
+
+    setDiscoveryLoading(clientId);
+    try {
+      // Use adminService.triggerDiscovery instead of direct fetch
+      const result = await adminService.triggerDiscovery(clientId, true);
+
+      // Always show success - the backend returns the result even if it looks like an error
+      alert(`✅ Discovery completed for ${app.name}`);
+
+      // Reload apps to get updated discovery info
+      await loadApps();
+    } catch (err) {
+      console.error('Error running discovery:', err);
+      alert(`❌ Error running discovery: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setDiscoveryLoading(null);
+    }
+  };
+
+  const handleViewEndpoints = async (app: AppInfo) => {
+    setSelectedApp(app);
+    setLoadingEndpoints(true);
+    setShowEndpointsModal(true);
+
+    try {
+      // Get discovered endpoints from the backend
+      const response = await adminService.getAppEndpoints(app.client_id);
+      setSelectedAppEndpoints(response);
+    } catch (err) {
+      console.error('Error loading endpoints:', err);
+      setSelectedAppEndpoints(null);
+    } finally {
+      setLoadingEndpoints(false);
+    }
+  };
+
   const filteredApps = apps.filter(app => {
     const matchesSearch = app.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           app.client_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -776,6 +1115,19 @@ const AppAdministration: React.FC = () => {
 
   return (
     <PageContainer>
+      {/* Full-screen Loading Overlay */}
+      <LoadingOverlay $visible={discoveryLoading !== null}>
+        <LoadingContent>
+          <LoadingSpinner />
+          <LoadingTitle>Running Discovery</LoadingTitle>
+          <LoadingMessage>
+            {discoveryLoading && apps.find(a => a.client_id === discoveryLoading)?.name}
+            <br />
+            Please wait while we discover endpoints...
+          </LoadingMessage>
+        </LoadingContent>
+      </LoadingOverlay>
+
       <PageHeader>
         <HeaderContent>
           <div>
@@ -865,19 +1217,22 @@ const AppAdministration: React.FC = () => {
         <AppsGrid>
           {filteredApps.map(app => (
             <AppCard key={app.client_id}>
-              <AppStatus $isActive={app.is_active}>
-                <StatusBadge $isActive={app.is_active}>
-                  {app.is_active ? 'Active' : 'Inactive'}
-                </StatusBadge>
-                {app.is_active && (
-                  <ToggleButton 
-                    $isActive={app.is_active}
-                    onClick={() => handleToggleAppStatus(app)}
-                    title="Click to deactivate"
-                  />
-                )}
-              </AppStatus>
+              {app.is_active && <ActiveRibbon>ACTIVE</ActiveRibbon>}
+              {!app.is_active && (
+                <AppStatus $isActive={app.is_active}>
+                  <StatusBadge $isActive={app.is_active}>
+                    Inactive
+                  </StatusBadge>
+                </AppStatus>
+              )}
               <AppCardHeader $isActive={app.is_active}>
+                <ToggleButton 
+                  $isActive={app.is_active}
+                  onClick={() => handleToggleAppStatus(app)}
+                  title={app.is_active ? "Click to deactivate" : "Click to activate"}
+                >
+                  <ToggleSlider $isActive={app.is_active} />
+                </ToggleButton>
                 <AppName>
                   <i className="fas fa-cube"></i>
                   {app.name}
@@ -921,55 +1276,49 @@ const AppAdministration: React.FC = () => {
                       </InfoRow>
                     )}
                     
-                    {app.discovery_endpoint && (
+                    {app.discovery_endpoint && (app.last_discovery_at || app.last_discovery_run_at) && (
                       <>
-                        <InfoRow style={{marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e2e8f0'}}>
-                          <button
-                            onClick={async () => {
-                              if (confirm('Run auto discovery for ' + app.name + '?')) {
-                                try {
-                                  const response = await fetch(`${import.meta.env.VITE_API_ORIGIN || ''}/discovery/endpoints/${app.client_id}`, {
-                                    method: 'POST',
-                                    headers: {
-                                      'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-                                      'Content-Type': 'application/json'
-                                    }
-                                  });
-                                  if (response.ok) {
-                                    alert('Discovery completed successfully!');
-                                    loadApps(); // Reload to show updated timestamp
-                                  } else {
-                                    alert('Discovery failed: ' + (await response.text()));
-                                  }
-                                } catch (err) {
-                                  alert('Error running discovery: ' + err);
-                                }
-                              }
-                            }}
-                            style={{
-                              background: '#4f46e5',
-                              color: 'white',
-                              border: 'none',
-                              padding: '8px 16px',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              fontSize: '14px',
-                              fontWeight: '500',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '8px'
-                            }}
-                          >
-                            <i className="fas fa-sync-alt"></i>
-                            Run Auto Discovery
-                          </button>
+                        <InfoRow style={{fontSize: '0.85em', color: '#64748b', marginTop: '8px'}}>
+                          <i className="fas fa-clock"></i>
+                          <span>
+                            <strong>Last Discovery:</strong> {app.latest_discovery_timestamp 
+                              ? new Date(app.latest_discovery_timestamp).toLocaleDateString() 
+                              : 'Never'} 
+                            {app.latest_discovery_id && (
+                              <span style={{marginLeft: '8px'}}>
+                                id : {app.latest_discovery_id}
+                              </span>
+                            )}
+                          </span>
                         </InfoRow>
-                        {(app.last_discovery_at || app.last_discovery_run_at) && (
-                          <InfoRow style={{fontSize: '0.85em', color: '#64748b', marginTop: '8px'}}>
-                            <i className="fas fa-clock"></i>
+                        {(app.latest_version || app.latest_endpoints_count !== undefined || app.latest_permissions_count !== undefined || app.latest_sensitive_fields_count !== undefined) && (
+                          <InfoRow style={{fontSize: '0.85em', color: '#64748b', marginTop: '4px'}}>
+                            <i className="fas fa-info-circle"></i>
                             <span>
-                              Last discovery: {new Date(app.last_discovery_at || app.last_discovery_run_at).toLocaleString()}
-                              {app.last_discovery_run_by && ` by ${app.last_discovery_run_by}`}
+                              <strong>Discovery:</strong>{' '}
+                              {app.latest_version && (
+                                <>Ver No. {app.latest_version}</>
+                              )}
+                              {app.latest_version && app.latest_endpoints_count !== undefined && app.latest_endpoints_count !== null && (
+                                <span style={{margin: '0 10px'}}>|</span>
+                              )}
+                              {app.latest_endpoints_count !== undefined && app.latest_endpoints_count !== null && (
+                                <>Qty End: {app.latest_endpoints_count}</>
+                              )}
+                              {(app.latest_version || (app.latest_endpoints_count !== undefined && app.latest_endpoints_count !== null)) && 
+                               app.latest_permissions_count !== undefined && app.latest_permissions_count !== null && (
+                                <span style={{margin: '0 10px'}}>|</span>
+                              )}
+                              {app.latest_permissions_count !== undefined && app.latest_permissions_count !== null && (
+                                <>Perm: {app.latest_permissions_count}</>
+                              )}
+                              {(app.latest_version || app.latest_endpoints_count !== undefined || app.latest_permissions_count !== undefined) && 
+                               app.latest_sensitive_fields_count !== undefined && app.latest_sensitive_fields_count !== null && (
+                                <span style={{margin: '0 10px'}}>|</span>
+                              )}
+                              {app.latest_sensitive_fields_count !== undefined && app.latest_sensitive_fields_count !== null && (
+                                <>Fields: {app.latest_sensitive_fields_count}</>
+                              )}
                             </span>
                           </InfoRow>
                         )}
@@ -979,29 +1328,81 @@ const AppAdministration: React.FC = () => {
                 </div>
                 
                 <CardActions>
+                  {app.discovery_endpoint && (
+                    <DiscoveryButton 
+                      $discoveryStatus={
+                        !app.last_discovery_at && !app.last_discovery_run_at ? 'never' :
+                        (() => {
+                          const lastDiscovery = new Date(app.last_discovery_at || app.last_discovery_run_at || '');
+                          const daysSinceDiscovery = (Date.now() - lastDiscovery.getTime()) / (1000 * 60 * 60 * 24);
+                          return daysSinceDiscovery > 30 ? 'old' : 'recent';
+                        })()
+                      }
+                      onClick={() => handleRunDiscovery(app.client_id)}
+                      disabled={discoveryLoading === app.client_id}
+                      title={
+                        discoveryLoading === app.client_id ? 'Running discovery...' :
+                        app.last_discovery_at || app.last_discovery_run_at ?
+                        `Last: ${new Date(app.last_discovery_at || app.last_discovery_run_at || '').toLocaleDateString()}` :
+                        'Never run'
+                      }
+                    >
+                      <i className={discoveryLoading === app.client_id ? "fas fa-spinner fa-spin" : "fas fa-sync-alt"}></i>
+                      <span>{discoveryLoading === app.client_id ? 'Running...' : 'Discovery'}</span>
+                    </DiscoveryButton>
+                  )}
+                  {(app.latest_endpoints_count > 0 || app.last_discovery_at) && (
+                    <ActionButton onClick={() => handleViewEndpoints(app)}>
+                      <i className="fas fa-list"></i>
+                      <span>Endpoints</span>
+                      {app.latest_endpoints_count !== undefined && app.latest_endpoints_count > 0 && (
+                        <RoleCount>{app.latest_endpoints_count}</RoleCount>
+                      )}
+                    </ActionButton>
+                  )}
                   <ActionButton onClick={() => handleManageRoles(app)}>
                     <i className="fas fa-user-shield"></i>
                     <span>Roles</span>
+                    {app.role_count !== undefined && app.role_count > 0 && (
+                      <RoleCount>{app.role_count}</RoleCount>
+                    )}
                   </ActionButton>
-                  <ActionButton onClick={() => handleManageApiKeys(app)}>
+                  <ActionButton onClick={() => handleManageApiKeys(app)} style={{ position: 'relative', overflow: 'visible' }}>
                     <i className="fas fa-key"></i>
                     <span>API Keys</span>
+                    {appsWithActiveKeys.has(app.client_id) ? (
+                      <span style={{
+                        position: 'absolute',
+                        top: '-6px',
+                        right: '-6px',
+                        color: '#10b981',
+                        fontSize: '22px',
+                        fontWeight: 'bold',
+                        textShadow: '0 0 3px white, 0 0 3px white'
+                      }}>✓</span>
+                    ) : (
+                      <span style={{
+                        position: 'absolute',
+                        top: '-6px',
+                        right: '-6px',
+                        color: '#ef4444',
+                        fontSize: '22px',
+                        fontWeight: 'bold',
+                        textShadow: '0 0 3px white, 0 0 3px white'
+                      }}>✓</span>
+                    )}
                   </ActionButton>
                   {app.is_active ? (
-                    <ActionButton className="primary" onClick={() => handleEditApp(app)}>
+                    <ActionButton onClick={() => handleEditApp(app)}>
                       <i className="fas fa-edit"></i>
                       <span>Edit</span>
                     </ActionButton>
                   ) : (
-                    <ActionButton className="warning" onClick={() => handleActivateApp(app)}>
+                    <ActionButton onClick={() => handleActivateApp(app)}>
                       <i className="fas fa-power-off"></i>
                       <span>Activate</span>
                     </ActionButton>
                   )}
-                  <ActionButton className="danger" onClick={() => handleDeleteApp(app)}>
-                    <i className="fas fa-trash"></i>
-                    <span>Delete</span>
-                  </ActionButton>
                 </CardActions>
               </AppCardBody>
             </AppCard>
@@ -1012,7 +1413,10 @@ const AppAdministration: React.FC = () => {
       {showRolesModal && selectedApp && (
         <RolesModal
           isOpen={showRolesModal}
-          onClose={() => setShowRolesModal(false)}
+          onClose={() => {
+            setShowRolesModal(false);
+            loadApps(); // Reload apps to update role count
+          }}
           clientId={selectedApp.client_id}
           appName={selectedApp.name}
         />
@@ -1021,7 +1425,11 @@ const AppAdministration: React.FC = () => {
       {showApiKeyModal && selectedApp && (
         <APIKeyModal
           isOpen={showApiKeyModal}
-          onClose={() => setShowApiKeyModal(false)}
+          onClose={() => {
+            setShowApiKeyModal(false);
+            // Reload API key status after closing modal
+            loadApiKeyStatus(apps);
+          }}
           clientId={selectedApp.client_id}
           appName={selectedApp.name}
         />
@@ -1031,13 +1439,14 @@ const AppAdministration: React.FC = () => {
       <Modal $isOpen={showCreateModal}>
         <ModalContent>
           <ModalTitle>Register New Application</ModalTitle>
-          <form onSubmit={handleSubmitCreate}>
+          <form onSubmit={handleSubmitCreate} style={{ padding: '24px 0 0 0' }}>
             <FormGroup>
-              <Label>Application Name *</Label>
+              <Label>Application Name <span>*</span></Label>
               <Input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Enter application name"
                 required
               />
             </FormGroup>
@@ -1047,15 +1456,17 @@ const AppAdministration: React.FC = () => {
               <Textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Brief description of your application (optional)"
               />
             </FormGroup>
             
             <FormGroup>
-              <Label>Owner Email *</Label>
+              <Label>Owner Email <span>*</span></Label>
               <Input
                 type="email"
                 value={formData.owner_email}
                 onChange={(e) => setFormData({ ...formData, owner_email: e.target.value })}
+                placeholder="owner@example.com"
                 required
               />
             </FormGroup>
@@ -1091,27 +1502,28 @@ const AppAdministration: React.FC = () => {
             </FormGroup>
             
             <FormGroup>
-              <Label>
-                <Checkbox
-                  type="checkbox"
-                  checked={formData.allow_discovery}
-                  onChange={(e) => setFormData({ ...formData, allow_discovery: e.target.checked })}
-                />
-                Allow Discovery
-              </Label>
+              <CheckboxContainer>
+                <Label style={{ display: 'flex', alignItems: 'center', marginBottom: 0 }}>
+                  <Checkbox
+                    type="checkbox"
+                    checked={formData.allow_discovery}
+                    onChange={(e) => setFormData({ ...formData, allow_discovery: e.target.checked })}
+                  />
+                  Allow Discovery
+                </Label>
+                {formData.allow_discovery && (
+                  <DiscoveryUrlField>
+                    <Input
+                      type="url"
+                      value={formData.discovery_endpoint}
+                      onChange={(e) => setFormData({ ...formData, discovery_endpoint: e.target.value })}
+                      placeholder="https://api.example.com/discovery"
+                      style={{ marginBottom: 0 }}
+                    />
+                  </DiscoveryUrlField>
+                )}
+              </CheckboxContainer>
             </FormGroup>
-            
-            {formData.allow_discovery && (
-              <FormGroup>
-                <Label>Discovery Endpoint</Label>
-                <Input
-                  type="url"
-                  value={formData.discovery_endpoint}
-                  onChange={(e) => setFormData({ ...formData, discovery_endpoint: e.target.value })}
-                  placeholder="https://api.example.com/discovery"
-                />
-              </FormGroup>
-            )}
             
             <ModalActions>
               <ModalButton
@@ -1122,7 +1534,7 @@ const AppAdministration: React.FC = () => {
                 Cancel
               </ModalButton>
               <ModalButton type="submit" className="primary">
-                Register Application
+                Save
               </ModalButton>
             </ModalActions>
           </form>
@@ -1183,27 +1595,28 @@ const AppAdministration: React.FC = () => {
             </FormGroup>
             
             <FormGroup>
-              <Label>
-                <Checkbox
-                  type="checkbox"
-                  checked={formData.allow_discovery}
-                  onChange={(e) => setFormData({ ...formData, allow_discovery: e.target.checked })}
-                />
-                Allow Discovery
-              </Label>
+              <CheckboxContainer>
+                <Label style={{ display: 'flex', alignItems: 'center', marginBottom: 0 }}>
+                  <Checkbox
+                    type="checkbox"
+                    checked={formData.allow_discovery}
+                    onChange={(e) => setFormData({ ...formData, allow_discovery: e.target.checked })}
+                  />
+                  Allow Discovery
+                </Label>
+                {formData.allow_discovery && (
+                  <DiscoveryUrlField>
+                    <Input
+                      type="url"
+                      value={formData.discovery_endpoint}
+                      onChange={(e) => setFormData({ ...formData, discovery_endpoint: e.target.value })}
+                      placeholder="https://api.example.com/discovery"
+                      style={{ marginBottom: 0 }}
+                    />
+                  </DiscoveryUrlField>
+                )}
+              </CheckboxContainer>
             </FormGroup>
-            
-            {formData.allow_discovery && (
-              <FormGroup>
-                <Label>Discovery Endpoint</Label>
-                <Input
-                  type="url"
-                  value={formData.discovery_endpoint}
-                  onChange={(e) => setFormData({ ...formData, discovery_endpoint: e.target.value })}
-                  placeholder="https://api.example.com/discovery"
-                />
-              </FormGroup>
-            )}
             
             <ModalActions>
               <ModalButton
@@ -1220,6 +1633,17 @@ const AppAdministration: React.FC = () => {
           </form>
         </ModalContent>
       </Modal>
+
+      {/* Endpoints Modal */}
+      <EndpointsModal
+        isOpen={showEndpointsModal}
+        onClose={() => {
+          setShowEndpointsModal(false);
+          setLoadingEndpoints(false);
+        }}
+        appName={selectedApp?.name || ''}
+        endpoints={selectedAppEndpoints}
+      />
     </PageContainer>
   );
 };

@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redirect Loader Preview</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loader-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            /* UPDATED BACKGROUND COLOR - Sidebar Blue Gradient */
+            background: linear-gradient(135deg, #0b3b63 0%, #084172 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        .loader-content {
+            background: white;
+            border-radius: 20px;
+            padding: 60px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            max-width: 500px;
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid #f3f3f3;
+            /* UPDATED SPINNER COLOR - Sidebar Blue */
+            border-top: 4px solid #0b3b63;
+            border-radius: 50%;
+            margin: 0 auto 30px;
+            animation: spin 1s linear infinite;
+        }
+
+        .title {
+            color: #333;
+            font-size: 24px;
+            font-weight: 600;
+            margin: 0 0 15px 0;
+        }
+
+        .message {
+            color: #666;
+            font-size: 16px;
+            margin: 0 0 25px 0;
+            line-height: 1.5;
+        }
+
+        .app-name {
+            /* UPDATED APP NAME BADGE COLOR - Sidebar Blue Gradient */
+            background: linear-gradient(135deg, #0b3b63 0%, #084172 100%);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 18px;
+            display: inline-block;
+        }
+
+        .secure-note {
+            color: #999;
+            font-size: 12px;
+            margin-top: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .secure-note i {
+            /* SHIELD ICON COLOR - Green */
+            color: #10b981;
+        }
+
+        /* Color Reference Section */
+        .color-info {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            font-size: 12px;
+            max-width: 300px;
+        }
+
+        .color-info h4 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .color-item {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+        }
+
+        .color-box {
+            width: 30px;
+            height: 30px;
+            border-radius: 4px;
+            margin-right: 10px;
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div class="loader-overlay">
+        <div class="loader-content">
+            <div class="spinner"></div>
+            <h2 class="title">Redirecting</h2>
+            <p class="message">
+                You are being securely redirected to:
+            </p>
+            <div class="app-name">HR System</div>
+            <p class="secure-note">
+                <i class="fas fa-shield-alt"></i>
+                Secure connection via CID SSO
+            </p>
+        </div>
+    </div>
+
+    <!-- Color Reference Panel -->
+    <div class="color-info">
+        <h4>Colores Actualizados:</h4>
+        <div class="color-item">
+            <div class="color-box" style="background: linear-gradient(135deg, #0b3b63 0%, #084172 100%);"></div>
+            <span><strong>Fondo:</strong> Azul Sidebar CID</span>
+        </div>
+        <div class="color-item">
+            <div class="color-box" style="background: white;"></div>
+            <span><strong>Caja:</strong> Blanco</span>
+        </div>
+        <div class="color-item">
+            <div class="color-box" style="background: #0b3b63;"></div>
+            <span><strong>Spinner:</strong> Azul (#0b3b63)</span>
+        </div>
+        <div class="color-item">
+            <div class="color-box" style="background: linear-gradient(135deg, #0b3b63 0%, #084172 100%);"></div>
+            <span><strong>Badge App:</strong> Mismo azul</span>
+        </div>
+        <div class="color-item">
+            <div class="color-box" style="background: #10b981;"></div>
+            <span><strong>Icono Seguridad:</strong> Verde (#10b981)</span>
+        </div>
+    </div>
+</body>
+</html>

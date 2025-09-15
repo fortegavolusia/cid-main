@@ -128,9 +128,16 @@ const TokenAdministrationPage: React.FC = () => {
 
   return (
     <div className="token-admin-page">
-      <div className="page-header">
-        <h1>Token Administration</h1>
-        <p className="page-subtitle">Manage JWT token structures and templates</p>
+      <div className="page-header" style={{
+        background: '#0b3b63',
+        color: 'white',
+        padding: '24px 32px',
+        marginBottom: '24px',
+        borderRadius: '0',
+        textAlign: 'left'
+      }}>
+        <h1 style={{ margin: '0 0 8px 0', fontSize: '28px', fontWeight: '600', color: 'white' }}>Token Administration</h1>
+        <p style={{ margin: 0, fontSize: '16px', color: 'white' }}>Manage JWT token structures and templates</p>
       </div>
 
       <div className="tab-navigation">
@@ -147,18 +154,6 @@ const TokenAdministrationPage: React.FC = () => {
           Templates
         </button>
         <button 
-          className={`tab-button ${activeTab === 'testing' ? 'active' : ''}`}
-          onClick={() => setActiveTab('testing')}
-        >
-          Testing
-        </button>
-        <button 
-          className={`tab-button ${activeTab === 'settings' ? 'active' : ''}`}
-          onClick={() => setActiveTab('settings')}
-        >
-          Settings
-        </button>
-        <button 
           className={`tab-button ${activeTab === 'logs' ? 'active' : ''}`}
           onClick={() => setActiveTab('logs')}
         >
@@ -169,20 +164,6 @@ const TokenAdministrationPage: React.FC = () => {
       <div className="tab-content">
         {activeTab === 'builder' && <TokenBuilder templateToLoad={templateToLoad} />}
         {activeTab === 'templates' && <TokenTemplates onLoadTemplate={handleLoadTemplate} />}
-        {activeTab === 'testing' && (
-          <div className="coming-soon">
-            <h3>Token Testing</h3>
-            <p>Test token generation with sample data</p>
-            <span className="placeholder">Coming Soon</span>
-          </div>
-        )}
-        {activeTab === 'settings' && (
-          <div className="coming-soon">
-            <h3>Token Settings</h3>
-            <p>Configure expiration, algorithms, and defaults</p>
-            <span className="placeholder">Coming Soon</span>
-          </div>
-        )}
         {activeTab === 'logs' && (
           <div className="logs-content">
             <div className="logs-header">

@@ -29,11 +29,11 @@ services:
       SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
       
       # PostgreSQL Direct Connection
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: supabase_db_mi-proyecto-supabase
+      DB_PORT: 5432
+      DB_NAME: postgres
+      DB_USER: postgres
+      DB_PASSWORD: postgres
       
       # Service Configuration
       HOST_LOCAL: "0.0.0.0"
@@ -41,6 +41,7 @@ services:
     volumes:
       - ./backend:/app
       - ./backend/infra/data:/app/infra/data
+      - ./:/app/documentation
     networks:
       - cid-network
       - supabase_network_mi-proyecto-supabase
@@ -60,7 +61,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      VITE_API_ORIGIN: http://10.1.5.133:8001
+      VITE_API_ORIGIN: http://cid-backend:8000
       NODE_ENV: development
     volumes:
       - ./cids-frontend:/app

@@ -75,13 +75,11 @@ const Logo = styled.img`
 const SidebarContent = styled.div`
   flex: 1;
   padding: 0 16px;
-  background: rgba(0, 0, 0, 0.2);
 `;
 
 const SidebarFooter = styled.div`
   margin-top: auto;
   padding: 16px;
-  background: rgba(0, 0, 0, 0.2);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 `;
 
@@ -93,11 +91,13 @@ const UserSection = styled.div`
   gap: 12px;
 `;
 
-const UserAvatar = styled.div`
+const UserAvatar = styled.div<{ $hasPhoto?: boolean; $photoUrl?: string }>`
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: ${props => props.$hasPhoto && props.$photoUrl 
+    ? `url(${props.$photoUrl}) center/cover` 
+    : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'};
   display: flex;
   align-items: center;
   justify-content: center;
@@ -130,7 +130,7 @@ const MainContent = styled.div<{ $collapsed: boolean }>`
 `;
 
 const NavButton = styled.button`
-  background-color: #4a90e2;
+  background-color: #7a8a9a;
   color: white;
   border: none;
   padding: 6px 12px;
@@ -148,24 +148,28 @@ const NavButton = styled.button`
   text-align: center;
 
   &:hover {
-    background-color: #5ba0f2;
-    box-shadow: 0 2px 0 rgba(0, 0, 0, 0.045);
+    background-color: #546474;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   }
 
   &:active {
-    background-color: #3a80d2;
+    background-color: #435363;
   }
 `;
 
 const LogoutButton = styled(NavButton)`
-  background-color: #ff4d4f;
+  background-color: #ffb74d;  /* Sun orange/amber color from Volusia logo */
+  color: #0b3b63;  /* Dark blue text for contrast */
+  font-weight: 500;
 
   &:hover {
-    background-color: #ff7875;
+    background-color: #ffa726;  /* Slightly darker on hover */
+    color: #0b3b63;
   }
 
   &:active {
-    background-color: #d9363e;
+    background-color: #ff9800;  /* Even darker when pressed */
+    color: #0b3b63;
   }
 `;
 
@@ -177,6 +181,7 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [userPhotoUrl, setUserPhotoUrl] = useState<string | null>(null);
   const { user, logout, isAuthenticated } = useAuth();
 
   useEffect(() => {
@@ -197,6 +202,28 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       }
     })();
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    // Check for user photo
+    if (!user?.email) return;
+    
+    const checkUserPhoto = async () => {
+      try {
+        // Use adminService to check for photo (uses correct proxy settings)
+        const data = await adminService.getUserPhoto(user.email);
+        
+        if (data.has_photo && data.photo_path) {
+          // Use relative path that will be proxied by Vite
+          setUserPhotoUrl(`/photos/${data.photo_path}`);
+        }
+      } catch (error) {
+        // Photo doesn't exist, use default avatar
+        console.log('No photo found for user, using default avatar');
+      }
+    };
+    
+    checkUserPhoto();
+  }, [user]);
 
   const toggleSidebar = () => {
     const next = !sidebarCollapsed;
@@ -246,8 +273,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         <SidebarFooter>
           {user && (
             <UserSection>
-              <UserAvatar>
-                {user.name ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'U'}
+              <UserAvatar $hasPhoto={!!userPhotoUrl} $photoUrl={userPhotoUrl || undefined}>
+                {!userPhotoUrl && (user.name ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'U')}
               </UserAvatar>
               <div>
                 <UserName>{user.name || 'User'}</UserName>

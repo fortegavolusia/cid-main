@@ -23,12 +23,14 @@
 
 .modal-content {
   background: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
   display: flex;
   flex-direction: column;
   animation: slideIn 0.3s ease-out;
-  max-width: 90vw;
+  max-width: 1024px;
+  width: 90%;
+  overflow: hidden;
 }
 
 @keyframes slideIn {
@@ -45,36 +47,52 @@
 .modal-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 20px;
-  border-bottom: 1px solid #e5e7eb;
+  align-items: flex-start;
+  padding: 16px 24px;
+  background: #0b3b63;
+  border-bottom: none;
+}
+
+.modal-title-group {
+  flex: 1;
+  text-align: left;
 }
 
 .modal-header h2 {
   margin: 0;
-  font-size: 1.5rem;
-  color: #111827;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: white;
+  text-align: left;
+}
+
+.modal-subtitle {
+  margin: 4px 0 0 0;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 400;
+  text-align: left;
 }
 
 .modal-close {
   background: none;
   border: none;
-  font-size: 2rem;
+  font-size: 1.5rem;
   cursor: pointer;
-  color: #6b7280;
+  color: white;
   padding: 0;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
 }
 
 .modal-close:hover {
-  background-color: #f3f4f6;
-  color: #111827;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: white;
 }
 
 .modal-body {

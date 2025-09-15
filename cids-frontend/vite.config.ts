@@ -66,6 +66,11 @@ export default defineConfig(({ mode }) => {
           target,
           changeOrigin: true,
           secure: false,
+        },
+        '/photos': {
+          target,
+          changeOrigin: true,
+          secure: false,
         }
       }
     }

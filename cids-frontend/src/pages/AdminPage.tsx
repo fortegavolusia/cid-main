@@ -595,6 +595,10 @@ const AdminPage: React.FC = () => {
                           <button className="button secondary" onClick={async()=>{
                             try {
                               setDiscoveryStatus(prev => ({ ...prev, [app.client_id]: 'running' }));
+                              
+                              // First notification - starting discovery
+                              alert(`🔄 Starting discovery for ${app.name}...\n\nThis may take a few seconds.`);
+                              
                               const res = await adminService.triggerDiscovery(app.client_id, true);
                               console.log('Discovery response:', res);
 

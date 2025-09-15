@@ -42,6 +42,14 @@ export interface AppInfo {
   last_discovery_run_by?: string | null;
   discovery_run_count?: number;
   discovery_status?: 'success' | 'error' | 'timeout' | 'connection_error' | 'unknown' | null;
+  latest_version?: number;
+  latest_endpoints_count?: number;
+  latest_permissions_count?: number;
+  latest_sensitive_fields_count?: number;
+  latest_discovery_timestamp?: string;
+  latest_discovery_id?: string;
+  role_count?: number;
+  active_roles_count?: number;
 }
 
 export interface AppRegistrationResult {
@@ -54,13 +62,14 @@ export interface APIKey {
   key_id: string;
   key_prefix: string;
   name: string;
-  permissions: string[];
+  permissions?: string[];
   expires_at: string;
   created_at: string;
   created_by: string;
   is_active: boolean;
   last_used_at?: string;
   usage_count: number;
+  log_id?: string;
 }
 
 export interface APIKeyCreationResponse {

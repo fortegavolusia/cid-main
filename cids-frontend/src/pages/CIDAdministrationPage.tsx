@@ -1,297 +1,236 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import './TokenAdministrationPage.css';
 import adminService from '../services/adminService';
-import LogTable from '../components/LogTable';
+import PublicKeyModal from '../components/PublicKeyModal';
+import A2AConfigModal from '../components/A2AConfigModal';
 
 const CIDAdministrationPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'logging' | 'logs' | 'maintenance'>('logging');
+  // Security section states
+  const [showPublicKeyModal, setShowPublicKeyModal] = useState(false);
+  const [a2aPermissions, setA2aPermissions] = useState<any[]>([]);
+  const [showA2aModal, setShowA2aModal] = useState(false);
+  const [loadingA2a, setLoadingA2a] = useState(false);
 
-  // Logging settings
-  const [config, setConfig] = useState<any | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-
-  // Logs viewer
-  const [logKind, setLogKind] = useState<'app' | 'audit' | 'token-activity'>('app');
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [q, setQ] = useState('');
-  const [levelFilter, setLevelFilter] = useState<string>('');
-  const tailAbortRef = useRef<AbortController | null>(null);
-
-  useEffect(() => {
-    if (activeTab === 'logging') {
-      (async () => {
-        try {
-          const cfg = await adminService.getLoggingConfig();
-          setConfig(cfg);
-        } catch (e:any) {
-          // ignore for now; show minimal error
-          console.error(e);
-        }
-      })();
-    }
-  }, [activeTab]);
-
-  const appColumns = useMemo(() => ([
-    { key: 'timestamp', label: 'Time' },
-    { key: 'level', label: 'Level' },
-    { key: 'logger', label: 'Logger' },
-    { key: 'http.request.method', label: 'Method' },
-    { key: 'url.path', label: 'Path' },
-    { key: 'http.response.status_code', label: 'Status' },
-    { key: 'user.email', label: 'User' },
-    { key: 'source.ip', label: 'IP' },
-    { key: 'duration.ms', label: 'ms' },
-    { key: 'message', label: 'Message' },
-  ]), []);
-
-  const auditColumns = useMemo(() => ([
-    { key: 'timestamp', label: 'Time' },
-    { key: 'action', label: 'Action' },
-    { key: 'user.email', label: 'User' },
-    { key: 'resource.type', label: 'Res Type' },
-    { key: 'resource.id', label: 'Res ID' },
-    { key: 'details', label: 'Details' },
-  ]), []);
-
-  const tokenColumns = useMemo(() => ([
-    { key: 'timestamp', label: 'Time' },
-    { key: 'action', label: 'Action' },
-    { key: 'token_id', label: 'Token ID' },
-    { key: 'performed_by.email', label: 'By' },
-    { key: 'details', label: 'Details' },
-  ]), []);
-
-  const columns = logKind === 'app' ? appColumns : logKind === 'audit' ? auditColumns : tokenColumns;
-
-  const fetchLogs = async () => {
+  // Load A2A permissions
+  const loadA2aPermissions = async () => {
+    console.log('🔄 [CIDAdmin] Loading A2A permissions from page...');
     try {
-      setLoading(true); setError(null);
-      if (logKind === 'app') {
-        const res = await adminService.getAppLogs({ limit: 200, level: levelFilter });
-        setItems(res.items);
-      } else if (logKind === 'audit') {
-        const res = await adminService.getAuditLogs({ limit: 200 });
-        setItems(res.items);
-      } else {
-        const res = await adminService.getTokenActivityLogs({ limit: 200 });
-        setItems(res.items);
-      }
-    } catch (e:any) {
-      setError(e.message || 'Failed to load logs');
+      setLoadingA2a(true);
+      const response = await adminService.getA2aPermissions();
+      console.log('📦 [CIDAdmin] A2A permissions response:', response);
+      setA2aPermissions(response);
+    } catch (error) {
+      console.error('❌ [CIDAdmin] Failed to load A2A permissions:', error);
     } finally {
-      setLoading(false);
+      setLoadingA2a(false);
     }
   };
 
   useEffect(() => {
-    if (activeTab === 'logs') {
-      fetchLogs();
-    }
-    return () => {
-      // cleanup tail on tab change
-      if (tailAbortRef.current) {
-        tailAbortRef.current.abort();
-        tailAbortRef.current = null;
-      }
-    };
-  }, [activeTab, logKind]);
-
-  const startLiveTail = async () => {
-    // Abort any existing tail
-    if (tailAbortRef.current) {
-      tailAbortRef.current.abort();
-      tailAbortRef.current = null;
-    }
-    const controller = new AbortController();
-    tailAbortRef.current = controller;
-
-    const origin = window.location.origin;
-    const path = logKind === 'app' ? '/auth/admin/logs/app/stream' : logKind === 'audit' ? '/auth/admin/logs/audit/stream' : '/auth/admin/logs/token-activity/stream';
-    const token = localStorage.getItem('access_token');
-    try {
-      const resp = await fetch(origin + path, {
-        method: 'GET',
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        signal: controller.signal,
-      });
-      if (!resp.ok || !resp.body) throw new Error('Stream connection failed');
-
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder('utf-8');
-      let buffer = '';
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let idx;
-        while ((idx = buffer.indexOf('\n\n')) !== -1) {
-          const eventChunk = buffer.slice(0, idx);
-          buffer = buffer.slice(idx + 2);
-          const dataLine = eventChunk.split('\n').find(line => line.startsWith('data:'));
-          if (dataLine) {
-            const payload = dataLine.slice(5).trim();
-            try {
-              const obj = JSON.parse(payload);
-              setItems(prev => [obj, ...prev].slice(0, 500));
-            } catch {}
-          }
-        }
-      }
-    } catch (e) {
-      // silently stop
-    } finally {
-      if (tailAbortRef.current === controller) tailAbortRef.current = null;
-    }
-  };
-
-  const stopLiveTail = () => {
-    if (tailAbortRef.current) {
-      tailAbortRef.current.abort();
-      tailAbortRef.current = null;
-    }
-  };
-
-  const handleDownload = async (format: 'ndjson' | 'csv') => {
-    try {
-      const blob: any = await adminService.exportLogs(logKind, format, 50000);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${logKind}_logs.${format === 'csv' ? 'csv' : 'ndjson'}`;
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch (e:any) {
-      alert(e.message || 'Download failed');
-    }
-  };
-
-  const redacted = useMemo(() => {
-    const ql = q.toLowerCase();
-    return items.filter(it => {
-      if (!q) return true;
-      return JSON.stringify(it).toLowerCase().includes(ql);
-    });
-  }, [items, q]);
-
-  const [patch, setPatch] = useState<any>({});
-  const applyConfig = async () => {
-    try {
-      setSaving(true); setSaveError(null);
-      const updated = await adminService.updateLoggingConfig(patch);
-      setConfig(updated);
-      setPatch({});
-      alert('Logging config updated');
-    } catch (e:any) {
-      setSaveError(e.message || 'Failed to update');
-    } finally {
-      setSaving(false);
-    }
-  };
+    // Load A2A permissions on mount
+    loadA2aPermissions();
+  }, []);
 
   return (
     <div className="token-admin-page">
-      <div className="page-header">
-        <h1>CID Administration</h1>
-        <p className="page-subtitle">Configure logging, view logs, and perform maintenance</p>
-      </div>
-
-      <div className="tab-navigation">
-        <button className={`tab-button ${activeTab === 'logging' ? 'active' : ''}`} onClick={() => setActiveTab('logging')}>Logging Settings</button>
-        <button className={`tab-button ${activeTab === 'logs' ? 'active' : ''}`} onClick={() => setActiveTab('logs')}>Logs Viewer</button>
-        <button className={`tab-button ${activeTab === 'maintenance' ? 'active' : ''}`} onClick={() => setActiveTab('maintenance')}>Maintenance</button>
+      <div className="page-header" style={{
+        background: '#0b3b63',
+        color: 'white',
+        padding: '24px 32px',
+        marginBottom: '24px',
+        borderRadius: '0',
+        textAlign: 'left'
+      }}>
+        <h1 style={{ margin: '0 0 8px 0', fontSize: '28px', fontWeight: '600', color: 'white' }}>CID Administration</h1>
+        <p style={{ margin: 0, fontSize: '16px', color: 'white' }}>Security Configuration</p>
       </div>
 
       <div className="tab-content">
-        {activeTab === 'logging' && (
-          <div>
-            <h3>Logging Settings</h3>
-            {!config && <div className="loading">Loading current config...</div>}
-            {config && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label>App Log Level</label>
-                  <select value={patch.app?.level ?? config.app?.level ?? 'INFO'} onChange={e => setPatch((p:any)=>({ ...p, app: { ...(p.app||{}), level: e.target.value } }))}>
-                    <option>DEBUG</option>
-                    <option>INFO</option>
-                    <option>WARNING</option>
-                    <option>ERROR</option>
-                  </select>
+        <div>
+          {/* Two column card layout */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
+
+            {/* Public Key Card */}
+            <div style={{
+              background: 'white',
+              border: '1px solid #e5e7eb',
+              borderRadius: '12px',
+              padding: '24px',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                <span style={{ fontSize: '24px' }}>🔑</span>
+                <h3 style={{ margin: 0, color: '#1f2937' }}>Public Key Management</h3>
+              </div>
+              <p style={{ color: '#6b7280', marginBottom: '20px' }}>
+                View and manage the public key used by applications to verify JWT tokens issued by CID.
+              </p>
+              <div style={{
+                background: '#f9fafb',
+                border: '1px solid #e5e7eb',
+                borderRadius: '8px',
+                padding: '12px',
+                marginBottom: '16px',
+                fontFamily: 'monospace',
+                fontSize: '13px'
+              }}>
+                <div style={{ marginBottom: '8px' }}>
+                  <strong>Algorithm:</strong> RS256
+                </div>
+                <div style={{ marginBottom: '8px' }}>
+                  <strong>Key Size:</strong> 2048 bits
                 </div>
                 <div>
-                  <label>Access Logs Enabled</label>
-                  <input type="checkbox" checked={patch.access?.enabled ?? config.access?.enabled ?? true} onChange={e => setPatch((p:any)=>({ ...p, access: { ...(p.access||{}), enabled: e.target.checked } }))} />
-                </div>
-                <div>
-                  <label>JSON Format</label>
-                  <input type="checkbox" checked={patch.app?.json ?? config.app?.json ?? true} onChange={e => setPatch((p:any)=>({ ...p, app: { ...(p.app||{}), json: e.target.checked } }))} />
-                </div>
-                <div>
-                  <label>Stdout Enabled</label>
-                  <input type="checkbox" checked={patch.app?.stdout ?? config.app?.stdout ?? true} onChange={e => setPatch((p:any)=>({ ...p, app: { ...(p.app||{}), stdout: e.target.checked } }))} />
-                </div>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <button className="button" onClick={applyConfig} disabled={saving}>Save</button>
-                  {saveError && <span className="error-message" style={{ marginLeft: 8 }}>{saveError}</span>}
+                  <strong>JWKS Endpoint:</strong> /.well-known/jwks.json
                 </div>
               </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'logs' && (
-          <div>
-            <div className="logs-controls" style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems:'center', flexWrap: 'wrap' }}>
-              <select value={logKind} onChange={e=>setLogKind(e.target.value as any)}>
-                <option value="app">App</option>
-                <option value="audit">Audit</option>
-                <option value="token-activity">Token Activity</option>
-              </select>
-              {logKind === 'app' && (
-                <>
-                  <select onChange={e=>fetchLogs()} style={{ minWidth: 100 }}>
-                    <option value="">All Levels</option>
-                    <option value="DEBUG">DEBUG</option>
-                    <option value="INFO">INFO</option>
-                    <option value="WARNING">WARNING</option>
-                    <option value="ERROR">ERROR</option>
-                  </select>
-                </>
-              )}
-              <input className="filter-input" placeholder="Filter text..." value={q} onChange={e=>setQ(e.target.value)} />
-              <button className="button" onClick={fetchLogs} disabled={loading}>Refresh</button>
-              <button className="button" onClick={()=>handleDownload('ndjson')}>Download NDJSON</button>
-              <button className="button" onClick={()=>handleDownload('csv')}>Download CSV</button>
-              <button className="button" onClick={startLiveTail} disabled={!!tailAbortRef.current}>Live Tail</button>
-              <button className="button" onClick={stopLiveTail} disabled={!tailAbortRef.current}>Stop Tail</button>
+              <button
+                className="button"
+                onClick={() => setShowPublicKeyModal(true)}
+                style={{
+                  background: '#0b3b63',
+                  color: 'white',
+                  padding: '10px 20px',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+              >
+                View Public Key
+              </button>
             </div>
-            {loading && <div className="loading">Loading logs...</div>}
-            {error && <div className="error-message">{error}</div>}
-            {!loading && !error && <LogTable items={redacted} columns={columns as any} emptyText="No log items" />}
-          </div>
-        )}
 
-        {activeTab === 'maintenance' && (
-          <div className="coming-soon">
-            <h3>Maintenance</h3>
-            <p>Retention cleanup, manual rotation checks and more.</p>
-            <button className="button" onClick={async()=>{
-              try{
-                await adminService.manualRotationCheck();
-                alert('Rotation check triggered');
-              }catch(e:any){
-                alert(e.message||'Failed to run rotation check');
-              }
-            }}>Run Rotation Check</button>
+            {/* A2A Configuration Card */}
+            <div style={{
+              background: 'white',
+              border: '1px solid #e5e7eb',
+              borderRadius: '12px',
+              padding: '24px',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                <span style={{ fontSize: '24px' }}>🔄</span>
+                <h3 style={{ margin: 0, color: '#1f2937' }}>A2A Configuration</h3>
+              </div>
+              <p style={{ color: '#6b7280', marginBottom: '20px' }}>
+                Manage Application-to-Application permissions for secure service communication.
+              </p>
+              <div style={{
+                background: '#f0f9ff',
+                border: '1px solid #bae6fd',
+                borderRadius: '8px',
+                padding: '12px',
+                marginBottom: '16px',
+                fontSize: '13px'
+              }}>
+                <div style={{ marginBottom: '8px' }}>
+                  <strong>Active Permissions:</strong> {a2aPermissions.length}
+                </div>
+                <div style={{ marginBottom: '8px' }}>
+                  <strong>Token Duration:</strong> 5-10 minutes
+                </div>
+                <div>
+                  <strong>Authentication:</strong> API Key based
+                </div>
+              </div>
+              <button
+                className="button"
+                onClick={() => {
+                  setShowA2aModal(true);
+                  loadA2aPermissions();
+                }}
+                style={{
+                  background: '#0ea5e9',
+                  color: 'white',
+                  padding: '10px 20px',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+              >
+                Configure A2A Permissions
+              </button>
+            </div>
           </div>
-        )}
+
+          {/* Important Security Recommendations */}
+          <div style={{
+            background: '#fbbf24',
+            border: '2px solid #f59e0b',
+            borderRadius: '12px',
+            padding: '24px',
+            marginTop: '32px',
+            color: 'black'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', justifyContent: 'center' }}>
+              <span style={{ fontSize: '24px' }}>⚠️</span>
+              <h3 style={{ margin: 0, color: 'black', fontWeight: '600' }}>Important Security Recommendations</h3>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              <div>
+                <h4 style={{ marginTop: 0, marginBottom: '12px', color: 'black', fontWeight: '600' }}>🔑 Public Key Management</h4>
+                <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.8' }}>
+                  <li><strong>Never share the private key</strong> - Only the public key should be distributed</li>
+                  <li><strong>Use JWKS endpoint</strong> - Applications should fetch keys from /.well-known/jwks.json</li>
+                  <li><strong>Implement key rotation</strong> - Plan for periodic key rotation (quarterly recommended)</li>
+                  <li><strong>Cache public keys</strong> - Applications should cache keys for 24 hours</li>
+                </ul>
+              </div>
+
+              <div>
+                <h4 style={{ marginTop: 0, marginBottom: '12px', color: 'black', fontWeight: '600' }}>🔄 A2A Security Best Practices</h4>
+                <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.8' }}>
+                  <li><strong>Limit token duration</strong> - Keep A2A tokens short-lived (5-10 minutes max)</li>
+                  <li><strong>Use least privilege</strong> - Only grant necessary scopes for each service</li>
+                  <li><strong>Rotate API keys regularly</strong> - Implement automatic key rotation policies</li>
+                  <li><strong>Monitor A2A activity</strong> - Review audit logs for unusual patterns</li>
+                </ul>
+              </div>
+            </div>
+
+            <div style={{
+              marginTop: '20px',
+              padding: '12px',
+              background: 'rgba(0,0,0,0.1)',
+              borderRadius: '8px',
+              borderLeft: '4px solid #dc2626'
+            }}>
+              <strong style={{ color: 'black' }}>🚨 Security Alert:</strong>
+              <span style={{ marginLeft: '8px', color: 'black' }}>
+                Always validate JWT signatures using the public key. Never trust unverified tokens.
+                Implement proper error handling for invalid or expired tokens.
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* Modals */}
+      <PublicKeyModal
+        isOpen={showPublicKeyModal}
+        onClose={() => setShowPublicKeyModal(false)}
+      />
+
+      <A2AConfigModal
+        isOpen={showA2aModal}
+        onClose={() => setShowA2aModal(false)}
+        onRefresh={loadA2aPermissions}
+      />
     </div>
   );
 };
 
 export default CIDAdministrationPage;
-

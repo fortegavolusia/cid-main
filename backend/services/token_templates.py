@@ -7,56 +7,44 @@ from typing import Dict, List, Optional
 from datetime import datetime
 
 from utils.paths import data_path, config_path
+from services.database import db_service
 
 logger = logging.getLogger(__name__)
 
 
 class TokenTemplateManager:
     def __init__(self, templates_file: str = None):
-        new_path = str(data_path("token_templates.json"))
-        old_path = str(config_path("token_templates.json"))
-        self.templates_file = templates_file or new_path
+        # No longer using JSON file, using database instead
         self.templates: List[Dict] = []
-        self._migrate_old_location(old_path, new_path)
         self.load_templates()
-    def _migrate_old_location(self, old_path: str, new_path: str):
-        try:
-            if os.path.exists(old_path) and not os.path.exists(new_path):
-                # Ensure target directory exists
-                Path(new_path).parent.mkdir(parents=True, exist_ok=True)
-                with open(old_path, 'r') as f:
-                    data = f.read()
-                with open(new_path, 'w') as f:
-                    f.write(data)
-                logger.info(f"Migrated token templates from {old_path} to {new_path}")
-        except Exception as e:
-            logger.error(f"Failed to migrate token_templates.json: {e}")
+    # Migration method no longer needed - using database
 
 
     def load_templates(self):
         try:
-            with open(self.templates_file, 'r') as f:
-                data = json.load(f)
-                self.templates = data.get('templates', [])
-                logger.info(f"Loaded {len(self.templates)} token templates")
-        except FileNotFoundError:
-            logger.info("No templates file found, using defaults")
-            self.templates = self.get_default_templates()
-            self.save_templates()
+            # Load from database
+            db_templates = db_service.get_token_templates()
+            if db_templates:
+                self.templates = db_templates
+                logger.info(f"Loaded {len(self.templates)} token templates from database")
+            else:
+                logger.info("No templates in database, using defaults")
+                self.templates = self.get_default_templates()
+                # Save default templates to database
+                for template in self.templates:
+                    db_service.save_token_template(template, user_email)
         except Exception as e:
-            logger.error(f"Error loading templates: {e}")
+            logger.error(f"Error loading templates from database: {e}")
             self.templates = []
 
-    def save_templates(self):
+    def save_templates(self, user_email: str = None):
         try:
-            p = Path(self.templates_file)
-            p.parent.mkdir(parents=True, exist_ok=True)
-            data = {'templates': self.templates, 'updated_at': datetime.now().isoformat()}
-            with open(p, 'w') as f:
-                json.dump(data, f, indent=2)
-            logger.info(f"Saved {len(self.templates)} templates")
+            # Save all templates to database
+            for template in self.templates:
+                db_service.save_token_template(template, user_email)
+            logger.info(f"Saved {len(self.templates)} templates to database")
         except Exception as e:
-            logger.error(f"Error saving templates: {e}")
+            logger.error(f"Error saving templates to database: {e}")
 
     def get_default_templates(self) -> List[Dict]:
         return [{
@@ -121,25 +109,38 @@ class TokenTemplateManager:
             filtered_token['email'] = token_data['email']
         if 'name' in token_data and 'name' not in filtered_token:
             filtered_token['name'] = token_data['name']
+
+        # Always include security claims for professional token binding
+        security_claims = ['bound_ip', 'bound_device']
+        for key in security_claims:
+            if key in token_data:
+                filtered_token[key] = token_data[key]
+                logger.info(f"Added security claim {key}: {token_data[key]}")
+            else:
+                logger.warning(f"Security claim {key} not found in token_data")
+
         filtered_token['_template_applied'] = template['name']
         filtered_token['_template_priority'] = template.get('priority', 0)
         return filtered_token
 
-    def update_template(self, template_name: str, template_data: Dict) -> bool:
+    def update_template(self, template_name: str, template_data: Dict, user_email: str = None) -> bool:
         try:
             existing_index = next((i for i, t in enumerate(self.templates) if t['name'] == template_name), None)
             if existing_index is not None:
+                # Preserve template_id from existing template to ensure UPDATE instead of INSERT
+                if 'template_id' in self.templates[existing_index]:
+                    template_data['template_id'] = self.templates[existing_index]['template_id']
                 self.templates[existing_index] = template_data
             else:
                 self.templates.append(template_data)
-            self.save_templates()
+            self.save_templates(user_email)
             return True
         except Exception as e:
             logger.error(f"Error updating template: {e}")
             return False
 
 
-    def save_template(self, template: Dict) -> bool:
+    def save_template(self, template: Dict, user_email: str = None) -> bool:
         """Save or update a token template by name.
         Merges with existing template to preserve fields like adGroups/priority/enabled
         when the client omits them.
@@ -160,7 +161,7 @@ class TokenTemplateManager:
                 merged.setdefault('adGroups', existing.get('adGroups', []))
                 merged.setdefault('priority', existing.get('priority', 0))
                 merged.setdefault('enabled', existing.get('enabled', True))
-                return self.update_template(name, merged)
+                return self.update_template(name, merged, user_email)
             else:
                 # Apply defaults for new templates
                 new_template = {
@@ -173,7 +174,7 @@ class TokenTemplateManager:
                     'enabled': template.get('enabled', True),
                     'isDefault': template.get('isDefault', False),
                 }
-                return self.update_template(name, new_template)
+                return self.update_template(name, new_template, user_email)
         except Exception as e:
             logger.error(f"Error saving template: {e}")
             return False
@@ -181,7 +182,7 @@ class TokenTemplateManager:
     def delete_template(self, template_name: str) -> bool:
         try:
             self.templates = [t for t in self.templates if t['name'] != template_name]
-            self.save_templates()
+            self.save_templates(user_email)
             return True
         except Exception as e:
             logger.error(f"Error deleting template: {e}")

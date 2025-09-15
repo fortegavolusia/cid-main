@@ -1,8 +1,0 @@
-{
-  "default": {
-    "days_before_expiry": 7,
-    "grace_period_hours": 24,
-    "auto_rotate": true,
-    "notify_webhook": null
-  }
-}

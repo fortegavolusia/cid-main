@@ -108,9 +108,32 @@ class APIKeyManager:
                       token_ttl_minutes: Optional[int] = None, default_audience: Optional[str] = None,
                       allowed_audiences: Optional[List[str]] = None) -> Tuple[str, APIKeyMetadata]:
         api_key = self.generate_api_key()
-        key_id = secrets.token_urlsafe(16)
+        # Use the actual key content after prefix as key_id for database
+        key_id = api_key.replace(API_KEY_PREFIX, '')
         ttl_days = DEFAULT_EXPIRY_DAYS if ttl_days is None else min(ttl_days, MAX_EXPIRY_DAYS)
         expires_at = datetime.utcnow() + timedelta(days=ttl_days)
+
+        # Save to database
+        from services.database import db_service
+        success = db_service.create_api_key(
+            app_id=app_client_id,
+            key_id=key_id,
+            key_hash=self.hash_key(api_key),
+            name=name,
+            permissions=permissions,
+            expires_at=expires_at.isoformat() if expires_at else None,
+            created_by=created_by,
+            token_template_name=token_template_name,
+            app_roles_overrides=app_roles_overrides,
+            token_ttl_minutes=token_ttl_minutes,
+            default_audience=default_audience,
+            allowed_audiences=allowed_audiences
+        )
+
+        if not success:
+            raise Exception("Failed to save API key to database")
+
+        # Create metadata for return
         metadata = APIKeyMetadata(
             key_id=key_id,
             key_hash=self.hash_key(api_key),
@@ -127,11 +150,13 @@ class APIKeyManager:
             default_audience=default_audience,
             allowed_audiences=allowed_audiences,
         )
+
+        # Also keep in memory for backward compatibility
         if app_client_id not in self.api_keys:
             self.api_keys[app_client_id] = {}
         self.api_keys[app_client_id][key_id] = metadata
         self._key_lookup[metadata.key_prefix] = (app_client_id, key_id)
-        self._save_keys()
+
         return api_key, metadata
 
     def list_api_keys(self, app_client_id: str) -> List[APIKeyMetadata]:
@@ -176,6 +201,41 @@ class APIKeyManager:
     def validate_api_key(self, api_key: str) -> Optional[Tuple[str, APIKeyMetadata]]:
         if not api_key.startswith(API_KEY_PREFIX):
             return None
+
+        # First try database lookup for new keys
+        from services.database import db_service
+        import hashlib
+
+        # Extract key_id from the API key (everything after cids_ak_)
+        key_id = api_key.replace(API_KEY_PREFIX, '')
+
+        # Check database first
+        try:
+            db_result = db_service.validate_api_key_in_db(key_id, api_key)
+            if db_result and db_result is not False:
+                # db_result is (client_id, name) tuple
+                client_id, key_name = db_result
+                # Create metadata from DB for compatibility
+                metadata = APIKeyMetadata(
+                    key_id=key_id,
+                    key_prefix=api_key[:len(API_KEY_PREFIX) + 8],
+                    key_hash=hashlib.sha256(api_key.encode()).hexdigest(),
+                    name=key_name,
+                    permissions=[],
+                    is_active=True,
+                    created_at=datetime.utcnow().isoformat(),
+                    created_by="system",
+                    usage_count=1,
+                    expires_at=None
+                )
+                logger.info(f"API key validated from database for client {client_id}")
+                return client_id, metadata
+        except Exception as e:
+            logger.error(f"Database API key validation error: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+
+        # Fall back to memory lookup for old keys
         key_prefix = api_key[:len(API_KEY_PREFIX) + 8]
         if key_prefix not in self._key_lookup:
             return None

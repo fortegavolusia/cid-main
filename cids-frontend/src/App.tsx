@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
+import MyTokenPage from './pages/MyTokenPage';
 import CallbackPage from './pages/CallbackPage';
 import AdminPage from './pages/AdminPage';
 import AdminPageNew from './pages/AdminPageNew';
@@ -126,7 +127,7 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <Layout>
-              <HomePage />
+              <MyTokenPage />
             </Layout>
           </ProtectedRoute>
         }

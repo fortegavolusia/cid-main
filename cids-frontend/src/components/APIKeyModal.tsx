@@ -667,7 +667,7 @@ const APIKeyModal: React.FC<APIKeyModalProps> = ({ isOpen, onClose, clientId, ap
                       <strong>Prefix:</strong> {key.key_prefix}...
                     </KeyInfo>
                     <KeyInfo>
-                      <strong>Permissions:</strong> {key.permissions.length > 0 ? key.permissions.join(', ') : 'No specific permissions'}
+                      <strong>Permissions:</strong> {key.permissions && key.permissions.length > 0 ? key.permissions.join(', ') : 'No specific permissions'}
                     </KeyInfo>
                     <KeyInfo>
                       <strong>Created:</strong> {new Date(key.created_at).toLocaleString()}

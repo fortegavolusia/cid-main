@@ -40,6 +40,23 @@ const LoadingSpinner = styled.div`
   }
 `;
 
+const IconContainer = styled.div`
+  font-size: 48px;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  
+  svg {
+    animation: ${props => props.$animate ? 'pulse 1.5s ease-in-out infinite' : 'none'};
+  }
+  
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.1); opacity: 0.8; }
+  }
+`;
+
 const Message = styled.div`
   font-size: 16px;
   color: var(--text-secondary);
@@ -197,22 +214,46 @@ const CallbackPage: React.FC = () => {
       <CallbackCard>
         {status === 'processing' && (
           <>
-            <LoadingSpinner />
+            <IconContainer $animate={true}>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" fill="#1976d2"/>
+                <path d="M12 6V12L16.25 14.15L17 12.92L13.5 11.25V6H12Z" fill="#1976d2"/>
+                <circle cx="12" cy="12" r="10" stroke="#1976d2" strokeWidth="2" strokeLinecap="round" strokeDasharray="5 5">
+                  <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="2s" repeatCount="indefinite"/>
+                </circle>
+              </svg>
+            </IconContainer>
             <Message>Processing authentication...</Message>
+            <div style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>
+              Verifying your credentials with Azure AD
+            </div>
           </>
         )}
 
         {status === 'success' && (
           <>
-            <div style={{ fontSize: '48px', marginBottom: '20px', color: 'var(--success-color)' }}>✓</div>
-            <Message>Authentication successful! Redirecting...</Message>
+            <IconContainer>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" fill="#4caf50"/>
+                <path d="M9 12L11 14L15 10" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </IconContainer>
+            <Message style={{ color: '#4caf50', fontWeight: 600 }}>Authentication Successful!</Message>
+            <div style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
+              Redirecting to dashboard...
+            </div>
           </>
         )}
 
         {status === 'error' && (
           <>
-            <div style={{ fontSize: '48px', marginBottom: '20px', color: 'var(--error-color)' }}>✗</div>
-            <Message>Authentication failed</Message>
+            <IconContainer>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" fill="#f44336"/>
+                <path d="M15 9L9 15M9 9L15 15" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            </IconContainer>
+            <Message style={{ color: '#f44336', fontWeight: 600 }}>Authentication Failed</Message>
             {error && <ErrorMessage>{error}</ErrorMessage>}
             <RetryButton onClick={handleRetry}>
               Try Again
