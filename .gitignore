@@ -97,3 +97,5 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/.env.backup_20250908
+.env*
+*.backup*
