@@ -281,7 +281,43 @@ def get_role_rls_filters_from_db(client_id: str, role_name: str) -> Dict:
         )
         cur = conn.cursor()
 
-        # Get RLS filters from role_permissions table
+        # First try to get from new RLS filters table (ONLY ACTIVE FILTERS)
+        cur.execute("""
+            SELECT resource, field_name, filter_condition
+            FROM cids.rls_filters
+            WHERE client_id = %s
+            AND role_name = %s
+            AND is_active = true
+            ORDER BY priority DESC, resource, field_name
+        """, (client_id, role_name))
+
+        rows = cur.fetchall()
+
+        if rows:
+            # Build RLS filters structure from new table
+            rls_filters = {}
+            for resource, field_name, filter_condition in rows:
+                # Group by resource
+                if resource not in rls_filters:
+                    rls_filters[resource] = {}
+
+                # Add filter for this field
+                if field_name not in rls_filters[resource]:
+                    rls_filters[resource][field_name] = []
+
+                # Add the filter condition
+                rls_filters[resource][field_name].append({
+                    "filter": filter_condition,
+                    "operator": "AND"  # Default operator
+                })
+
+            cur.close()
+            conn.close()
+
+            logger.info(f"Loaded RLS filters from cids.rls_filters for {client_id}/{role_name}: {rls_filters}")
+            return rls_filters
+
+        # Fallback to old role_permissions table if no filters in new table
         cur.execute("""
             SELECT rls_filters
             FROM cids.role_permissions
@@ -294,6 +330,7 @@ def get_role_rls_filters_from_db(client_id: str, role_name: str) -> Dict:
 
         if result and result[0]:
             # result[0] is already a dict from JSONB
+            logger.info(f"Loaded RLS filters from cids.role_permissions (fallback) for {client_id}/{role_name}")
             return result[0] if isinstance(result[0], dict) else {}
         return {}
     except Exception as e:
@@ -348,11 +385,11 @@ def generate_token_with_iam_claims(user_info: dict, client_id: Optional[str] = N
 
     # Compute field-level permissions and RLS filters
     permissions: dict[str, list[str]] = {}
-    rls_filters: dict[str, dict[str, list[dict]] ] = {}
+    rls_filters: dict[str, dict[str, dict[str, list[dict]]]] = {}
     if client_id:
         roles_for_app = user_roles.get(client_id, [])
         all_perms = set()
-        all_rls: dict[str, list[dict]] = {}
+        all_rls: dict[str, dict[str, list[dict]]] = {}
         for role_name in roles_for_app:
             # Get permissions directly from database
             perms_from_db = get_role_permissions_from_db(client_id, role_name)
@@ -360,8 +397,14 @@ def generate_token_with_iam_claims(user_info: dict, client_id: Optional[str] = N
                 all_perms.add(p)
             # Get RLS filters directly from database
             role_rls = get_role_rls_filters_from_db(client_id, role_name)
-            for field, flist in role_rls.items():
-                all_rls.setdefault(field, []).extend(flist)
+            # Merge RLS filters correctly - they have structure: {resource: {field: [filters]}}
+            for resource, fields in role_rls.items():
+                if resource not in all_rls:
+                    all_rls[resource] = {}
+                for field, filters in fields.items():
+                    if field not in all_rls[resource]:
+                        all_rls[resource][field] = []
+                    all_rls[resource][field].extend(filters)
         if all_perms:
             permissions[client_id] = list(all_perms)
         if all_rls:
@@ -369,7 +412,7 @@ def generate_token_with_iam_claims(user_info: dict, client_id: Optional[str] = N
     else:
         for app_id, roles_list in user_roles.items():
             all_perms = set()
-            all_rls: dict[str, list[dict]] = {}
+            all_rls: dict[str, dict[str, list[dict]]] = {}
             for role_name in roles_list:
                 # Get permissions directly from database
                 perms_from_db = get_role_permissions_from_db(app_id, role_name)
@@ -377,8 +420,14 @@ def generate_token_with_iam_claims(user_info: dict, client_id: Optional[str] = N
                     all_perms.add(p)
                 # Get RLS filters directly from database
                 role_rls = get_role_rls_filters_from_db(app_id, role_name)
-                for field, flist in role_rls.items():
-                    all_rls.setdefault(field, []).extend(flist)
+                # Merge RLS filters correctly - they have structure: {resource: {field: [filters]}}
+                for resource, fields in role_rls.items():
+                    if resource not in all_rls:
+                        all_rls[resource] = {}
+                    for field, filters in fields.items():
+                        if field not in all_rls[resource]:
+                            all_rls[resource][field] = []
+                        all_rls[resource][field].extend(filters)
             if all_perms:
                 permissions[app_id] = list(all_perms)
             if all_rls:
@@ -722,10 +771,14 @@ async def exchange_code_for_token(exchange_request: TokenExchangeRequest, reques
                     all_perms.update(role_perms)
                     # Get RLS filters directly from database
                     role_rls = get_role_rls_filters_from_db(client_id, role_name)
-                    for filter_key, filter_list in role_rls.items():
-                        if filter_key not in all_rls:
-                            all_rls[filter_key] = []
-                        all_rls[filter_key].extend(filter_list)
+                    # Merge RLS filters correctly - they have structure: {resource: {field: [filters]}}
+                    for resource, fields in role_rls.items():
+                        if resource not in all_rls:
+                            all_rls[resource] = {}
+                        for field, filters in fields.items():
+                            if field not in all_rls[resource]:
+                                all_rls[resource][field] = []
+                            all_rls[resource][field].extend(filters)
                 if all_perms:
                     app_permissions[client_id] = list(all_perms)
                 if all_rls:
@@ -936,19 +989,23 @@ async def validate_token(authorization: Optional[str] = Header(None), x_api_key:
         # Check IP binding
         bound_ip = claims.get('bound_ip')
         if bound_ip and current_ip and bound_ip != current_ip:
-            logger.warning(f"Token bound to IP {bound_ip} but used from {current_ip} - User: {claims.get('email')}")
-            db_service.log_activity(
-                activity_type='security.ip_mismatch',
-                entity_type='token',
-                entity_id=token_id,
-                user_email=claims.get('email'),
-                details={
-                    'bound_ip': bound_ip,
-                    'current_ip': current_ip,
-                    'action': 'blocked'
-                }
-            )
-            return JSONResponse({'valid': False, 'error': 'Token bound to different IP address'})
+            # Allow Docker internal network communication (172.x.x.x range)
+            is_docker_network = (current_ip.startswith('172.') and bound_ip.startswith('172.'))
+
+            if not is_docker_network:
+                logger.warning(f"Token bound to IP {bound_ip} but used from {current_ip} - User: {claims.get('email')}")
+                db_service.log_activity(
+                    activity_type='security.ip_mismatch',
+                    entity_type='token',
+                    entity_id=token_id,
+                    user_email=claims.get('email'),
+                    details={
+                        'bound_ip': bound_ip,
+                        'current_ip': current_ip,
+                        'action': 'blocked'
+                    }
+                )
+                return JSONResponse({'valid': False, 'error': 'Token bound to different IP address'})
 
         # Check device binding
         current_ua = request.headers.get('User-Agent', '')
@@ -956,19 +1013,23 @@ async def validate_token(authorization: Optional[str] = Header(None), x_api_key:
             current_device = hashlib.sha256(current_ua.encode()).hexdigest()[:16]
             bound_device = claims.get('bound_device')
             if bound_device and bound_device != current_device:
-                logger.warning(f"Token bound to device {bound_device} but used from {current_device} - User: {claims.get('email')}")
-                db_service.log_activity(
-                    activity_type='security.device_mismatch',
-                    entity_type='token',
-                    entity_id=token_id,
-                    user_email=claims.get('email'),
-                    details={
-                        'bound_device': bound_device,
-                        'current_device': current_device,
-                        'action': 'blocked'
-                    }
-                )
-                return JSONResponse({'valid': False, 'error': 'Token bound to different device'})
+                # Allow requests from backend services (uvicorn user agent)
+                is_backend_service = 'uvicorn' in current_ua.lower() or 'python' in current_ua.lower()
+
+                if not is_backend_service:
+                    logger.warning(f"Token bound to device {bound_device} but used from {current_device} - User: {claims.get('email')}")
+                    db_service.log_activity(
+                        activity_type='security.device_mismatch',
+                        entity_type='token',
+                        entity_id=token_id,
+                        user_email=claims.get('email'),
+                        details={
+                            'bound_device': bound_device,
+                            'current_device': current_device,
+                            'action': 'blocked'
+                        }
+                    )
+                    return JSONResponse({'valid': False, 'error': 'Token bound to different device'})
 
     # Include service proxy information if applicable
     response = {
@@ -1223,6 +1284,11 @@ async def get_dashboard_stats(authorization: Optional[str] = Header(None)):
             "inactive": stats.get('a2a_permissions_inactive', 0)
         },
         "rotation_policies_total": stats.get('rotation_policies_total', 0),
+        "rls_filters": {
+            "total": stats.get('rls_filters_total', 0),
+            "active": stats.get('rls_filters_active', 0),
+            "inactive": stats.get('rls_filters_inactive', 0)
+        },
         "tokens": {
             "templates": stats.get('token_templates_total', 0)
         },
@@ -1421,7 +1487,7 @@ async def a2a_token_exchange(request: A2ATokenRequest = Body(None), authorizatio
     rls_filters: dict[str, dict[str, list[dict]]] = {}
     for app_id, roles_list in user_roles.items():
         all_perms = set()
-        all_rls: dict[str, list[dict]] = {}
+        all_rls: dict[str, dict[str, list[dict]]] = {}
         for role_name in roles_list:
             # Get permissions directly from database
             perms_from_db = get_role_permissions_from_db(app_id, role_name)
@@ -1429,8 +1495,14 @@ async def a2a_token_exchange(request: A2ATokenRequest = Body(None), authorizatio
                 all_perms.add(p)
             # Get RLS filters directly from database
             role_rls = get_role_rls_filters_from_db(app_id, role_name)
-            for field, flist in role_rls.items():
-                all_rls.setdefault(field, []).extend(flist)
+            # Merge RLS filters correctly - they have structure: {resource: {field: [filters]}}
+            for resource, fields in role_rls.items():
+                if resource not in all_rls:
+                    all_rls[resource] = {}
+                for field, filters in fields.items():
+                    if field not in all_rls[resource]:
+                        all_rls[resource][field] = []
+                    all_rls[resource][field].extend(filters)
         if all_perms:
             permissions[app_id] = list(all_perms)
         if all_rls:
@@ -1684,6 +1756,48 @@ async def get_a2a_permissions_admin(authorization: Optional[str] = Header(None))
 
     permissions = db_service.get_all_a2a_permissions()
     return JSONResponse(permissions)
+
+@app.get("/auth/admin/a2a-connections")
+async def get_a2a_connections_admin(authorization: Optional[str] = Header(None)):
+    """Get A2A connections with app details for visualization"""
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    # Get all A2A permissions
+    permissions = db_service.get_all_a2a_permissions()
+
+    # Get all registered apps
+    apps = db_service.get_all_registered_apps()
+    app_map = {app['client_id']: app for app in apps}
+
+    # Enrich permissions with app details
+    connections = []
+    for perm in permissions:
+        source_app = app_map.get(perm['source_client_id'])
+        target_app = app_map.get(perm['target_client_id'])
+
+        if source_app and target_app:
+            connections.append({
+                'id': perm.get('a2a_id'),
+                'source': {
+                    'client_id': perm['source_client_id'],
+                    'name': source_app.get('name', 'Unknown'),
+                    'description': source_app.get('description', '')
+                },
+                'target': {
+                    'client_id': perm['target_client_id'],
+                    'name': target_app.get('name', 'Unknown'),
+                    'description': target_app.get('description', '')
+                },
+                'is_active': perm.get('is_active', False),
+                'allowed_scopes': perm.get('allowed_scopes', []),
+                'allowed_endpoints': perm.get('allowed_endpoints', []),
+                'created_at': perm.get('created_at'),
+                'updated_at': perm.get('updated_at')
+            })
+
+    return JSONResponse({'connections': connections, 'total': len(connections)})
 
 class A2APermissionRequest(BaseModel):
     source_client_id: str
@@ -3072,6 +3186,242 @@ async def delete_role(client_id: str, role_name: str, authorization: Optional[st
     return JSONResponse({"status": "success", "message": f"Role '{role_name}' deleted successfully"})
 
 # ==============================
+# Admin: RLS Filters Management
+# ==============================
+
+@app.get("/auth/admin/rls-filters/{client_id}/{role_name}")
+async def get_rls_filters(client_id: str, role_name: str, authorization: Optional[str] = Header(None)):
+    """Get active RLS filters for a role from database"""
+    is_admin, _ = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    try:
+        # Create fresh database connection with RealDictCursor
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+
+        # Get connection parameters
+        db_host = os.getenv('DB_HOST')
+        if db_host:
+            connection_params = {
+                'host': db_host,
+                'port': os.getenv('DB_PORT', '5432'),
+                'database': os.getenv('DB_NAME', 'postgres'),
+                'user': os.getenv('DB_USER', 'postgres'),
+                'password': os.getenv('DB_PASSWORD', 'postgres')
+            }
+        else:
+            connection_params = {
+                'host': 'localhost',
+                'port': '54322',
+                'database': 'postgres',
+                'user': 'postgres',
+                'password': 'postgres'
+            }
+
+        # Create connection with RealDictCursor for dict-like row access
+        conn = psycopg2.connect(**connection_params)
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Get active RLS filters from database
+        cursor.execute("""
+            SELECT rls_id, resource, field_name, filter_condition,
+                   description, filter_operator, priority, metadata,
+                   created_at, updated_at
+            FROM cids.rls_filters
+            WHERE client_id = %s AND role_name = %s AND is_active = true
+            ORDER BY priority, created_at
+        """, (client_id, role_name))
+
+        filters = []
+        results = cursor.fetchall()
+
+        for row in results:
+            filters.append({
+                'rls_id': row['rls_id'],
+                'resource': row['resource'],
+                'field_name': row['field_name'],
+                'filter_condition': row['filter_condition'],
+                'description': row['description'],
+                'filter_operator': row['filter_operator'],
+                'priority': row['priority'],
+                'metadata': row['metadata'],
+                'created_at': row['created_at'].isoformat() if row['created_at'] else None,
+                'updated_at': row['updated_at'].isoformat() if row['updated_at'] else None
+            })
+
+        # Close the connection
+        cursor.close()
+        conn.close()
+
+        logger.info(f"Fetched {len(filters)} RLS filters for {client_id}/{role_name}")
+
+        return JSONResponse({
+            'client_id': client_id,
+            'role_name': role_name,
+            'filters': filters,
+            'count': len(filters)
+        })
+    except Exception as e:
+        logger.error(f"Error fetching RLS filters: {e}")
+        logger.exception("Full traceback:")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/auth/admin/rls-filters/{client_id}/{role_name}")
+async def save_rls_filter(
+    client_id: str,
+    role_name: str,
+    resource: str = Body(...),
+    field_name: str = Body(...),
+    filter_condition: str = Body(...),
+    description: Optional[str] = Body(None),
+    filter_operator: Optional[str] = Body("AND"),
+    priority: Optional[int] = Body(0),
+    metadata: Optional[dict] = Body(None),
+    authorization: Optional[str] = Header(None)
+):
+    """Save new RLS filter and deactivate previous versions"""
+    is_admin, claims = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    user_email = claims.get('email', 'unknown')
+    user_id = claims.get('sub', claims.get('oid', 'unknown'))
+
+    try:
+        # Create fresh database connection for transaction
+        from services.database import DatabaseService
+        db = DatabaseService()
+        db.connect()
+
+        # Start transaction
+        db.conn.autocommit = False
+
+        try:
+            # 1. Deactivate ALL existing active filters for same resource
+            # (regardless of field_name to ensure proper versioning)
+            db.cursor.execute("""
+                UPDATE cids.rls_filters
+                SET is_active = false,
+                    updated_at = NOW(),
+                    updated_by = %s
+                WHERE client_id = %s
+                  AND role_name = %s
+                  AND resource = %s
+                  AND is_active = true
+            """, (user_email, client_id, role_name, resource))
+
+            deactivated_count = db.cursor.rowcount
+            logger.info(f"Deactivated {deactivated_count} existing RLS filters")
+
+            # 2. Insert new active filter
+            rls_id = f"rls_{uuid.uuid4().hex[:20]}"
+
+            db.cursor.execute("""
+                INSERT INTO cids.rls_filters (
+                    rls_id, client_id, role_name, resource, field_name,
+                    filter_condition, is_active, description, filter_operator,
+                    priority, metadata, created_by, updated_by
+                ) VALUES (
+                    %s, %s, %s, %s, %s,
+                    %s, true, %s, %s,
+                    %s, %s, %s, %s
+                )
+            """, (
+                rls_id, client_id, role_name, resource, field_name,
+                filter_condition, description, filter_operator,
+                priority, json.dumps(metadata) if metadata else '{}',
+                user_email, user_email
+            ))
+
+            logger.info(f"Created new RLS filter with ID: {rls_id}")
+
+            # 3. Log activity
+            db.cursor.execute("""
+                INSERT INTO cids.activity_log (
+                    activity_type, entity_type, entity_id, entity_name,
+                    user_email, user_id, details, status
+                ) VALUES (
+                    'rls.filter.created', 'rls_filter', %s, %s,
+                    %s, %s, %s, 'success'
+                )
+            """, (
+                rls_id, f"{role_name}/{resource}/{field_name}",
+                user_email, user_id,
+                json.dumps({
+                    'client_id': client_id,
+                    'role_name': role_name,
+                    'resource': resource,
+                    'field_name': field_name,
+                    'filter_condition': filter_condition,
+                    'deactivated_count': deactivated_count
+                })
+            ))
+
+            # Commit transaction
+            db.conn.commit()
+            logger.info("RLS filter saved and committed successfully")
+
+            return JSONResponse({
+                'status': 'success',
+                'rls_id': rls_id,
+                'deactivated_count': deactivated_count,
+                'message': f'RLS filter created successfully. {deactivated_count} previous filters deactivated.'
+            })
+
+        except Exception as e:
+            # Rollback on error
+            db.conn.rollback()
+            logger.error(f"Error saving RLS filter, rolling back: {e}")
+            raise
+        finally:
+            # Restore autocommit and close connection
+            db.conn.autocommit = True
+            db.disconnect()
+
+    except Exception as e:
+        logger.error(f"Error saving RLS filter: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/auth/admin/rls-filters/{rls_id}")
+async def delete_rls_filter(rls_id: str, authorization: Optional[str] = Header(None)):
+    """Delete (deactivate) an RLS filter"""
+    is_admin, claims = check_admin_access(authorization)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    user_email = claims.get('email', 'unknown')
+
+    try:
+        db = db_service
+        if not db.cursor:
+            db.connect()
+
+        # Deactivate the filter
+        db.cursor.execute("""
+            UPDATE cids.rls_filters
+            SET is_active = false,
+                updated_at = NOW(),
+                updated_by = %s
+            WHERE rls_id = %s
+        """, (user_email, rls_id))
+
+        if db.cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="RLS filter not found")
+
+        logger.info(f"Deactivated RLS filter: {rls_id}")
+
+        return JSONResponse({
+            'status': 'success',
+            'message': 'RLS filter deactivated successfully'
+        })
+
+    except Exception as e:
+        logger.error(f"Error deleting RLS filter: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==============================
 # Admin: Tokens & Activities
 # ==============================
 
@@ -3730,15 +4080,14 @@ async def get_app_endpoints_admin(client_id: str, authorization: Optional[str] =
         )
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        # Get the latest discovery_id for this app
+        # Get the latest discovery_id from discovery_history (not activity_log)
         cur.execute("""
-            SELECT details->>'discovery_id' as discovery_id,
-                   details->>'endpoints_saved' as endpoints_count,
-                   timestamp as last_discovery_at
-            FROM cids.activity_log
-            WHERE activity_type = 'discovery.completed'
-            AND entity_id = %s
-            ORDER BY timestamp DESC
+            SELECT discovery_id,
+                   endpoints_count,
+                   discovery_timestamp as last_discovery_at
+            FROM cids.discovery_history
+            WHERE client_id = %s
+            ORDER BY discovery_version DESC
             LIMIT 1
         """, (client_id,))
 

@@ -62,14 +62,16 @@ class PolicyManager:
             self.active_policy_id = None
 
     def _save(self):
-        try:
-            POLICY_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with open(POLICY_FILE, 'w') as f:
-                json.dump(self.policies, f, indent=2)
-            with open(ACTIVE_POLICY_FILE, 'w') as f:
-                json.dump({"active_policy_id": self.active_policy_id}, f, indent=2)
-        except Exception as e:
-            logger.error(f"Error saving policies: {e}")
+        # MIGRADO A BASE DE DATOS - YA NO SE USA JSON
+        # try:
+        #     POLICY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        #     with open(POLICY_FILE, 'w') as f:
+        #         json.dump(self.policies, f, indent=2)
+        #     with open(ACTIVE_POLICY_FILE, 'w') as f:
+        #         json.dump({"active_policy_id": self.active_policy_id}, f, indent=2)
+        # except Exception as e:
+        #     logger.error(f"Error saving policies: {e}")
+        pass  # Todo está en la base de datos ahora
 
     def upsert_policy(self, policy_id: str, rules: Dict) -> Dict:
         self.policies[policy_id] = {

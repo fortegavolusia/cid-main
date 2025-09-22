@@ -197,6 +197,20 @@ VITE_API_ORIGIN=http://localhost:8000  # Backend API URL
 - Not array format: `[{"group": "...", "role": "..."}]`
 - Frontend handles conversion automatically
 
+## 🔑 IMPORTANT: App Registration Process
+
+### After registering a new app in CIDS, ALWAYS provide to the app owner:
+1. **Client ID** (e.g., `app_8a6f505227654477`) - Must match the `app_id` in discovery response
+2. **API Key** (e.g., `cids_ak_Zws0hOaeAjUlwz5sYF2DD5zfsJm9WoFd`) - For authentication
+3. **Discovery Requirements**:
+   - The `app_id` field in discovery response MUST match the registered `client_id`
+   - Discovery endpoint must be accessible from CID backend network
+   - Use version "2.0" format for field-level permissions
+
+### Common Integration Errors:
+- **"Discovery step 2 failed: Connection refused"** - Usually means `app_id` mismatch
+- **Discovery 422 Error** - `app_id` doesn't match registered `client_id`
+
 ## API Endpoint Reference
 
 ### Core Authentication

@@ -1,9 +1,10 @@
 #!/bin/bash
 
-# Script to clean specific CID and UUID Service database tables
-# CID Tables: app_role_mappings, discovered_permissions, discovery_endpoints,
-# discovery_history, field_metadata, permissions, role_metadata, role_permissions,
-# activity_log, api_keys, token_activity
+# Script to clean ALL CID and UUID Service database tables (except photo_emp)
+# CID Tables: rls_filters, role_permissions, role_metadata, permissions, field_metadata,
+# discovery_history, discovery_endpoints, discovered_permissions, app_role_mappings,
+# activity_log, api_keys, token_activity, revoked_tokens, refresh_tokens,
+# a2a_permissions, registered_apps, rotation_policies, token_templates
 # UUID Service Tables: generated_ids, generation_log
 
 echo "============================================"
@@ -31,6 +32,7 @@ echo "First cleanup attempt - trying to delete from all tables..."
 echo "-----------------------------------------------------------"
 
 tables=(
+    "cids.rls_filters"
     "cids.role_permissions"
     "cids.role_metadata"
     "cids.permissions"
@@ -44,6 +46,10 @@ tables=(
     "cids.token_activity"
     "cids.revoked_tokens"
     "cids.refresh_tokens"
+    "cids.a2a_permissions"
+    "cids.registered_apps"
+    "cids.rotation_policies"
+    "cids.token_templates"
     "uuid_service.generated_ids"
     "uuid_service.generation_log"
 )

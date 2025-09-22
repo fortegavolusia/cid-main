@@ -26,12 +26,14 @@ class ResourceFilterPolicyStore:
             self.policies = {}
 
     def _save(self):
-        try:
-            FILTER_POLICIES_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with open(FILTER_POLICIES_FILE, 'w') as f:
-                json.dump(self.policies, f, indent=2)
-        except Exception as e:
-            logger.error(f"Error saving filter policies: {e}")
+        # MIGRADO A BASE DE DATOS (cids.rls_filters) - YA NO SE USA JSON
+        # try:
+        #     FILTER_POLICIES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        #     with open(FILTER_POLICIES_FILE, 'w') as f:
+        #         json.dump(self.policies, f, indent=2)
+        # except Exception as e:
+        #     logger.error(f"Error saving filter policies: {e}")
+        pass  # Todo está en la tabla cids.rls_filters ahora
 
     def upsert_policy(self, app_client_id: str, policy_id: str, policy: Dict) -> Dict:
         if app_client_id not in self.policies:

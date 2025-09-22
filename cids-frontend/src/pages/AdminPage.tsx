@@ -338,7 +338,37 @@ const AdminPage: React.FC = () => {
     try {
       setAppLoading(true);
       const list = await adminService.getApps();
-      setApps(list);
+
+      // Check API key status for each app
+      const appsWithApiKeyStatus = await Promise.all(
+        list.map(async (app) => {
+          try {
+            console.log(`Checking API key status for ${app.name} (${app.client_id})...`);
+            const apiKeyStatus = await adminService.checkActiveApiKey(app.client_id);
+            console.log(`API key status for ${app.name}:`, apiKeyStatus);
+
+            const hasKey = apiKeyStatus?.has_active_key || false;
+            console.log(`${app.name} has active key: ${hasKey}`);
+
+            // Override is_active based on API key presence
+            return {
+              ...app,
+              is_active: hasKey,
+              has_api_key: hasKey
+            };
+          } catch (error) {
+            console.error(`Failed to check API key for ${app.client_id}:`, error);
+            // If check fails, mark as inactive/incomplete
+            return {
+              ...app,
+              is_active: false,
+              has_api_key: false
+            };
+          }
+        })
+      );
+
+      setApps(appsWithApiKeyStatus);
     } catch (e: any) {
       setError(e.message || 'Failed to load apps');
     } finally {
@@ -488,13 +518,51 @@ const AdminPage: React.FC = () => {
           {!appLoading && apps && apps.length > 0 && (
             <div style={{ display: 'grid', gap: 16 }}>
               {apps.map(app => (
-                <div key={app.client_id} style={{ border: '1px solid var(--border-color)', borderRadius: 6, padding: 16, background: '#fafafa' }}>
+                <div key={app.client_id} style={{
+                  border: app.has_api_key ? '1px solid var(--border-color)' : '2px solid #f59e0b',
+                  borderRadius: 6,
+                  padding: 16,
+                  background: app.has_api_key ? '#fafafa' : '#fffbeb',
+                  position: 'relative'
+                }}>
+                  {!app.has_api_key && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '-12px',
+                      right: '16px',
+                      background: '#f59e0b',
+                      color: 'white',
+                      padding: '2px 12px',
+                      borderRadius: '12px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      letterSpacing: '0.5px'
+                    }}>
+                      INCOMPLETE
+                    </div>
+                  )}
                   <h4 style={{ marginTop: 0 }}>{app.name}</h4>
                   <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 8 }}>
                     <div>Client ID:</div><div style={{ wordBreak: 'break-all' }}>{app.client_id}</div>
                     <div>Description:</div><div>{app.description || '—'}</div>
                     <div>Owner:</div><div>{app.owner_email || '—'}</div>
-                    <div>Status:</div><div>{app.is_active ? 'Active' : 'Inactive'}</div>
+                    <div>Status:</div>
+                    <div>
+                      {app.has_api_key ? (
+                        <span style={{ color: '#10b981' }}>✓ Active</span>
+                      ) : (
+                        <span style={{
+                          color: '#f59e0b',
+                          background: '#fef3c7',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          fontWeight: '600'
+                        }}>
+                          ⚠️ INCOMPLETE - No API Key
+                        </span>
+                      )}
+                    </div>
                     <div>Redirect URIs:</div><div>{(app.redirect_uris || []).join(', ') || '—'}</div>
                     <div>Created:</div><div>{formatDate(app.created_at)}</div>
                     {app.allow_discovery && (

@@ -121,40 +121,42 @@ class PermissionRegistry:
 
     def _save_registry(self):
         """Save permissions to storage"""
-        try:
-            PERMISSIONS_DB.parent.mkdir(parents=True, exist_ok=True)
-
-            existing_data = {}
-            if PERMISSIONS_DB.exists():
-                with open(PERMISSIONS_DB, 'r') as f:
-                    existing_data = json.load(f)
-
-            for app_id, perms in self.permissions.items():
-                if app_id not in existing_data:
-                    existing_data[app_id] = {}
-                existing_data[app_id]["permissions"] = {k: v.dict() for k, v in perms.items()}
-
-            with open(PERMISSIONS_DB, 'w') as f:
-                json.dump(existing_data, f, indent=2, default=str)
-
-            role_data = {}
-            for app_id, roles in self.role_permissions.items():
-                role_data[app_id] = {}
-                for role, perms in roles.items():
-                    denied_perms = self.role_denied_permissions.get(app_id, {}).get(role, set())
-                    role_data[app_id][role] = {
-                        'allowed_permissions': list(perms),
-                        'denied_permissions': list(denied_perms),
-                        'rls_filters': self.role_rls_filters.get(app_id, {}).get(role, {})
-                    }
-            with open(ROLE_PERMISSIONS_DB, 'w') as f:
-                json.dump(role_data, f, indent=2)
-
-            # Don't save role_metadata to JSON anymore - it's in the database
-            # with open(ROLE_METADATA_DB, 'w') as f:
-            #     json.dump(self.role_metadata, f, indent=2, default=str)
-        except Exception as e:
-            logger.error(f"Error saving permission registry: {e}")
+        # MIGRADO A BASE DE DATOS - YA NO SE USA JSON
+        # try:
+        #     PERMISSIONS_DB.parent.mkdir(parents=True, exist_ok=True)
+        #
+        #     existing_data = {}
+        #     if PERMISSIONS_DB.exists():
+        #         with open(PERMISSIONS_DB, 'r') as f:
+        #             existing_data = json.load(f)
+        #
+        #     for app_id, perms in self.permissions.items():
+        #         if app_id not in existing_data:
+        #             existing_data[app_id] = {}
+        #         existing_data[app_id]["permissions"] = {k: v.dict() for k, v in perms.items()}
+        #
+        #     with open(PERMISSIONS_DB, 'w') as f:
+        #         json.dump(existing_data, f, indent=2, default=str)
+        #
+        #     role_data = {}
+        #     for app_id, roles in self.role_permissions.items():
+        #         role_data[app_id] = {}
+        #         for role, perms in roles.items():
+        #             denied_perms = self.role_denied_permissions.get(app_id, {}).get(role, set())
+        #             role_data[app_id][role] = {
+        #                 'allowed_permissions': list(perms),
+        #                 'denied_permissions': list(denied_perms),
+        #                 'rls_filters': self.role_rls_filters.get(app_id, {}).get(role, {})
+        #             }
+        #     with open(ROLE_PERMISSIONS_DB, 'w') as f:
+        #         json.dump(role_data, f, indent=2)
+        #
+        #     # Don't save role_metadata to JSON anymore - it's in the database
+        #     # with open(ROLE_METADATA_DB, 'w') as f:
+        #     #     json.dump(self.role_metadata, f, indent=2, default=str)
+        # except Exception as e:
+        #     logger.error(f"Error saving permission registry: {e}")
+        pass  # Todo está en la base de datos ahora
 
     def register_permissions(self, app_id: str, permissions: Dict[str, PermissionMetadata]):
         self.permissions[app_id] = permissions
@@ -264,10 +266,17 @@ class PermissionRegistry:
             
             # Delete from app_role_mappings table
             self.db_cursor.execute("""
-                DELETE FROM cids.app_role_mappings 
+                DELETE FROM cids.app_role_mappings
                 WHERE client_id = %s AND role_name = %s
             """, (client_id, role_name))
-            
+
+            # Delete from rls_filters table
+            self.db_cursor.execute("""
+                DELETE FROM cids.rls_filters
+                WHERE client_id = %s AND role_name = %s
+            """, (client_id, role_name))
+            logger.info(f"Deleted RLS filters for role {role_name} from cids.rls_filters")
+
             # Delete role from role_metadata table
             self.db_cursor.execute("""
                 DELETE FROM cids.role_metadata 
@@ -769,7 +778,81 @@ class PermissionRegistry:
                             per_id
                         ))
                         logger.info(f"=== AFTER INSERT into role_permissions ===")
-                        
+
+                        # Insert RLS filters into new cids.rls_filters table
+                        if rls_filters:
+                            logger.info(f"=== INSERTING RLS FILTERS into cids.rls_filters ===")
+                            logger.info(f"=== RLS_FILTERS RECEIVED: {json.dumps(rls_filters)} ===")
+                            logger.info(f"=== CLIENT_ID: {app_id}, ROLE: {role_name} ===")
+
+                            filter_count = 0
+                            for resource, field_filters in rls_filters.items():
+                                logger.info(f"  Processing resource: {resource}")
+                                logger.info(f"  Field filters for resource: {field_filters}")
+
+                                for field_name, filter_list in field_filters.items():
+                                    logger.info(f"    Processing field: {field_name}")
+                                    logger.info(f"    Filter list type: {type(filter_list)}")
+                                    logger.info(f"    Filter list content: {filter_list}")
+
+                                    for filter_item in filter_list:
+                                        # Generate rls_id using UUID
+                                        import uuid
+                                        rls_id = str(uuid.uuid4())
+                                        filter_condition = filter_item.get('filter', '')
+
+                                        filter_count += 1
+                                        logger.info(f"    [FILTER {filter_count}] ATTEMPTING INSERT:")
+                                        logger.info(f"      rls_id: {rls_id}")
+                                        logger.info(f"      client_id: {app_id}")
+                                        logger.info(f"      role_name: {role_name}")
+                                        logger.info(f"      resource: {resource}")
+                                        logger.info(f"      field_name: {field_name}")
+                                        logger.info(f"      filter_condition: {filter_condition}")
+                                        logger.info(f"      created_by: {user_email or 'system'}")
+
+                                        self.db_cursor.execute("""
+                                            INSERT INTO cids.rls_filters
+                                            (rls_id, client_id, role_name, resource, field_name,
+                                             filter_condition, is_active, created_by, updated_by,
+                                             description, filter_operator, priority, metadata)
+                                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                            ON CONFLICT (client_id, role_name, resource, field_name) WHERE is_active = true
+                                            DO UPDATE SET
+                                                filter_condition = EXCLUDED.filter_condition,
+                                                updated_by = EXCLUDED.updated_by,
+                                                updated_at = NOW()
+                                        """, (
+                                            rls_id,
+                                            app_id,
+                                            role_name,
+                                            resource,
+                                            field_name,
+                                            filter_condition,
+                                            True,  # is_active
+                                            user_email or 'system',
+                                            user_email or 'system',
+                                            f"RLS filter for {role_name} on {resource}.{field_name}",
+                                            filter_item.get('operator', 'AND'),
+                                            filter_item.get('priority', 0),
+                                            Json(filter_item.get('metadata', {}))
+                                        ))
+
+                                        logger.info(f"      [FILTER {filter_count}] INSERT EXECUTED - Rows affected: {self.db_cursor.rowcount}")
+
+                                        # Try to verify the insert
+                                        self.db_cursor.execute("""
+                                            SELECT COUNT(*) FROM cids.rls_filters
+                                            WHERE client_id = %s AND role_name = %s
+                                        """, (app_id, role_name))
+                                        count_result = self.db_cursor.fetchone()
+                                        logger.info(f"      [VERIFICATION] Total RLS filters for this role in DB: {count_result[0] if count_result else 0}")
+
+                            logger.info(f"=== COMPLETED processing {filter_count} RLS filters ===")
+                            logger.info(f"=== RLS filters will be committed with main transaction ===")
+                        else:
+                            logger.info(f"=== NO RLS FILTERS TO INSERT (rls_filters is empty or None) ===")
+
                         # Also insert individual permissions into permissions table
                         if valid_perms:
                             logger.info(f"=== BEFORE INSERTING INTO permissions table ===")
@@ -852,21 +935,36 @@ class PermissionRegistry:
                             'success'
                         ))
                 
+                logger.info(f"=== ABOUT TO COMMIT ALL CHANGES TO DATABASE ===")
                 self.db_conn.commit()
+                logger.info(f"=== SUCCESSFULLY COMMITTED ALL CHANGES ===")
+
+                # Verify RLS filters were actually saved
+                if rls_filters:
+                    self.db_cursor.execute("""
+                        SELECT COUNT(*) FROM cids.rls_filters
+                        WHERE client_id = %s AND role_name = %s
+                    """, (app_id, role_name))
+                    final_count = self.db_cursor.fetchone()
+                    logger.info(f"=== FINAL VERIFICATION: {final_count[0] if final_count else 0} RLS filters in DB for {app_id}/{role_name} ===")
+
                 if per_id:
                     logger.info(f"Saved role permissions to database with per_id: {per_id} and role_id: {role_id}")
                 else:
                     logger.info(f"Saved role metadata to database with role_id: {role_id}")
             except Exception as e:
-                logger.error(f"Error saving role permissions to database: {e}")
+                logger.error(f"=== ERROR saving role permissions to database: {e} ===")
+                logger.error(f"=== ROLLING BACK TRANSACTION ===")
                 if self.db_conn:
                     self.db_conn.rollback()
             finally:
                 # Always close cursor after operation
+                logger.info(f"=== CLOSING DATABASE CURSOR ===")
                 if self.db_cursor:
                     self.db_cursor.close()
                     self.db_cursor = None
                 # Reconnect for next operation
+                logger.info(f"=== RECONNECTING TO DATABASE FOR NEXT OPERATION ===")
                 self._connect_db()
         
         # Update in-memory metadata

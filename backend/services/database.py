@@ -316,7 +316,10 @@ class DatabaseService:
 
             query = """
                 SELECT key_id, client_id, name, key_hash,
-                       created_at, expires_at, last_used_at, is_active, created_by, log_id
+                       created_at, expires_at, last_used_at, is_active, created_by, log_id,
+                       usage_count, last_rotated_at, rotation_scheduled_at, rotation_grace_end,
+                       token_template_name, app_roles_overrides, token_ttl_minutes,
+                       default_audience, allowed_audiences
                 FROM cids.api_keys
                 WHERE client_id = %s
                 ORDER BY created_at DESC
@@ -803,6 +806,15 @@ class DatabaseService:
 
             stats['a2a_permissions_inactive'] = stats['a2a_permissions_total'] - stats['a2a_permissions_active']
 
+            # RLS Filters statistics
+            self.cursor.execute("SELECT COUNT(*) as total FROM cids.rls_filters")
+            stats['rls_filters_total'] = self.cursor.fetchone()['total']
+
+            self.cursor.execute("SELECT COUNT(*) as active FROM cids.rls_filters WHERE is_active = true")
+            stats['rls_filters_active'] = self.cursor.fetchone()['active']
+
+            stats['rls_filters_inactive'] = stats['rls_filters_total'] - stats['rls_filters_active']
+
             # Audit log entries (last 24 hours)
             self.cursor.execute("""
                 SELECT COUNT(*) as recent 
@@ -1245,7 +1257,12 @@ class DatabaseService:
             result = self.cursor.fetchone()
 
             if result:
-                client_id, name = result[0], result[1]
+                # Handle both tuple and dict-like result formats
+                if isinstance(result, (tuple, list)):
+                    client_id, name = result[0], result[1]
+                else:
+                    # Handle dict-like format
+                    client_id, name = result['client_id'], result['name']
 
                 # Update last used timestamp and usage count
                 self.cursor.execute("""
@@ -1311,17 +1328,22 @@ class DatabaseService:
                 logger.info(f"Deactivated {deactivated_count} existing API keys for client {app_id}")
 
             # Insert the new API key (using client_id directly, not app_id FK)
+            from psycopg2.extras import Json
             self.cursor.execute("""
                 INSERT INTO cids.api_keys (
                     client_id, key_id, key_hash, name,
                     expires_at, created_by, is_active,
-                    log_id
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    log_id, token_template_name, app_roles_overrides,
+                    token_ttl_minutes, default_audience, allowed_audiences
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 app_id,  # This is actually the client_id
                 key_id, key_hash, name,
                 expires_at, created_by, True,
-                log_id
+                log_id, token_template_name,
+                Json(app_roles_overrides) if app_roles_overrides else None,
+                token_ttl_minutes, default_audience,
+                Json(allowed_audiences) if allowed_audiences else None
             ))
 
             # Log to activity_log

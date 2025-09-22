@@ -612,7 +612,13 @@ const RolesModal: React.FC<RolesModalProps> = ({
 
   const handlePermissionsUpdate = async (permissions: string[], deniedPermissions: string[], resourceScopes: string[], savedFilters: any) => {
     if (!selectedRole) return;
-    
+
+    console.log('=== RolesModal.handlePermissionsUpdate ===');
+    console.log('permissions:', permissions);
+    console.log('savedFilters received:', savedFilters);
+    console.log('typeof savedFilters:', typeof savedFilters);
+    console.log('savedFilters keys:', savedFilters ? Object.keys(savedFilters) : 'null/undefined');
+
     try {
       // Call backend to update permissions
       await adminService.updateRolePermissions(clientId, selectedRole.name, {

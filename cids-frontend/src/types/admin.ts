@@ -48,6 +48,7 @@ export interface AppInfo {
   latest_sensitive_fields_count?: number;
   latest_discovery_timestamp?: string;
   latest_discovery_id?: string;
+  has_api_key?: boolean;  // Added to track if app has active API keys
   role_count?: number;
   active_roles_count?: number;
 }

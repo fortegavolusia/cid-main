@@ -236,14 +236,14 @@ const QuickAccessList = styled.div`
   }
 `;
 
-const QuickLink = styled.button`
+const QuickLink = styled.button<{ $appColor?: string }>`
   display: flex;
   align-items: center;
   padding: 14px 16px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   background: white;
-  border: 1px solid #e1e8ed;
-  border-radius: 10px;
+  border: 2px solid ${props => props.$appColor ? `${props.$appColor}30` : '#e1e8ed'};
+  border-radius: 12px;
   color: #334155;
   text-decoration: none;
   transition: all 0.3s ease;
@@ -252,19 +252,45 @@ const QuickLink = styled.button`
   width: 100%;
   font-size: 14px;
   position: relative;
-  
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+
   &:hover {
-    background: #f8fafc;
-    border-color: #0b3b63;
-    transform: translateX(4px);
+    background: ${props => props.$appColor ? `${props.$appColor}10` : '#f8fafc'};
+    border-color: ${props => props.$appColor || '#0b3b63'};
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
-  
-  i {
-    width: 32px;
-    text-align: center;
-    color: #0b3b63;
-    font-size: 1.1rem;
-    margin-right: 12px;
+
+  .app-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 14px;
+    background: ${props => props.$appColor ? `linear-gradient(135deg, ${props.$appColor}, ${props.$appColor}dd)` : 'linear-gradient(135deg, #0b3b63, #0a3357)'};
+    color: white;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px ${props => props.$appColor ? `${props.$appColor}40` : 'rgba(11, 59, 99, 0.25)'};
+
+    i {
+      margin: 0;
+    }
+  }
+
+  .app-name {
+    flex-grow: 1;
+    font-size: 15px;
+    font-weight: 500;
+    color: #1e293b;
+  }
+
+  .app-description {
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 2px;
   }
 `;
 
@@ -535,12 +561,14 @@ const AdminPageNew: React.FC = () => {
   ]);
   const [chatInput, setChatInput] = useState('');
   const [markdownDoc, setMarkdownDoc] = useState<{name: string, title: string} | null>(null);
+  const [a2aConnections, setA2aConnections] = useState<any[]>([]);
 
   useEffect(() => {
     loadApps();
     loadStats();
     loadDashboardStats();
     loadActivityStats();
+    loadA2AConnections();
   }, []);
 
   // Separate useEffect for loading authorized apps when user changes or on mount
@@ -660,7 +688,8 @@ const AdminPageNew: React.FC = () => {
         .map(app => ({
           clientId: app.client_id,
           name: app.name,
-          description: app.description || ''
+          description: app.description || '',
+          redirect_uris: app.redirect_uris || []
         }));
       
       console.log('Authorized apps loaded:', userAuthorizedApps);
@@ -696,6 +725,22 @@ const AdminPageNew: React.FC = () => {
       setDashboardStats(stats);
     } catch (error) {
       console.error('Failed to load dashboard stats:', error);
+    }
+  };
+
+  const loadA2AConnections = async () => {
+    try {
+      const response = await fetch('http://localhost:8001/auth/admin/a2a-connections', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setA2aConnections(data.connections || []);
+      }
+    } catch (error) {
+      console.error('Failed to load A2A connections:', error);
     }
   };
 
@@ -766,7 +811,7 @@ const AdminPageNew: React.FC = () => {
                   <i className="fas fa-database"></i>
                   <h4>CID Database Info</h4>
                 </CardHeader>
-                <KpiGrid style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', padding: '8px 12px 12px 12px', marginTop: '-4px', display: 'grid' }}>
+                <KpiGrid style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', padding: '8px 12px 12px 12px', marginTop: '-4px', display: 'grid' }}>
                   <KpiItem style={{ border: '1px solid #e0e0e0', borderRadius: '12px', padding: '0', overflow: 'hidden', background: '#ffffff' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px 0', background: '#0b3b63', color: 'white', width: '100%' }}>
                       <h5 style={{ margin: 0, fontSize: '0.75rem', color: 'white', fontWeight: '600', textAlign: 'center', whiteSpace: 'nowrap' }}>Registered Apps</h5>
@@ -922,6 +967,28 @@ const AdminPageNew: React.FC = () => {
 
                   <KpiItem style={{ border: '1px solid #e0e0e0', borderRadius: '12px', padding: '0', overflow: 'hidden', background: '#ffffff' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px 0', background: '#0b3b63', color: 'white', width: '100%' }}>
+                      <h5 style={{ margin: 0, fontSize: '0.75rem', color: 'white', fontWeight: '600', textAlign: 'center', whiteSpace: 'nowrap' }}>RLS Filters</h5>
+                    </div>
+                    <div style={{ padding: '8px 10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                        <div style={{ textAlign: 'center' }}>
+                          <div className="kpi-value" style={{ color: '#3498db', fontSize: '1.3rem', fontWeight: 'bold' }}>{dashboardStats?.rls_filters?.active || 0}</div>
+                          <div style={{ fontSize: '0.6rem', color: '#3498db', marginTop: '2px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active</div>
+                        </div>
+                        <div style={{ color: '#95a5a6', fontSize: '0.7rem' }}>/</div>
+                        <div style={{ textAlign: 'center' }}>
+                          <div className="kpi-value" style={{ color: '#95a5a6', fontSize: '1.3rem', fontWeight: 'bold' }}>{dashboardStats?.rls_filters?.inactive || 0}</div>
+                          <div style={{ fontSize: '0.6rem', color: '#95a5a6', marginTop: '2px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Inactive</div>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: '0.65rem', color: '#7f8c8d', marginTop: '4px', fontWeight: '500' }}>
+                        Total: {dashboardStats?.rls_filters?.total || 0}
+                      </div>
+                    </div>
+                  </KpiItem>
+
+                  <KpiItem style={{ border: '1px solid #e0e0e0', borderRadius: '12px', padding: '0', overflow: 'hidden', background: '#ffffff' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px 0', background: '#0b3b63', color: 'white', width: '100%' }}>
                       <h5 style={{ margin: 0, fontSize: '0.75rem', color: 'white', fontWeight: '600', textAlign: 'center', whiteSpace: 'nowrap' }}>Total Endpoints</h5>
                     </div>
                     <div style={{ padding: '8px 10px' }}>
@@ -943,12 +1010,49 @@ const AdminPageNew: React.FC = () => {
                 <CardHeader>
                   <i className="fas fa-th-large"></i>
                   <h4>Authorized Apps</h4>
+                  <span style={{ marginLeft: 'auto', fontSize: '12px', color: '#64748b' }}>
+                    {authorizedApps.length} apps
+                  </span>
                 </CardHeader>
                 <QuickAccessList>
                   {authorizedApps.length > 0 ? (
-                    authorizedApps.map(app => (
+                    authorizedApps
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((app, index) => {
+                        const appColors = [
+                          '#3b82f6', // Blue
+                          '#10b981', // Green
+                          '#f59e0b', // Amber
+                          '#8b5cf6', // Purple
+                          '#ef4444', // Red
+                          '#06b6d4', // Cyan
+                          '#ec4899', // Pink
+                          '#84cc16', // Lime
+                        ];
+                        const appColor = appColors[index % appColors.length];
+                        const appIcons = {
+                          'Hr System': 'fa-users',
+                          'Bank': 'fa-university',
+                          'Inventory': 'fa-warehouse',
+                          'HR System': 'fa-users',
+                          'Bank System': 'fa-university',
+                          'Inventory Management': 'fa-boxes',
+                          'Inventory System': 'fa-warehouse',
+                        };
+                        const iconClass = appIcons[app.name] || 'fa-cube';
+
+                        // Check if this app has A2A connections
+                        const connectsTo = a2aConnections
+                          .filter(conn => conn.source.client_id === app.clientId && conn.is_active)
+                          .map(conn => conn.target.name);
+                        const connectsFrom = a2aConnections
+                          .filter(conn => conn.target.client_id === app.clientId && conn.is_active)
+                          .map(conn => conn.source.name);
+
+                        return (
                       <QuickLink
                         key={app.clientId}
+                        $appColor={appColor}
                         onClick={async () => {
                           // Get the current access token
                           const accessToken = localStorage.getItem('access_token');
@@ -960,55 +1064,117 @@ const AdminPageNew: React.FC = () => {
                           // Show loading screen
                           setRedirectingApp({ name: app.name });
 
-                          // For HR System, redirect to its callback with token
-                          if (app.clientId === 'app_fba7654e91e6413c') {
+                          // Check if app has redirect URIs configured for SSO
+                          if (app.redirect_uris && app.redirect_uris.length > 0) {
                             try {
                               // Add a small delay to show the loading screen
                               await new Promise(resolve => setTimeout(resolve, 1500));
 
-                              // Use fetch to send POST request then redirect
-                              const response = await fetch('http://localhost:8005/auth/sso', {
-                                method: 'POST',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify({
-                                  access_token: accessToken
-                                }),
-                                credentials: 'include'
-                              });
+                              // Get the first redirect URI (should be the SSO endpoint)
+                              const ssoUrl = app.redirect_uris[0];
+                              console.log(`Redirecting to ${app.name} SSO endpoint: ${ssoUrl}`);
 
-                              if (response.ok) {
-                                const data = await response.json();
-                                if (data.redirect_url) {
-                                  // Prepend the HR system base URL if it's a relative path
-                                  const redirectUrl = data.redirect_url.startsWith('http')
-                                    ? data.redirect_url
-                                    : `http://localhost:8005${data.redirect_url}`;
-                                  window.location.href = redirectUrl;
-                                }
-                              } else {
-                                setRedirectingApp(null);
-                                alert('Failed to authenticate with HR System');
-                              }
+                              // Create a form and submit it to the app's SSO endpoint
+                              const form = document.createElement('form');
+                              form.method = 'POST';
+                              form.action = ssoUrl;
+                              form.target = '_self'; // Open in same window
+
+                              // Add token as hidden input
+                              const tokenInput = document.createElement('input');
+                              tokenInput.type = 'hidden';
+                              tokenInput.name = 'access_token';
+                              tokenInput.value = accessToken;
+                              form.appendChild(tokenInput);
+
+                              // Add form to page and submit
+                              document.body.appendChild(form);
+                              form.submit();
+
+                              // Note: The page will redirect, so no need to remove the form
                             } catch (error) {
                               console.error('SSO error:', error);
                               setRedirectingApp(null);
-                              alert('Failed to connect to HR System');
+                              alert(`Failed to connect to ${app.name}`);
                             }
                           } else {
-                            console.log(`Navigate to app: ${app.name}`);
-                            // For other apps, hide the loader after a delay
+                            console.log(`Navigate to app: ${app.name} (no redirect URI configured)`);
+                            // For apps without SSO configured, just hide the loader
                             setTimeout(() => setRedirectingApp(null), 2000);
+                            // Optionally show a message
+                            alert(`${app.name} does not have SSO configured. Please configure redirect URIs in the app settings.`);
                           }
                         }}
                         title={app.description || app.name}
                       >
-                        <i className="fas fa-cube"></i>
-                        {app.name}
+                        <div className="app-icon">
+                          <i className={`fas ${iconClass}`}></i>
+                        </div>
+                        <div>
+                          <div className="app-name">{app.name}</div>
+                          {app.description && (
+                            <div className="app-description">
+                              {app.description.length > 50
+                                ? app.description.substring(0, 50) + '...'
+                                : app.description}
+                            </div>
+                          )}
+                        </div>
+                        {(connectsTo.length > 0 || connectsFrom.length > 0) && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '5px',
+                            right: '40px',
+                            display: 'flex',
+                            gap: '6px',
+                            alignItems: 'center'
+                          }}>
+                            {connectsTo.length > 0 && (
+                              <div
+                                title={`Connects to: ${connectsTo.join(', ')}`}
+                                style={{
+                                  background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                                  color: 'white',
+                                  padding: '3px 8px',
+                                  borderRadius: '12px',
+                                  fontSize: '11px',
+                                  fontWeight: '600',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)'
+                                }}
+                              >
+                                <i className="fas fa-arrow-right" style={{ fontSize: '10px' }}></i>
+                                {connectsTo.length}
+                              </div>
+                            )}
+                            {connectsFrom.length > 0 && (
+                              <div
+                                title={`Receives from: ${connectsFrom.join(', ')}`}
+                                style={{
+                                  background: 'linear-gradient(135deg, #10b981, #059669)',
+                                  color: 'white',
+                                  padding: '3px 8px',
+                                  borderRadius: '12px',
+                                  fontSize: '11px',
+                                  fontWeight: '600',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  boxShadow: '0 2px 4px rgba(16, 185, 129, 0.3)'
+                                }}
+                              >
+                                <i className="fas fa-arrow-left" style={{ fontSize: '10px' }}></i>
+                                {connectsFrom.length}
+                              </div>
+                            )}
+                          </div>
+                        )}
                         <StatusIndicator $healthy={appHealthStatus[app.clientId] !== false} />
                       </QuickLink>
-                    ))
+                        );
+                      })
                   ) : (
                     <QuickLink style={{ cursor: 'default', opacity: 0.6 }}>
                       <i className="fas fa-info-circle"></i>

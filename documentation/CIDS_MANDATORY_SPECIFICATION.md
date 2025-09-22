@@ -259,6 +259,194 @@ for field in requested_fields:
 }
 ```
 
+### 🔴 3.5 CRITICAL: SSO Implementation Security (MANDATORY)
+
+**⚠️ SECURITY ALERT: Session-based authentication is PROHIBITED**
+
+Applications integrating with CIDS **MUST NOT** create local session management systems. The following implementation is **STRICTLY FORBIDDEN** and creates critical security vulnerabilities:
+
+#### ❌ PROHIBITED IMPLEMENTATION (INSECURE):
+```python
+# NEVER DO THIS - CRITICAL VULNERABILITY
+@app.post("/auth/sso")
+async def sso_login(request):
+    token = request.json()["token"]
+
+    # ❌ FORBIDDEN: Creating session with UUID
+    session_id = str(uuid.uuid4())
+    sessions[session_id] = {
+        "user": user_data,
+        "token": token
+    }
+
+    # ❌ FORBIDDEN: Returning session ID in URL
+    return {
+        "redirect_url": f"/dashboard?session={session_id}"  # SECURITY HOLE!
+    }
+
+@app.get("/dashboard")
+async def dashboard(session: str = Query()):
+    # ❌ FORBIDDEN: Using session ID from URL
+    if session in sessions:  # VULNERABLE TO SESSION HIJACKING!
+        return render_dashboard()
+```
+
+**Why this is dangerous:**
+- **Session Hijacking**: Anyone with the URL can access the session
+- **No IP Validation**: Session works from any location
+- **No Expiration**: Sessions live forever
+- **No Device Binding**: Accessible from any device
+- **URL Sharing Vulnerability**: URLs with session IDs can be copied and shared
+
+#### ✅ REQUIRED SECURE IMPLEMENTATION:
+
+**1. SSO Endpoint - Store token in browser, NOT server:**
+```python
+@app.post("/auth/sso")
+async def sso_login(request: Request):
+    """Handle SSO from CIDS - SECURE IMPLEMENTATION"""
+    # Accept both JSON and form data
+    content_type = request.headers.get("content-type", "")
+
+    if "application/json" in content_type:
+        body = await request.json()
+        token = body.get("access_token")
+    else:
+        form = await request.form()
+        token = form.get("access_token")
+
+    # Validate token with CIDS
+    validation = await validate_with_cids(token)
+    if not validation["valid"]:
+        raise HTTPException(401, "Invalid token")
+
+    # ✅ CORRECT: Return HTML that stores token in browser
+    # NO SERVER-SIDE SESSION CREATED
+    return HTMLResponse(f"""
+    <html>
+        <body>
+            <script>
+                // Store token in sessionStorage (cleared on tab close)
+                sessionStorage.setItem('app_token', '{token}');
+                sessionStorage.setItem('app_user', JSON.stringify({json.dumps(user_data)}));
+                // Redirect WITHOUT session ID in URL
+                window.location.href = '/dashboard';
+            </script>
+        </body>
+    </html>
+    """)
+```
+
+**2. Protected Endpoints - Validate token on EVERY request:**
+```python
+@app.get("/dashboard")
+async def dashboard():
+    """Dashboard - token validated client-side"""
+    # ✅ CORRECT: Page uses JavaScript to check token
+    return HTMLResponse("""
+    <html>
+        <script>
+            const token = sessionStorage.getItem('app_token');
+            if (!token) {
+                window.location.href = '/login';
+            }
+            // Send token in headers for API calls
+            fetch('/api/data', {
+                headers: {'Authorization': `Bearer ${token}`}
+            });
+        </script>
+    </html>
+    """)
+
+@app.get("/api/data")
+async def get_data(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """API endpoint - validates token with CIDS on every request"""
+    # ✅ CORRECT: Validate with CIDS, no local session
+    user_data = await validate_token_with_cids(credentials.credentials)
+    return {"data": filtered_by_permissions(user_data)}
+```
+
+**3. Frontend Token Management:**
+```javascript
+// ✅ CORRECT: Token sent in headers, not URL
+async function apiCall(endpoint) {
+    const token = sessionStorage.getItem('app_token');
+    if (!token) {
+        window.location.href = '/login';
+        return;
+    }
+
+    const response = await fetch(endpoint, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    if (response.status === 401) {
+        // Token expired or invalid
+        sessionStorage.clear();
+        window.location.href = '/login';
+    }
+
+    return response.json();
+}
+
+// ✅ CORRECT: Logout clears browser storage
+function logout() {
+    sessionStorage.removeItem('app_token');
+    sessionStorage.removeItem('app_user');
+    window.location.href = '/login';
+}
+```
+
+#### MANDATORY SECURITY REQUIREMENTS:
+
+1. **NO Server-Side Sessions**: Applications MUST NOT create server-side session storage
+2. **NO Session IDs in URLs**: URLs MUST NOT contain session identifiers
+3. **Token in Headers Only**: Tokens MUST be sent via Authorization header
+4. **Validate Every Request**: Every API call MUST validate token with CIDS
+5. **Browser Storage**: Use sessionStorage (cleared on tab close) or secure cookies
+6. **No Token in HTML**: Never embed tokens directly in HTML
+7. **HTTPS Only**: All token transmission MUST use HTTPS
+
+#### Security Benefits of This Approach:
+
+✅ **URL Sharing Safe**: Copying URL to another browser won't grant access
+✅ **IP Binding Enforced**: CIDS validates token is used from same IP
+✅ **Automatic Expiration**: Tokens expire after 10 minutes
+✅ **Device Binding**: Token bound to specific User-Agent
+✅ **No State to Steal**: No server-side session to hijack
+✅ **Automatic Cleanup**: Browser clears sessionStorage on tab close
+
+#### Testing Your Implementation:
+
+```bash
+# Test 1: Verify no session in URL
+curl -I https://yourapp/dashboard
+# Should NOT redirect to URL with ?session=xxx
+
+# Test 2: Verify token required
+curl https://yourapp/api/data
+# Should return 401 Unauthorized
+
+# Test 3: Verify token validation
+curl -H "Authorization: Bearer invalid_token" https://yourapp/api/data
+# Should return 401 Unauthorized
+
+# Test 4: Verify CIDS validation is called
+# Monitor your CIDS validation endpoint logs
+# Should see validation request for each API call
+```
+
+#### Compliance Validation:
+
+Your application will **FAIL** CIDS certification if:
+- Session IDs appear in URLs
+- Server-side session storage is detected
+- Tokens are not validated with CIDS on each request
+- Tokens are embedded in HTML responses
+- Protected resources are accessible without valid tokens
+
 ---
 
 ## 4. REQUIRED FIELD CLASSIFICATIONS
@@ -336,6 +524,11 @@ These fields MUST ALWAYS be classified as shown:
 - [ ] CSRF protection
 - [ ] Input validation on ALL endpoints
 - [ ] Output encoding
+- [ ] **NO server-side sessions** (CRITICAL)
+- [ ] **NO session IDs in URLs** (CRITICAL)
+- [ ] **Tokens ONLY in Authorization headers** (CRITICAL)
+- [ ] **Token validation with CIDS on EVERY request** (CRITICAL)
+- [ ] **Use sessionStorage or secure cookies only** (CRITICAL)
 
 ### Data Handling Checklist
 

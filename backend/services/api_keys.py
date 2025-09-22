@@ -1,7 +1,7 @@
 """API Key Management (migrated)"""
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
-import json
+# import json  # No longer needed - using database now
 import logging
 import hashlib
 import secrets
@@ -9,11 +9,11 @@ import string
 from dataclasses import dataclass, asdict
 from enum import Enum
 
-from utils.paths import data_path
+# from utils.paths import data_path  # No longer needed - using database now
 
 logger = logging.getLogger(__name__)
 
-API_KEYS_DB = data_path("app_api_keys.json")
+# API_KEYS_DB = data_path("app_api_keys.json")  # No longer needed - using database now
 API_KEY_PREFIX = "cids_ak_"
 API_KEY_LENGTH = 32
 HASH_ALGORITHM = "sha256"
@@ -67,30 +67,91 @@ class APIKeyManager:
         self._load_keys()
 
     def _load_keys(self):
+        """Load API keys from PostgreSQL database instead of JSON file"""
         try:
-            if API_KEYS_DB.exists():
-                with open(API_KEYS_DB, 'r') as f:
-                    data = json.load(f)
-                    for app_id, keys in data.items():
-                        self.api_keys[app_id] = {}
-                        for key_id, key_data in keys.items():
-                            key_meta = APIKeyMetadata.from_dict(key_data)
-                            self.api_keys[app_id][key_id] = key_meta
-                            self._key_lookup[key_meta.key_prefix] = (app_id, key_id)
-            logger.info(f"Loaded {sum(len(keys) for keys in self.api_keys.values())} API keys")
+            from services.database import db_service
+
+            # Clear existing in-memory cache
+            self.api_keys = {}
+            self._key_lookup = {}
+
+            # Query all API keys from database
+            if not db_service.conn or db_service.conn.closed:
+                if not db_service.connect():
+                    logger.error("Failed to connect to database for loading API keys")
+                    return
+
+            query = """
+                SELECT
+                    ak.key_id, ak.client_id, ak.key_hash, ak.name, ak.description,
+                    ak.created_at, ak.expires_at, ak.last_used_at, ak.is_active,
+                    ak.created_by, ak.usage_count, ak.last_rotated_at,
+                    ak.rotation_scheduled_at, ak.rotation_grace_end,
+                    ak.token_template_name, ak.app_roles_overrides,
+                    ak.token_ttl_minutes, ak.default_audience, ak.allowed_audiences
+                FROM cids.api_keys ak
+                ORDER BY ak.created_at DESC
+            """
+
+            db_service.cursor.execute(query)
+            db_keys = db_service.cursor.fetchall()
+            db_service.disconnect()
+
+            total_loaded = 0
+            for key_row in db_keys:
+                client_id = key_row['client_id']
+                key_id = key_row['key_id']
+
+                # Convert database row to APIKeyMetadata format
+                key_prefix = f"{API_KEY_PREFIX}{key_id[:8]}..."
+
+                metadata = APIKeyMetadata(
+                    key_id=key_id,
+                    key_hash=key_row['key_hash'],
+                    key_prefix=key_prefix,
+                    name=key_row['name'] or f"API Key {key_id[:8]}",
+                    permissions=[],  # Permissions are handled separately in v2.0
+                    expires_at=key_row['expires_at'].isoformat() if key_row['expires_at'] else None,
+                    created_at=key_row['created_at'].isoformat() if key_row['created_at'] else None,
+                    created_by=key_row['created_by'] or 'unknown',
+                    last_used_at=key_row['last_used_at'].isoformat() if key_row['last_used_at'] else None,
+                    is_active=key_row['is_active'],
+                    usage_count=key_row['usage_count'] or 0,
+                    last_rotated_at=key_row['last_rotated_at'].isoformat() if key_row['last_rotated_at'] else None,
+                    rotation_scheduled_at=key_row['rotation_scheduled_at'].isoformat() if key_row['rotation_scheduled_at'] else None,
+                    rotation_grace_end=key_row['rotation_grace_end'].isoformat() if key_row['rotation_grace_end'] else None,
+                    token_template_name=key_row['token_template_name'],
+                    app_roles_overrides=key_row['app_roles_overrides'],
+                    token_ttl_minutes=key_row['token_ttl_minutes'],
+                    default_audience=key_row['default_audience'],
+                    allowed_audiences=key_row['allowed_audiences']
+                )
+
+                # Add to in-memory cache for backward compatibility
+                if client_id not in self.api_keys:
+                    self.api_keys[client_id] = {}
+                self.api_keys[client_id][key_id] = metadata
+
+                # Add to key lookup for prefix-based validation
+                if metadata.is_active:
+                    self._key_lookup[key_prefix] = (client_id, key_id)
+
+                total_loaded += 1
+
+            logger.info(f"Loaded {total_loaded} API keys from database")
+
         except Exception as e:
-            logger.error(f"Error loading API keys: {e}")
+            logger.error(f"Error loading API keys from database: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             self.api_keys = {}
             self._key_lookup = {}
 
     def _save_keys(self):
-        try:
-            API_KEYS_DB.parent.mkdir(parents=True, exist_ok=True)
-            data = {app_id: {key_id: key_meta.to_dict() for key_id, key_meta in keys.items()} for app_id, keys in self.api_keys.items()}
-            with open(API_KEYS_DB, 'w') as f:
-                json.dump(data, f, indent=2)
-        except Exception as e:
-            logger.error(f"Error saving API keys: {e}")
+        """Save keys to database - this method is deprecated as we now save directly to DB"""
+        logger.warning("_save_keys called but API keys are now saved directly to database in create/update operations")
+        # This method is kept for backward compatibility but does nothing
+        # All database updates now happen in individual methods
 
     def generate_api_key(self) -> str:
         alphabet = string.ascii_letters + string.digits
@@ -170,16 +231,43 @@ class APIKeyManager:
         return self.api_keys[app_client_id].get(key_id)
 
     def revoke_api_key(self, app_client_id: str, key_id: str) -> bool:
+        """Revoke an API key by updating database and in-memory cache"""
         if app_client_id not in self.api_keys:
             return False
         if key_id not in self.api_keys[app_client_id]:
             return False
-        self.api_keys[app_client_id][key_id].is_active = False
-        key_prefix = self.api_keys[app_client_id][key_id].key_prefix
-        if key_prefix in self._key_lookup:
-            del self._key_lookup[key_prefix]
-        self._save_keys()
-        return True
+
+        try:
+            # Update database
+            from services.database import db_service
+
+            if not db_service.conn or db_service.conn.closed:
+                if not db_service.connect():
+                    logger.error("Failed to connect to database for revoking API key")
+                    return False
+
+            query = """
+                UPDATE cids.api_keys
+                SET is_active = false, updated_at = CURRENT_TIMESTAMP
+                WHERE client_id = %s AND key_id = %s
+            """
+
+            db_service.cursor.execute(query, (app_client_id, key_id))
+            db_service.conn.commit()
+            db_service.disconnect()
+
+            # Update in-memory cache
+            self.api_keys[app_client_id][key_id].is_active = False
+            key_prefix = self.api_keys[app_client_id][key_id].key_prefix
+            if key_prefix in self._key_lookup:
+                del self._key_lookup[key_prefix]
+
+            logger.info(f"API key {key_id} revoked for app {app_client_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error revoking API key in database: {e}")
+            return False
 
     def rotate_api_key(self, app_client_id: str, key_id: str, created_by: str, grace_period_hours: int = 24) -> Optional[Tuple[str, APIKeyMetadata]]:
         old_key = self.get_api_key(app_client_id, key_id)
@@ -192,10 +280,41 @@ class APIKeyManager:
             created_by=created_by,
             ttl_days=APIKeyTTL.DAYS_90.value,
         )
-        old_key.last_rotated_at = datetime.utcnow().isoformat()
-        old_key.rotation_scheduled_at = (datetime.utcnow() + timedelta(hours=grace_period_hours)).isoformat()
-        old_key.rotation_grace_end = old_key.rotation_scheduled_at
-        self._save_keys()
+        # Update database for old key rotation metadata
+        try:
+            from services.database import db_service
+
+            if not db_service.conn or db_service.conn.closed:
+                if not db_service.connect():
+                    logger.error("Failed to connect to database for updating rotation metadata")
+                    return new_key, new_metadata
+
+            rotation_time = datetime.utcnow()
+            grace_end_time = rotation_time + timedelta(hours=grace_period_hours)
+
+            query = """
+                UPDATE cids.api_keys
+                SET last_rotated_at = %s, rotation_scheduled_at = %s, rotation_grace_end = %s
+                WHERE client_id = %s AND key_id = %s
+            """
+
+            db_service.cursor.execute(query, (
+                rotation_time,
+                grace_end_time,
+                grace_end_time,
+                app_client_id,
+                key_id
+            ))
+            db_service.conn.commit()
+            db_service.disconnect()
+
+            # Update in-memory cache
+            old_key.last_rotated_at = rotation_time.isoformat()
+            old_key.rotation_scheduled_at = grace_end_time.isoformat()
+            old_key.rotation_grace_end = old_key.rotation_scheduled_at
+
+        except Exception as e:
+            logger.error(f"Error updating rotation metadata in database: {e}")
         return new_key, new_metadata
 
     def validate_api_key(self, api_key: str) -> Optional[Tuple[str, APIKeyMetadata]]:
@@ -256,12 +375,47 @@ class APIKeyManager:
         if metadata.rotation_grace_end:
             grace_end = datetime.fromisoformat(metadata.rotation_grace_end)
             if datetime.utcnow() > grace_end:
-                metadata.is_active = False
-                self._save_keys()
+                # Update database to mark as inactive
+                try:
+                    from services.database import db_service
+                    if not db_service.conn or db_service.conn.closed:
+                        db_service.connect()
+
+                    query = """
+                        UPDATE cids.api_keys
+                        SET is_active = false
+                        WHERE client_id = %s AND key_id = %s
+                    """
+                    db_service.cursor.execute(query, (app_client_id, key_id))
+                    db_service.conn.commit()
+                    db_service.disconnect()
+
+                    metadata.is_active = False
+                except Exception as db_e:
+                    logger.error(f"Error updating database during grace period expiry: {db_e}")
                 return None
-        metadata.last_used_at = datetime.utcnow().isoformat()
-        metadata.usage_count += 1
-        self._save_keys()
+
+        # Update last_used_at and usage_count in database
+        try:
+            from services.database import db_service
+            if not db_service.conn or db_service.conn.closed:
+                db_service.connect()
+
+            query = """
+                UPDATE cids.api_keys
+                SET last_used_at = CURRENT_TIMESTAMP, usage_count = COALESCE(usage_count, 0) + 1
+                WHERE client_id = %s AND key_id = %s
+            """
+            db_service.cursor.execute(query, (app_client_id, key_id))
+            db_service.conn.commit()
+            db_service.disconnect()
+
+            # Update in-memory cache
+            metadata.last_used_at = datetime.utcnow().isoformat()
+            metadata.usage_count += 1
+
+        except Exception as db_e:
+            logger.error(f"Error updating API key usage in database: {db_e}")
         return app_client_id, metadata
 
     def get_keys_needing_rotation(self, days_before_expiry: int = 7):
@@ -305,7 +459,25 @@ class APIKeyManager:
                 del self.api_keys[app_id][key_id]
                 removed_count += 1
         if removed_count > 0:
-            self._save_keys()
+            # Update database to remove expired keys
+            try:
+                from services.database import db_service
+                if not db_service.conn or db_service.conn.closed:
+                    db_service.connect()
+
+                # Delete expired keys from database
+                query = """
+                    DELETE FROM cids.api_keys
+                    WHERE (expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP)
+                       OR (rotation_grace_end IS NOT NULL AND rotation_grace_end < CURRENT_TIMESTAMP AND is_active = false)
+                """
+                db_service.cursor.execute(query)
+                db_service.conn.commit()
+                db_service.disconnect()
+
+            except Exception as e:
+                logger.error(f"Error cleaning up expired keys in database: {e}")
+
             logger.info(f"Cleaned up {removed_count} expired API keys")
         return removed_count
 

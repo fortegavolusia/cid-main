@@ -42,11 +42,14 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
   const [showRlsBuilder, setShowRlsBuilder] = useState(false);
   const [currentRlsResource, setCurrentRlsResource] = useState<string>('');
   const [currentRlsAction, setCurrentRlsAction] = useState<string>('');
+  const [currentRlsFilter, setCurrentRlsFilter] = useState<any>(null);
+  const [dbRlsFilters, setDbRlsFilters] = useState<any[]>([]);
 
   // Fetch available permissions from database
   useEffect(() => {
     if (isOpen) {
       fetchPermissions();
+      fetchRlsFiltersFromDB();
     }
   }, [isOpen, clientId, roleName]);
   
@@ -86,6 +89,37 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchRlsFiltersFromDB = async () => {
+    try {
+      console.log('🔍 [RLS UI] Fetching RLS filters from database');
+      const response = await adminService.getRlsFilters(clientId, roleName);
+
+      if (response && response.filters) {
+        console.log('✅ [RLS UI] Loaded filters from DB:', response.filters);
+        setDbRlsFilters(response.filters);
+
+        // Convert DB filters to the format expected by the UI
+        const convertedFilters: Record<string, any> = {};
+        response.filters.forEach((filter: any) => {
+          const key = `${filter.resource}.${filter.field_name}`;
+          if (!convertedFilters[key]) {
+            convertedFilters[key] = [];
+          }
+          convertedFilters[key].push({
+            id: filter.rls_id,
+            expression: filter.filter_condition,
+            timestamp: filter.created_at
+          });
+        });
+
+        console.log('📋 [RLS UI] Converted filters for UI:', convertedFilters);
+        setRlsFilters(convertedFilters);
+      }
+    } catch (error) {
+      console.error('❌ [RLS UI] Failed to fetch RLS filters from DB:', error);
     }
   };
 
@@ -182,16 +216,79 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
   const handleRLSClick = (resource: string, action: string) => {
     setCurrentRlsResource(resource);
     setCurrentRlsAction(action);
+
+    // Find ANY existing filter from DB for this resource
+    // Show the filter as-is from the database, regardless of field_name
+    const existingFilter = dbRlsFilters.find(f => f.resource === resource);
+
+    console.log('🔍 [RLS UI] Opening RLS builder for:', resource, action);
+    console.log('📄 [RLS UI] Existing filter found:', existingFilter);
+    console.log('📊 [RLS UI] All DB filters:', dbRlsFilters);
+
+    setCurrentRlsFilter(existingFilter);
     setShowRlsBuilder(true);
   };
 
-  const handleSaveRls = (filters: any) => {
-    const key = currentRlsAction === 'all' ? currentRlsResource : `${currentRlsResource}.${currentRlsAction}`;
-    setRlsFilters({
-      ...rlsFilters,
-      [key]: filters
-    });
-    setShowRlsBuilder(false);
+  const handleSaveRls = async (filterKey: string, filterExpression: string) => {
+    try {
+      console.log('💾 [RLS UI] Saving RLS filter');
+      console.log('📋 [RLS UI] Resource:', currentRlsResource);
+      console.log('📋 [RLS UI] Action:', currentRlsAction);
+      console.log('📋 [RLS UI] Expression:', filterExpression);
+      console.log('📋 [RLS UI] Current filter:', currentRlsFilter);
+
+      // Determine field_name intelligently
+      let fieldName = 'all';
+
+      // Option 1: If editing existing filter, keep its original field_name
+      if (currentRlsFilter && currentRlsFilter.field_name) {
+        fieldName = currentRlsFilter.field_name;
+        console.log('📋 [RLS UI] Using existing field_name:', fieldName);
+      }
+      // Option 2: Try to detect field from filter expression
+      else {
+        // Extract field name from filter expression (e.g., "user_email = ..." -> "user_email")
+        const fieldMatch = filterExpression.match(/^(\w+)\s*[=!<>]/);
+        if (fieldMatch && fieldMatch[1]) {
+          fieldName = fieldMatch[1];
+          console.log('📋 [RLS UI] Detected field_name from expression:', fieldName);
+        } else if (currentRlsAction && currentRlsAction !== 'all') {
+          fieldName = currentRlsAction;
+          console.log('📋 [RLS UI] Using action as field_name:', fieldName);
+        }
+      }
+
+      // Save to database
+      const result = await adminService.saveRlsFilter(clientId, roleName, {
+        resource: currentRlsResource,
+        field_name: fieldName,
+        filter_condition: filterExpression,
+        description: `RLS filter for ${currentRlsResource}.${fieldName}`,
+        filter_operator: 'AND',
+        priority: 0
+      });
+
+      console.log('✅ [RLS UI] Filter saved to DB:', result);
+
+      // Update local state
+      const key = currentRlsAction === 'all' ? currentRlsResource : `${currentRlsResource}.${currentRlsAction}`;
+      setRlsFilters({
+        ...rlsFilters,
+        [key]: [{
+          id: result.rls_id,
+          expression: filterExpression,
+          timestamp: new Date().toISOString()
+        }]
+      });
+
+      // Refresh from DB
+      await fetchRlsFiltersFromDB();
+
+      setShowRlsBuilder(false);
+    } catch (error) {
+      console.error('❌ [RLS UI] Failed to save RLS filter:', error);
+      alert('Failed to save RLS filter. Please try again.');
+    }
   };
 
   const handleSave = async () => {
@@ -342,9 +439,15 @@ const PermissionSelector: React.FC<PermissionSelectorProps> = ({
           isOpen={showRlsBuilder}
           onClose={() => setShowRlsBuilder(false)}
           onSave={handleSaveRls}
-          resource={currentRlsResource}
-          action={currentRlsAction}
-          existingFilters={rlsFilters[currentRlsAction === 'all' ? currentRlsResource : `${currentRlsResource}.${currentRlsAction}`]}
+          context={{
+            type: 'resource',
+            clientId: clientId,
+            appName: appName,
+            resource: currentRlsResource,
+            action: currentRlsAction,
+            filterKey: `${currentRlsResource}.${currentRlsAction || 'all'}`,
+            existingFilter: currentRlsFilter?.filter_condition
+          }}
         />
       )}
     </Modal>

@@ -388,6 +388,70 @@ class AdminService {
       return [];
     }
   }
+
+  // RLS Filters Management
+  async getRlsFilters(clientId: string, roleName: string): Promise<any> {
+    console.log('🔍 [RLS] Fetching RLS filters from database');
+    console.log('📋 [RLS] Client ID:', clientId);
+    console.log('👤 [RLS] Role Name:', roleName);
+
+    try {
+      const response = await apiService.get(`/auth/admin/rls-filters/${clientId}/${roleName}`);
+      console.log('✅ [RLS] Filters fetched:', response);
+      return response;
+    } catch (error) {
+      console.error('❌ [RLS] Error fetching filters:', error);
+      // Return empty structure on error
+      return {
+        client_id: clientId,
+        role_name: roleName,
+        filters: [],
+        count: 0
+      };
+    }
+  }
+
+  async saveRlsFilter(
+    clientId: string,
+    roleName: string,
+    filterData: {
+      resource: string;
+      field_name: string;
+      filter_condition: string;
+      description?: string;
+      filter_operator?: string;
+      priority?: number;
+      metadata?: any;
+    }
+  ): Promise<any> {
+    console.log('💾 [RLS] Saving RLS filter to database');
+    console.log('📋 [RLS] Filter data:', filterData);
+
+    try {
+      const response = await apiService.post(
+        `/auth/admin/rls-filters/${clientId}/${roleName}`,
+        filterData
+      );
+      console.log('✅ [RLS] Filter saved successfully:', response);
+      return response;
+    } catch (error) {
+      console.error('❌ [RLS] Error saving filter:', error);
+      throw error;
+    }
+  }
+
+  async deleteRlsFilter(rlsId: string): Promise<any> {
+    console.log('🗑️ [RLS] Deleting RLS filter:', rlsId);
+
+    try {
+      const response = await apiService.delete(`/auth/admin/rls-filters/${rlsId}`);
+      console.log('✅ [RLS] Filter deleted successfully');
+      return response;
+    } catch (error) {
+      console.error('❌ [RLS] Error deleting filter:', error);
+      throw error;
+    }
+  }
 }
 
 export const adminService = new AdminService();

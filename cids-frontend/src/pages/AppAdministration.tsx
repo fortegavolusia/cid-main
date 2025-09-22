@@ -255,44 +255,46 @@ const AppCard = styled.div`
 
 const ActiveRibbon = styled.div`
   position: absolute;
-  top: 12px;
-  right: -30px;
+  top: 10px;
+  right: -20px;
   background: linear-gradient(135deg, #10b981, #059669);
   color: white;
-  padding: 5px 35px;
-  font-size: 10px;
-  font-weight: 700;
+  padding: 2px 30px;
+  font-size: 8px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
   transform: rotate(45deg);
-  box-shadow: 0 3px 10px rgba(16, 185, 129, 0.4);
+  transform-origin: center;
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
   z-index: 10;
-  
-  &::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 100%;
-    width: 0;
-    height: 0;
-    border-left: 3px solid transparent;
-    border-right: 3px solid #047857;
-    border-bottom: 3px solid transparent;
-    border-top: 3px solid #047857;
-  }
-  
-  &::after {
-    content: '';
-    position: absolute;
-    right: 0;
-    top: 100%;
-    width: 0;
-    height: 0;
-    border-left: 3px solid #047857;
-    border-right: 3px solid transparent;
-    border-bottom: 3px solid transparent;
-    border-top: 3px solid #047857;
-  }
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+`;
+
+const IncompleteRibbon = styled.div`
+  position: absolute;
+  top: 10px;
+  right: -20px;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+  padding: 2px 30px;
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transform: rotate(45deg);
+  transform-origin: center;
+  box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
+  z-index: 10;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 `;
 
 const AppCardHeader = styled.div<{ $isActive?: boolean }>`
@@ -300,6 +302,7 @@ const AppCardHeader = styled.div<{ $isActive?: boolean }>`
   padding: 12px 16px;
   background: #0b3b63;
   border-bottom: 1px solid #0a2d4d;
+  overflow: hidden;
 `;
 
 const AppName = styled.h3`
@@ -825,7 +828,7 @@ const AppAdministration: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'incomplete'>('all');
   const [selectedApp, setSelectedApp] = useState<AppInfo | null>(null);
   const [showRolesModal, setShowRolesModal] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
@@ -866,7 +869,9 @@ const AppAdministration: React.FC = () => {
       setApps(appsWithRoleCount);
 
       // Load API key status for each app
+      console.log('About to load API key status...');
       await loadApiKeyStatus(appsWithRoleCount);
+      console.log('API key status loaded, appsWithActiveKeys should be updated now');
     } catch (err) {
       setError('Failed to load applications');
       console.error('Failed to load apps:', err);
@@ -876,15 +881,22 @@ const AppAdministration: React.FC = () => {
   };
 
   const loadApiKeyStatus = async (apps: AppInfo[]) => {
+    console.log('=== Loading API key status for apps ===');
     const activeKeys = new Set<string>();
 
     // Check each app for active API keys
     await Promise.all(
       apps.map(async (app) => {
         try {
+          console.log(`Checking API key for ${app.name} (${app.client_id})`);
           const response = await adminService.checkActiveApiKey(app.client_id);
-          if (response.has_active_key) {
+          console.log(`Response for ${app.name}:`, response);
+
+          if (response && response.has_active_key) {
+            console.log(`✓ ${app.name} HAS active API key`);
             activeKeys.add(app.client_id);
+          } else {
+            console.log(`✗ ${app.name} has NO active API key`);
           }
         } catch (err) {
           console.error(`Failed to check API key status for ${app.client_id}:`, err);
@@ -892,6 +904,8 @@ const AppAdministration: React.FC = () => {
       })
     );
 
+    console.log('Apps with active keys:', activeKeys);
+    console.log('Apps with active keys size:', activeKeys.size);
     setAppsWithActiveKeys(activeKeys);
   };
 
@@ -1087,20 +1101,25 @@ const AppAdministration: React.FC = () => {
     }
   };
 
+  console.log('Current appsWithActiveKeys:', Array.from(appsWithActiveKeys));
+  console.log('Apps to filter:', apps.map(a => ({name: a.name, client_id: a.client_id, is_active: a.is_active})));
+
   const filteredApps = apps.filter(app => {
     const matchesSearch = app.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           app.client_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           app.owner_email.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesFilter = filterStatus === 'all' || 
-                          (filterStatus === 'active' && app.is_active) ||
-                          (filterStatus === 'inactive' && !app.is_active);
-    
+
+    const matchesFilter = filterStatus === 'all' ||
+                          (filterStatus === 'active' && appsWithActiveKeys.has(app.client_id)) ||
+                          (filterStatus === 'incomplete' && !appsWithActiveKeys.has(app.client_id));
+
     return matchesSearch && matchesFilter;
   });
 
-  const activeCount = apps.filter(app => app.is_active).length;
-  const inactiveCount = apps.filter(app => !app.is_active).length;
+  // An app is ONLY active if it has API keys, regardless of is_active field
+  const activeCount = apps.filter(app => appsWithActiveKeys.has(app.client_id)).length;
+  const incompleteCount = apps.filter(app => !appsWithActiveKeys.has(app.client_id)).length;
+  const inactiveCount = 0; // No longer used - all without API keys are incomplete
 
   if (loading) {
     return (
@@ -1139,12 +1158,12 @@ const AppAdministration: React.FC = () => {
           </div>
           <HeaderActions>
             <StatsCard>
-              <StatNumber>{activeCount}</StatNumber>
-              <StatLabel>Active</StatLabel>
+              <StatNumber style={{ color: '#10b981' }}>{activeCount}</StatNumber>
+              <StatLabel>Active (with API Key)</StatLabel>
             </StatsCard>
             <StatsCard>
-              <StatNumber>{inactiveCount}</StatNumber>
-              <StatLabel>Inactive</StatLabel>
+              <StatNumber style={{ color: '#f59e0b' }}>{incompleteCount}</StatNumber>
+              <StatLabel>Incomplete (no API Key)</StatLabel>
             </StatsCard>
             <StatsCard>
               <StatNumber>{apps.length}</StatNumber>
@@ -1180,13 +1199,14 @@ const AppAdministration: React.FC = () => {
           <i className="fas fa-check-circle"></i>
           Active
         </FilterButton>
-        
+
         <FilterButton
-          className={filterStatus === 'inactive' ? 'active' : ''}
-          onClick={() => setFilterStatus('inactive')}
+          className={filterStatus === 'incomplete' ? 'active' : ''}
+          onClick={() => setFilterStatus('incomplete')}
+          style={{ borderColor: filterStatus === 'incomplete' ? '#f59e0b' : undefined }}
         >
-          <i className="fas fa-times-circle"></i>
-          Inactive
+          <i className="fas fa-exclamation-triangle" style={{ color: '#f59e0b' }}></i>
+          Incomplete (No API Key)
         </FilterButton>
         
         <CreateButton onClick={handleCreateApp}>
@@ -1215,15 +1235,16 @@ const AppAdministration: React.FC = () => {
         </EmptyState>
       ) : (
         <AppsGrid>
-          {filteredApps.map(app => (
+          {filteredApps.map(app => {
+            const hasApiKey = appsWithActiveKeys.has(app.client_id);
+            const isReallyActive = hasApiKey; // ONLY consider active if has API key
+            console.log(`Rendering ${app.name}: db_is_active=${app.is_active}, hasApiKey=${hasApiKey}, REAL_STATUS=${isReallyActive ? 'ACTIVE' : 'INACTIVE'}`);
+            return (
             <AppCard key={app.client_id}>
-              {app.is_active && <ActiveRibbon>ACTIVE</ActiveRibbon>}
-              {!app.is_active && (
-                <AppStatus $isActive={app.is_active}>
-                  <StatusBadge $isActive={app.is_active}>
-                    Inactive
-                  </StatusBadge>
-                </AppStatus>
+              {isReallyActive ? (
+                <ActiveRibbon>ACTIVE</ActiveRibbon>
+              ) : (
+                <IncompleteRibbon>INCOMPLETE</IncompleteRibbon>
               )}
               <AppCardHeader $isActive={app.is_active}>
                 <ToggleButton 
@@ -1406,7 +1427,7 @@ const AppAdministration: React.FC = () => {
                 </CardActions>
               </AppCardBody>
             </AppCard>
-          ))}
+          )})}
         </AppsGrid>
       )}
 

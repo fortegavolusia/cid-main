@@ -147,6 +147,14 @@ class ApiService {
 
   // PUT request
   async put<T>(url: string, data?: any, config?: any): Promise<T> {
+    // Debug logging for PUT requests with rls_filters
+    if (data && data.rls_filters) {
+      console.log('=== api.put DEBUG ===');
+      console.log('URL:', url);
+      console.log('Data with rls_filters:', data);
+      console.log('rls_filters content:', data.rls_filters);
+      console.log('Stringified data:', JSON.stringify(data));
+    }
     return this.request<T>('PUT', url, data, config);
   }
 

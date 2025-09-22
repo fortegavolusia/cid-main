@@ -67,6 +67,11 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
         },
+        '/rls-filters': {
+          target,
+          changeOrigin: true,
+          secure: false,
+        },
         '/photos': {
           target,
           changeOrigin: true,

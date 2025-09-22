@@ -44,9 +44,11 @@ class AppEndpointsRegistry:
         return {}
 
     def _save_endpoints(self):
-        self.endpoints_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.endpoints_file, 'w') as f:
-            json.dump(self.endpoints, f, indent=2)
+        # MIGRADO A BASE DE DATOS (cids.discovery_endpoints) - YA NO SE USA JSON
+        # self.endpoints_file.parent.mkdir(parents=True, exist_ok=True)
+        # with open(self.endpoints_file, 'w') as f:
+        #     json.dump(self.endpoints, f, indent=2)
+        pass  # Todo está en la tabla cids.discovery_endpoints ahora
 
     def upsert_endpoints(self, app_client_id: str, endpoints: List[Dict], updated_by: str = "discovery-service") -> Dict:
         current = self.endpoints.get(app_client_id, {})

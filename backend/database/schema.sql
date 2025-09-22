@@ -44,13 +44,28 @@ CREATE TABLE IF NOT EXISTS api_keys (
     expires_at TIMESTAMP WITH TIME ZONE,
     last_used_at TIMESTAMP WITH TIME ZONE,
     is_active BOOLEAN DEFAULT true,
-    created_by VARCHAR(255) NOT NULL
+    created_by VARCHAR(255) NOT NULL,
+    usage_count INTEGER DEFAULT 0,
+    last_rotated_at TIMESTAMP WITH TIME ZONE,
+    rotation_scheduled_at TIMESTAMP WITH TIME ZONE,
+    rotation_grace_end TIMESTAMP WITH TIME ZONE,
+    log_id VARCHAR(50), -- For activity logging
+    -- A2A (App-to-App) fields
+    token_template_name VARCHAR(255),
+    app_roles_overrides JSONB,
+    token_ttl_minutes INTEGER,
+    default_audience VARCHAR(255),
+    allowed_audiences JSONB,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create indexes for api_keys
 CREATE INDEX idx_api_keys_client_id ON api_keys(client_id);
 CREATE INDEX idx_api_keys_is_active ON api_keys(is_active);
 CREATE INDEX idx_api_keys_expires_at ON api_keys(expires_at);
+CREATE INDEX idx_api_keys_key_hash ON api_keys(key_hash); -- For fast validation
+CREATE INDEX idx_api_keys_last_used ON api_keys(last_used_at);
+CREATE INDEX idx_api_keys_rotation_grace ON api_keys(rotation_grace_end);
 
 -- =====================================================
 -- ROLES TABLE
